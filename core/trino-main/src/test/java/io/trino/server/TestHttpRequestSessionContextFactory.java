@@ -47,6 +47,7 @@ public class TestHttpRequestSessionContextFactory
     {
         assertSessionContext(TRINO_HEADERS);
         assertSessionContext(createProtocolHeaders("taco"));
+        assertSessionContextForPresto(createProtocolHeaders("taco"));
     }
 
     private static void assertSessionContext(ProtocolHeaders protocolHeaders)
@@ -98,6 +99,27 @@ public class TestHttpRequestSessionContextFactory
                 "foobar_connector", new SelectedRole(SelectedRole.Type.ROLE, Optional.of("catalog-role"))));
         assertEquals(context.getIdentity().getExtraCredentials(), ImmutableMap.of("test.token.foo", "bar", "test.token.abc", "xyz"));
         assertEquals(context.getIdentity().getGroups(), ImmutableSet.of("testUser"));
+    }
+
+    private static void assertSessionContextForPresto(ProtocolHeaders protocolHeaders)
+    {
+        MultivaluedMap<String, String> headers = new GuavaMultivaluedMap<>(ImmutableListMultimap.<String, String>builder()
+                .put(protocolHeaders.requestUser(), "testUser")
+                .put("X-Presto-Source", "testSource")
+                .put("X-Presto-Catalog", "testCatalog")
+                .put("X-Presto-Schema", "testSchema")
+                .put("X-Presto-Time-Zone", "Asia/Taipei")
+                .build());
+
+        SessionContext context = SESSION_CONTEXT_FACTORY.createSessionContext(
+                headers,
+                Optional.of(protocolHeaders.getProtocolName()),
+                Optional.of("testRemote"),
+                Optional.empty());
+        assertEquals(context.getSource().orElse(null), "testSource");
+        assertEquals(context.getCatalog().orElse(null), "testCatalog");
+        assertEquals(context.getSchema().orElse(null), "testSchema");
+        assertEquals(context.getTimeZoneId().orElse(null), "Asia/Taipei");
     }
 
     @Test

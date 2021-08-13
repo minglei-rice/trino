@@ -98,8 +98,12 @@ public class HttpRequestSessionContextFactory
         catch (ProtocolDetectionException e) {
             throw badRequest(e.getMessage());
         }
-        Optional<String> catalog = Optional.ofNullable(trimEmptyToNull(headers.getFirst(protocolHeaders.requestCatalog())));
-        Optional<String> schema = Optional.ofNullable(trimEmptyToNull(headers.getFirst(protocolHeaders.requestSchema())));
+        String trinoCatalog = trimEmptyToNull(headers.getFirst(protocolHeaders.requestCatalog()));
+        Optional<String> catalog = Optional.ofNullable(
+                trinoCatalog == null ? trimEmptyToNull(headers.getFirst("X-Presto-Catalog")) : trinoCatalog);
+        String trinoSchema = trimEmptyToNull(headers.getFirst(protocolHeaders.requestSchema()));
+        Optional<String> schema = Optional.ofNullable(
+                trinoSchema == null ? trimEmptyToNull(headers.getFirst("X-Presto-Schema")) : trinoSchema);
         Optional<String> path = Optional.ofNullable(trimEmptyToNull(headers.getFirst(protocolHeaders.requestPath())));
         assertRequest((catalog.isPresent()) || (schema.isEmpty()), "Schema is set but catalog is not");
 
@@ -107,11 +111,13 @@ public class HttpRequestSessionContextFactory
         Identity identity = buildSessionIdentity(authenticatedIdentity, protocolHeaders, headers);
         SelectedRole selectedRole = parseSystemRoleHeaders(protocolHeaders, headers);
 
-        Optional<String> source = Optional.ofNullable(headers.getFirst(protocolHeaders.requestSource()));
+        String trinoSource = headers.getFirst(protocolHeaders.requestSource());
+        Optional<String> source = Optional.ofNullable(trinoSource == null ? headers.getFirst("X-Presto-Source") : trinoSource);
         Optional<String> traceToken = Optional.ofNullable(trimEmptyToNull(headers.getFirst(protocolHeaders.requestTraceToken())));
         Optional<String> userAgent = Optional.ofNullable(headers.getFirst(USER_AGENT));
         Optional<String> remoteUserAddress = requireNonNull(remoteAddress, "remoteAddress is null");
-        Optional<String> timeZoneId = Optional.ofNullable(headers.getFirst(protocolHeaders.requestTimeZone()));
+        String trinoTimeZoneId = headers.getFirst(protocolHeaders.requestTimeZone());
+        Optional<String> timeZoneId = Optional.ofNullable(trinoTimeZoneId == null ? headers.getFirst("X-Presto-Time-Zone") : trinoTimeZoneId);
         Optional<String> language = Optional.ofNullable(headers.getFirst(protocolHeaders.requestLanguage()));
         Optional<String> clientInfo = Optional.ofNullable(headers.getFirst(protocolHeaders.requestClientInfo()));
         Set<String> clientTags = parseClientTags(protocolHeaders, headers);

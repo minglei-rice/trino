@@ -13,6 +13,7 @@
  */
 package io.trino.server.security;
 
+import io.airlift.log.Logger;
 import io.trino.client.ProtocolDetectionException;
 import io.trino.client.ProtocolHeaders;
 import io.trino.server.ProtocolConfig;
@@ -34,6 +35,8 @@ import static java.util.Objects.requireNonNull;
 public class InsecureAuthenticator
         implements Authenticator
 {
+    private static final Logger log = Logger.get(InsecureAuthenticator.class);
+
     private final UserMapping userMapping;
     private final Optional<String> alternateHeaderName;
 
@@ -62,6 +65,12 @@ public class InsecureAuthenticator
             try {
                 ProtocolHeaders protocolHeaders = detectProtocol(alternateHeaderName, request.getHeaders().keySet());
                 user = emptyToNull(request.getHeaders().getFirst(protocolHeaders.requestUser()));
+                if (user == null) {
+                    user = emptyToNull(request.getHeaders().getFirst("X-Presto-User"));
+                    if (user != null) {
+                        log.warn("InsecureAuthenticator user is presto user [%s]!", user);
+                    }
+                }
             }
             catch (ProtocolDetectionException e) {
                 // ignored
