@@ -55,7 +55,7 @@ public class StatsNormalizer
     private PlanNodeStatsEstimate normalize(PlanNodeStatsEstimate stats, Optional<Collection<Symbol>> outputSymbols, TypeProvider types)
     {
         if (stats.isOutputRowCountUnknown()) {
-            return PlanNodeStatsEstimate.unknown();
+            return PlanNodeStatsEstimate.builder().setOutputDataSize(stats.getOutputDataSize()).build();
         }
 
         PlanNodeStatsEstimate.Builder normalized = PlanNodeStatsEstimate.buildFrom(stats);

@@ -191,7 +191,7 @@ public class TableStatisticsMaker
             }
             columnHandleBuilder.put(columnHandle, columnBuilder.build());
         }
-        return new TableStatistics(Estimate.of(recordCount), columnHandleBuilder.build());
+        return new TableStatistics(Estimate.of(recordCount), Estimate.of(summary.getSize()), columnHandleBuilder.build());
     }
 
     private boolean dataFileMatches(

@@ -57,6 +57,7 @@ import static io.trino.plugin.hive.metastore.HiveColumnStatistics.createDateColu
 import static io.trino.plugin.hive.metastore.HiveColumnStatistics.createDecimalColumnStatistics;
 import static io.trino.plugin.hive.metastore.HiveColumnStatistics.createDoubleColumnStatistics;
 import static io.trino.plugin.hive.metastore.HiveColumnStatistics.createIntegerColumnStatistics;
+import static io.trino.plugin.hive.statistics.MetastoreHiveStatisticsProvider.calculateAverageDataSizePerPartition;
 import static io.trino.plugin.hive.statistics.MetastoreHiveStatisticsProvider.calculateAverageRowsPerPartition;
 import static io.trino.plugin.hive.statistics.MetastoreHiveStatisticsProvider.calculateDataSize;
 import static io.trino.plugin.hive.statistics.MetastoreHiveStatisticsProvider.calculateDataSizeForPartitioningKey;
@@ -247,6 +248,14 @@ public class TestMetastoreHiveStatisticsProvider
         assertEquals(calculateAverageRowsPerPartition(ImmutableList.of(rowsCount(10), PartitionStatistics.empty())), OptionalDouble.of(10));
         assertEquals(calculateAverageRowsPerPartition(ImmutableList.of(rowsCount(10), rowsCount(20))), OptionalDouble.of(15));
         assertEquals(calculateAverageRowsPerPartition(ImmutableList.of(rowsCount(10), rowsCount(20), PartitionStatistics.empty())), OptionalDouble.of(15));
+    }
+
+    @Test
+    public void testCalculateAverageDataSizePerPartition()
+    {
+        assertThat(calculateAverageDataSizePerPartition(ImmutableList.of())).isEmpty();
+        assertThat(calculateAverageDataSizePerPartition(ImmutableList.of(PartitionStatistics.empty()))).isEmpty();
+        assertEquals(calculateAverageDataSizePerPartition(ImmutableList.of(PartitionStatistics.empty(), partitionDataSize(10))), OptionalDouble.of(10));
     }
 
     @Test
@@ -612,6 +621,7 @@ public class TestMetastoreHiveStatisticsProvider
         HiveColumnHandle columnHandle = createBaseColumn(COLUMN, 2, HIVE_LONG, BIGINT, REGULAR, Optional.empty());
         TableStatistics expected = TableStatistics.builder()
                 .setRowCount(Estimate.of(1000))
+                .setDataSize(Estimate.of(0.0))
                 .setColumnStatistics(
                         PARTITION_COLUMN_1,
                         ColumnStatistics.builder()
@@ -654,7 +664,7 @@ public class TestMetastoreHiveStatisticsProvider
     public void testGetTableStatisticsUnpartitioned()
     {
         PartitionStatistics statistics = PartitionStatistics.builder()
-                .setBasicStatistics(new HiveBasicStatistics(OptionalLong.empty(), OptionalLong.of(1000), OptionalLong.empty(), OptionalLong.empty()))
+                .setBasicStatistics(new HiveBasicStatistics(OptionalLong.empty(), OptionalLong.of(1000), OptionalLong.empty(), OptionalLong.of(100)))
                 .setColumnStatistics(ImmutableMap.of(COLUMN, createIntegerColumnStatistics(OptionalLong.of(-100), OptionalLong.of(100), OptionalLong.of(500), OptionalLong.of(300))))
                 .build();
         MetastoreHiveStatisticsProvider statisticsProvider = new MetastoreHiveStatisticsProvider((session, table, hivePartitions) -> ImmutableMap.of(UNPARTITIONED_ID, statistics));
@@ -663,6 +673,7 @@ public class TestMetastoreHiveStatisticsProvider
 
         TableStatistics expected = TableStatistics.builder()
                 .setRowCount(Estimate.of(1000))
+                .setDataSize(Estimate.of(100))
                 .setColumnStatistics(
                         columnHandle,
                         ColumnStatistics.builder()
@@ -783,6 +794,11 @@ public class TestMetastoreHiveStatisticsProvider
         return new PartitionStatistics(
                 new HiveBasicStatistics(0, rowsCount, 0, 0),
                 ImmutableMap.of(COLUMN, HiveColumnStatistics.builder().setNullsCount(nullsCount).build()));
+    }
+
+    private static PartitionStatistics partitionDataSize(long dataSize)
+    {
+        return new PartitionStatistics(new HiveBasicStatistics(0, 0, 0, dataSize), ImmutableMap.of(COLUMN, HiveColumnStatistics.builder().setTotalSizeInBytes(dataSize).build()));
     }
 
     private static PartitionStatistics rowsCountAndDataSize(long rowsCount, long dataSize)

@@ -78,6 +78,7 @@ public class AggregationStatsRule
 
         double rowsCount = getRowsCount(sourceStats, groupBySymbols);
         result.setOutputRowCount(min(rowsCount, sourceStats.getOutputRowCount()));
+        result.setOutputDataSize(sourceStats.getOutputDataSize());
 
         for (Map.Entry<Symbol, Aggregation> aggregationEntry : aggregations.entrySet()) {
             result.addSymbolStatistics(aggregationEntry.getKey(), estimateAggregationStats(aggregationEntry.getValue(), sourceStats));

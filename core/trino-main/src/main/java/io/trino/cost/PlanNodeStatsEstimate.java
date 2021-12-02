@@ -39,9 +39,10 @@ import static java.util.Objects.requireNonNull;
 public class PlanNodeStatsEstimate
 {
     private static final double DEFAULT_DATA_SIZE_PER_COLUMN = 50;
-    private static final PlanNodeStatsEstimate UNKNOWN = new PlanNodeStatsEstimate(NaN, ImmutableMap.of());
+    private static final PlanNodeStatsEstimate UNKNOWN = new PlanNodeStatsEstimate(NaN, NaN, ImmutableMap.of());
 
     private final double outputRowCount;
+    private final double outputDataSize;
     private final PMap<Symbol, SymbolStatsEstimate> symbolStatistics;
 
     public static PlanNodeStatsEstimate unknown()
@@ -52,15 +53,17 @@ public class PlanNodeStatsEstimate
     @JsonCreator
     public PlanNodeStatsEstimate(
             @JsonProperty("outputRowCount") double outputRowCount,
+            @JsonProperty("outputDataSize") double outputDataSize,
             @JsonProperty("symbolStatistics") Map<Symbol, SymbolStatsEstimate> symbolStatistics)
     {
-        this(outputRowCount, HashTreePMap.from(requireNonNull(symbolStatistics, "symbolStatistics is null")));
+        this(outputRowCount, outputDataSize, HashTreePMap.from(requireNonNull(symbolStatistics, "symbolStatistics is null")));
     }
 
-    private PlanNodeStatsEstimate(double outputRowCount, PMap<Symbol, SymbolStatsEstimate> symbolStatistics)
+    private PlanNodeStatsEstimate(double outputRowCount, double outputDataSize, PMap<Symbol, SymbolStatsEstimate> symbolStatistics)
     {
         checkArgument(isNaN(outputRowCount) || outputRowCount >= 0, "outputRowCount cannot be negative");
         this.outputRowCount = outputRowCount;
+        this.outputDataSize = outputDataSize;
         this.symbolStatistics = symbolStatistics;
     }
 
@@ -72,6 +75,12 @@ public class PlanNodeStatsEstimate
     public double getOutputRowCount()
     {
         return outputRowCount;
+    }
+
+    @JsonProperty
+    public double getOutputDataSize()
+    {
+        return outputDataSize;
     }
 
     /**
@@ -152,6 +161,7 @@ public class PlanNodeStatsEstimate
     {
         return toStringHelper(this)
                 .add("outputRowCount", outputRowCount)
+                .add("outputDataSize", outputDataSize)
                 .add("symbolStatistics", symbolStatistics)
                 .toString();
     }
@@ -183,28 +193,36 @@ public class PlanNodeStatsEstimate
 
     public static Builder buildFrom(PlanNodeStatsEstimate other)
     {
-        return new Builder(other.getOutputRowCount(), other.symbolStatistics);
+        return new Builder(other.getOutputRowCount(), other.outputDataSize, other.symbolStatistics);
     }
 
     public static final class Builder
     {
         private double outputRowCount;
+        private double outputDataSize;
         private PMap<Symbol, SymbolStatsEstimate> symbolStatistics;
 
         public Builder()
         {
-            this(NaN, HashTreePMap.empty());
+            this(NaN, NaN, HashTreePMap.empty());
         }
 
-        private Builder(double outputRowCount, PMap<Symbol, SymbolStatsEstimate> symbolStatistics)
+        private Builder(double outputRowCount, double outputDataSize, PMap<Symbol, SymbolStatsEstimate> symbolStatistics)
         {
             this.outputRowCount = outputRowCount;
+            this.outputDataSize = outputDataSize;
             this.symbolStatistics = symbolStatistics;
         }
 
         public Builder setOutputRowCount(double outputRowCount)
         {
             this.outputRowCount = outputRowCount;
+            return this;
+        }
+
+        public Builder setOutputDataSize(double outputDataSize)
+        {
+            this.outputDataSize = outputDataSize;
             return this;
         }
 
@@ -228,7 +246,7 @@ public class PlanNodeStatsEstimate
 
         public PlanNodeStatsEstimate build()
         {
-            return new PlanNodeStatsEstimate(outputRowCount, symbolStatistics);
+            return new PlanNodeStatsEstimate(outputRowCount, outputDataSize, symbolStatistics);
         }
     }
 }

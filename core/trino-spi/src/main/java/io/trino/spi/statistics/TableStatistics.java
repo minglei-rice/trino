@@ -29,6 +29,7 @@ public final class TableStatistics
     private static final TableStatistics EMPTY = TableStatistics.builder().build();
 
     private final Estimate rowCount;
+    private final Estimate dataSize;
     private final Map<ColumnHandle, ColumnStatistics> columnStatistics;
 
     public static TableStatistics empty()
@@ -36,11 +37,15 @@ public final class TableStatistics
         return EMPTY;
     }
 
-    public TableStatistics(Estimate rowCount, Map<ColumnHandle, ColumnStatistics> columnStatistics)
+    public TableStatistics(Estimate rowCount, Estimate dataSize, Map<ColumnHandle, ColumnStatistics> columnStatistics)
     {
         this.rowCount = requireNonNull(rowCount, "rowCount cannot be null");
         if (!rowCount.isUnknown() && rowCount.getValue() < 0) {
             throw new IllegalArgumentException(format("rowCount must be greater than or equal to 0: %s", rowCount.getValue()));
+        }
+        this.dataSize = requireNonNull(dataSize, "dataSize cannot be null");
+        if (!dataSize.isUnknown() && dataSize.getValue() < 0) {
+            throw new IllegalArgumentException(format("dataSize must be greater than or equal to 0: %s", dataSize.getValue()));
         }
         this.columnStatistics = unmodifiableMap(requireNonNull(columnStatistics, "columnStatistics cannot be null"));
     }
@@ -48,6 +53,11 @@ public final class TableStatistics
     public Estimate getRowCount()
     {
         return rowCount;
+    }
+
+    public Estimate getDataSize()
+    {
+        return dataSize;
     }
 
     public Map<ColumnHandle, ColumnStatistics> getColumnStatistics()
@@ -71,13 +81,14 @@ public final class TableStatistics
         }
         TableStatistics that = (TableStatistics) o;
         return Objects.equals(rowCount, that.rowCount) &&
+                Objects.equals(dataSize, that.dataSize) &&
                 Objects.equals(columnStatistics, that.columnStatistics);
     }
 
     @Override
     public int hashCode()
     {
-        return Objects.hash(rowCount, columnStatistics);
+        return Objects.hash(rowCount, dataSize, columnStatistics);
     }
 
     @Override
@@ -85,6 +96,7 @@ public final class TableStatistics
     {
         return "TableStatistics{" +
                 "rowCount=" + rowCount +
+                ", dataSize=" + dataSize +
                 ", columnStatistics=" + columnStatistics +
                 '}';
     }
@@ -97,11 +109,18 @@ public final class TableStatistics
     public static final class Builder
     {
         private Estimate rowCount = Estimate.unknown();
+        private Estimate dataSize = Estimate.unknown();
         private Map<ColumnHandle, ColumnStatistics> columnStatisticsMap = new LinkedHashMap<>();
 
         public Builder setRowCount(Estimate rowCount)
         {
             this.rowCount = requireNonNull(rowCount, "rowCount cannot be null");
+            return this;
+        }
+
+        public Builder setDataSize(Estimate dataSize)
+        {
+            this.dataSize = requireNonNull(dataSize, "dataSize cannot be null");
             return this;
         }
 
@@ -115,7 +134,7 @@ public final class TableStatistics
 
         public TableStatistics build()
         {
-            return new TableStatistics(rowCount, columnStatisticsMap);
+            return new TableStatistics(rowCount, dataSize, columnStatisticsMap);
         }
     }
 }

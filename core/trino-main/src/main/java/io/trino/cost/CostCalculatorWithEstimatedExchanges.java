@@ -234,6 +234,15 @@ public class CostCalculatorWithEstimatedExchanges
     {
         double probeSizeInBytes = stats.getStats(probe).getOutputSizeInBytes(probe.getOutputSymbols(), types);
         double buildSizeInBytes = stats.getStats(build).getOutputSizeInBytes(build.getOutputSymbols(), types);
+
+        // if can not get table stat row number, then get data size
+        if (Double.isNaN(probeSizeInBytes)) {
+            probeSizeInBytes = stats.getStats(probe).getOutputDataSize();
+        }
+        if (Double.isNaN(buildSizeInBytes)) {
+            buildSizeInBytes = stats.getStats(build).getOutputDataSize();
+        }
+
         if (replicated) {
             // assuming the probe side of a replicated join is always source distributed
             LocalCostEstimate replicateCost = calculateRemoteReplicateCost(buildSizeInBytes, estimatedSourceDistributedTaskCount);
@@ -264,6 +273,14 @@ public class CostCalculatorWithEstimatedExchanges
 
         double buildSideSize = buildStats.getOutputSizeInBytes(build.getOutputSymbols(), types);
         double probeSideSize = probeStats.getOutputSizeInBytes(probe.getOutputSymbols(), types);
+
+        // if can not get table stat row number, then get data size
+        if (Double.isNaN(probeSideSize)) {
+            probeSideSize = stats.getStats(probe).getOutputDataSize();
+        }
+        if (Double.isNaN(buildSideSize)) {
+            buildSideSize = stats.getStats(build).getOutputDataSize();
+        }
 
         double cpuCost = probeSideSize + buildSideSize * buildSizeMultiplier;
 

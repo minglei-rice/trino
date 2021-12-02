@@ -115,6 +115,7 @@ public class PruneTableScanColumns
         Optional<PlanNodeStatsEstimate> newStatistics = node.getStatistics().map(statistics ->
                 new PlanNodeStatsEstimate(
                         statistics.getOutputRowCount(),
+                        statistics.getOutputDataSize(),
                         statistics.getSymbolStatistics().entrySet().stream()
                                 .filter(entry -> newAssignments.containsKey(entry.getKey()))
                                 .collect(toImmutableMap(Entry::getKey, Entry::getValue))));

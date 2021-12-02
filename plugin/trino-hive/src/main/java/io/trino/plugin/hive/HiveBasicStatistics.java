@@ -85,6 +85,22 @@ public class HiveBasicStatistics
         return onDiskDataSizeInBytes;
     }
 
+    @JsonProperty
+    public OptionalLong getTotalDataSizeInBytes()
+    {
+        long totalSize = 0;
+        if (onDiskDataSizeInBytes.isPresent()) {
+            totalSize += onDiskDataSizeInBytes.getAsLong();
+        }
+        if (inMemoryDataSizeInBytes.isPresent()) {
+            totalSize += inMemoryDataSizeInBytes.getAsLong();
+        }
+        if (totalSize > 0) {
+            return OptionalLong.of(totalSize);
+        }
+        return OptionalLong.empty();
+    }
+
     public HiveBasicStatistics withAdjustedRowCount(long adjustment)
     {
         checkArgument(rowCount.isPresent(), "rowCount isn't present");

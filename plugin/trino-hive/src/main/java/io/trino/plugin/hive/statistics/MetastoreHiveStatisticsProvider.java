@@ -393,17 +393,31 @@ public class MetastoreHiveStatisticsProvider
 
         checkArgument(!partitions.isEmpty(), "partitions is empty");
 
+        int queriedPartitionsCount = partitions.size();
         OptionalDouble optionalAverageRowsPerPartition = calculateAverageRowsPerPartition(statistics.values());
+        OptionalDouble optionalAverageDataSizePerPartition = calculateAverageDataSizePerPartition(statistics.values());
         if (optionalAverageRowsPerPartition.isEmpty()) {
+            if (!optionalAverageDataSizePerPartition.isEmpty() && optionalAverageDataSizePerPartition.getAsDouble() >= 0) {
+                TableStatistics.Builder result = TableStatistics.builder();
+                result.setDataSize(Estimate.of(optionalAverageDataSizePerPartition.getAsDouble() * queriedPartitionsCount));
+                return result.build();
+            }
             return TableStatistics.empty();
         }
+
         double averageRowsPerPartition = optionalAverageRowsPerPartition.getAsDouble();
         verify(averageRowsPerPartition >= 0, "averageRowsPerPartition must be greater than or equal to zero");
-        int queriedPartitionsCount = partitions.size();
         double rowCount = averageRowsPerPartition * queriedPartitionsCount;
 
         TableStatistics.Builder result = TableStatistics.builder();
         result.setRowCount(Estimate.of(rowCount));
+        if (!optionalAverageDataSizePerPartition.isEmpty() && optionalAverageDataSizePerPartition.getAsDouble() >= 0) {
+            result.setDataSize(Estimate.of(optionalAverageDataSizePerPartition.getAsDouble() * queriedPartitionsCount));
+        }
+        else {
+            result.setDataSize(Estimate.of(0.0));
+        }
+
         for (Map.Entry<String, ColumnHandle> column : columns.entrySet()) {
             String columnName = column.getKey();
             HiveColumnHandle columnHandle = (HiveColumnHandle) column.getValue();
@@ -429,6 +443,17 @@ public class MetastoreHiveStatisticsProvider
                 .filter(OptionalLong::isPresent)
                 .mapToLong(OptionalLong::getAsLong)
                 .peek(count -> verify(count >= 0, "count must be greater than or equal to zero"))
+                .average();
+    }
+
+    static OptionalDouble calculateAverageDataSizePerPartition(Collection<PartitionStatistics> statistics)
+    {
+        return statistics.stream()
+                .map(PartitionStatistics::getBasicStatistics)
+                .map(HiveBasicStatistics::getTotalDataSizeInBytes)
+                .filter(OptionalLong::isPresent)
+                .mapToLong(OptionalLong::getAsLong)
+                .peek(dataSize -> verify(dataSize >= 0, "count must be greater than or equal to zero"))
                 .average();
     }
 
