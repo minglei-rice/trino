@@ -363,8 +363,12 @@ public final class VarbinaryFunctions
     @SqlType(StandardTypes.VARBINARY)
     public static Slice substr(@SqlType(StandardTypes.VARBINARY) Slice slice, @SqlType(StandardTypes.BIGINT) long start, @SqlType(StandardTypes.BIGINT) long length)
     {
-        if (start == 0 || length <= 0 || slice.length() == 0) {
+        if (length <= 0 || slice.length() == 0) {
             return EMPTY_SLICE;
+        }
+
+        if (start == 0) {
+            start = 1;
         }
 
         int startByte = Ints.saturatedCast(start);

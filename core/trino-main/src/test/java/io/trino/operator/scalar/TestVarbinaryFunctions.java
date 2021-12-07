@@ -361,7 +361,7 @@ public class TestVarbinaryFunctions
         assertFunction("SUBSTR(VARBINARY 'Quadratically', 50)", VARBINARY, sqlVarbinary(""));
         assertFunction("SUBSTR(VARBINARY 'Quadratically', -5)", VARBINARY, sqlVarbinary("cally"));
         assertFunction("SUBSTR(VARBINARY 'Quadratically', -50)", VARBINARY, sqlVarbinary(""));
-        assertFunction("SUBSTR(VARBINARY 'Quadratically', 0)", VARBINARY, sqlVarbinary(""));
+        assertFunction("SUBSTR(VARBINARY 'Quadratically', 0)", VARBINARY, sqlVarbinary("Quadratically"));
 
         assertFunction("SUBSTR(VARBINARY 'Quadratically', 5, 6)", VARBINARY, sqlVarbinary("ratica"));
         assertFunction("SUBSTR(VARBINARY 'Quadratically', 5, 10)", VARBINARY, sqlVarbinary("ratically"));
@@ -370,14 +370,14 @@ public class TestVarbinaryFunctions
         assertFunction("SUBSTR(VARBINARY 'Quadratically', -5, 4)", VARBINARY, sqlVarbinary("call"));
         assertFunction("SUBSTR(VARBINARY 'Quadratically', -5, 40)", VARBINARY, sqlVarbinary("cally"));
         assertFunction("SUBSTR(VARBINARY 'Quadratically', -50, 4)", VARBINARY, sqlVarbinary(""));
-        assertFunction("SUBSTR(VARBINARY 'Quadratically', 0, 4)", VARBINARY, sqlVarbinary(""));
+        assertFunction("SUBSTR(VARBINARY 'Quadratically', 0, 4)", VARBINARY, sqlVarbinary("Quad"));
         assertFunction("SUBSTR(VARBINARY 'Quadratically', 5, 0)", VARBINARY, sqlVarbinary(""));
 
         assertFunction("SUBSTRING(VARBINARY 'Quadratically' FROM 5)", VARBINARY, sqlVarbinary("ratically"));
         assertFunction("SUBSTRING(VARBINARY 'Quadratically' FROM 50)", VARBINARY, sqlVarbinary(""));
         assertFunction("SUBSTRING(VARBINARY 'Quadratically' FROM -5)", VARBINARY, sqlVarbinary("cally"));
         assertFunction("SUBSTRING(VARBINARY 'Quadratically' FROM -50)", VARBINARY, sqlVarbinary(""));
-        assertFunction("SUBSTRING(VARBINARY 'Quadratically' FROM 0)", VARBINARY, sqlVarbinary(""));
+        assertFunction("SUBSTRING(VARBINARY 'Quadratically' FROM 0)", VARBINARY, sqlVarbinary("Quadratically"));
 
         assertFunction("SUBSTRING(VARBINARY 'Quadratically' FROM 5 FOR 6)", VARBINARY, sqlVarbinary("ratica"));
         assertFunction("SUBSTRING(VARBINARY 'Quadratically' FROM 5 FOR 50)", VARBINARY, sqlVarbinary("ratically"));
