@@ -44,6 +44,8 @@ public class BasicQueryStats
     private final Duration queuedTime;
     private final Duration elapsedTime;
     private final Duration executionTime;
+    private final Duration analysisTime;
+    private final Duration planningTime;
 
     private final int totalDrivers;
     private final int queuedDrivers;
@@ -75,6 +77,8 @@ public class BasicQueryStats
             @JsonProperty("queuedTime") Duration queuedTime,
             @JsonProperty("elapsedTime") Duration elapsedTime,
             @JsonProperty("executionTime") Duration executionTime,
+            @JsonProperty("analysisTime") Duration analysisTime,
+            @JsonProperty("planningTime") Duration planningTime,
             @JsonProperty("totalDrivers") int totalDrivers,
             @JsonProperty("queuedDrivers") int queuedDrivers,
             @JsonProperty("runningDrivers") int runningDrivers,
@@ -100,6 +104,8 @@ public class BasicQueryStats
         this.queuedTime = requireNonNull(queuedTime, "queuedTime is null");
         this.elapsedTime = requireNonNull(elapsedTime, "elapsedTime is null");
         this.executionTime = requireNonNull(executionTime, "executionTime is null");
+        this.analysisTime = requireNonNull(analysisTime, "analysisTime is null");
+        this.planningTime = requireNonNull(planningTime, "planningTime is null");
 
         checkArgument(totalDrivers >= 0, "totalDrivers is negative");
         this.totalDrivers = totalDrivers;
@@ -136,6 +142,8 @@ public class BasicQueryStats
                 queryStats.getQueuedTime(),
                 queryStats.getElapsedTime(),
                 queryStats.getExecutionTime(),
+                queryStats.getAnalysisTime(),
+                queryStats.getPlanningTime(),
                 queryStats.getTotalDrivers(),
                 queryStats.getQueuedDrivers(),
                 queryStats.getRunningDrivers(),
@@ -162,6 +170,8 @@ public class BasicQueryStats
         return new BasicQueryStats(
                 now,
                 now,
+                new Duration(0, MILLISECONDS),
+                new Duration(0, MILLISECONDS),
                 new Duration(0, MILLISECONDS),
                 new Duration(0, MILLISECONDS),
                 new Duration(0, MILLISECONDS),
@@ -213,6 +223,18 @@ public class BasicQueryStats
     public Duration getExecutionTime()
     {
         return executionTime;
+    }
+
+    @JsonProperty
+    public Duration getAnalysisTime()
+    {
+        return analysisTime;
+    }
+
+    @JsonProperty
+    public Duration getPlanningTime()
+    {
+        return planningTime;
     }
 
     @JsonProperty

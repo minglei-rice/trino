@@ -362,6 +362,8 @@ public class QueryStateMachine
                 queryStateTimer.getQueuedTime(),
                 queryStateTimer.getElapsedTime(),
                 queryStateTimer.getExecutionTime(),
+                queryStateTimer.getAnalysisTime(),
+                queryStateTimer.getPlanningTime(),
 
                 stageStats.getTotalDrivers(),
                 stageStats.getQueuedDrivers(),

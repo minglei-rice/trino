@@ -151,6 +151,8 @@ public class TestBasicQueryInfo
         assertEquals(basicInfo.getQueryStats().getEndTime(), DateTime.parse("1991-09-06T06:00-05:30"));
         assertEquals(basicInfo.getQueryStats().getElapsedTime(), new Duration(8, MINUTES));
         assertEquals(basicInfo.getQueryStats().getExecutionTime(), new Duration(44, MINUTES));
+        assertEquals(basicInfo.getQueryStats().getAnalysisTime(), new Duration(9, MINUTES));
+        assertEquals(basicInfo.getQueryStats().getPlanningTime(), new Duration(99, SECONDS));
 
         assertEquals(basicInfo.getQueryStats().getTotalDrivers(), 16);
         assertEquals(basicInfo.getQueryStats().getQueuedDrivers(), 17);

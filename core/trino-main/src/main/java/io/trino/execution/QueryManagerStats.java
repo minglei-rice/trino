@@ -50,6 +50,9 @@ public class QueryManagerStats
     private final CounterStat consumedCpuTimeSecs = new CounterStat();
     private final TimeStat executionTime = new TimeStat(MILLISECONDS);
     private final TimeStat queuedTime = new TimeStat(MILLISECONDS);
+    private final TimeStat elapsedTime = new TimeStat(MILLISECONDS);
+    private final TimeStat analysisTime = new TimeStat(MILLISECONDS);
+    private final TimeStat planningTime = new TimeStat(MILLISECONDS);
     private final DistributionStat wallInputBytesRate = new DistributionStat();
     private final DistributionStat cpuInputByteRate = new DistributionStat();
 
@@ -82,6 +85,9 @@ public class QueryManagerStats
         consumedInputRows.update(info.getQueryStats().getRawInputPositions());
         executionTime.add(info.getQueryStats().getExecutionTime());
         queuedTime.add(info.getQueryStats().getQueuedTime());
+        elapsedTime.add(info.getQueryStats().getElapsedTime());
+        analysisTime.add(info.getQueryStats().getAnalysisTime());
+        planningTime.add(info.getQueryStats().getPlanningTime());
 
         long executionWallMillis = info.getQueryStats().getExecutionTime().toMillis();
         if (executionWallMillis > 0) {
@@ -223,6 +229,27 @@ public class QueryManagerStats
     public TimeStat getQueuedTime()
     {
         return queuedTime;
+    }
+
+    @Managed
+    @Nested
+    public TimeStat getElapsedTime()
+    {
+        return elapsedTime;
+    }
+
+    @Managed
+    @Nested
+    public TimeStat getAnalysisTime()
+    {
+        return analysisTime;
+    }
+
+    @Managed
+    @Nested
+    public TimeStat getPlanningTime()
+    {
+        return planningTime;
     }
 
     @Managed

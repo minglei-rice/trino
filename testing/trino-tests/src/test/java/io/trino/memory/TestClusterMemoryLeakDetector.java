@@ -85,6 +85,8 @@ public class TestClusterMemoryLeakDetector
                         new Duration(8, MINUTES),
                         new Duration(7, MINUTES),
                         new Duration(34, MINUTES),
+                        new Duration(35, MINUTES),
+                        new Duration(36, MINUTES),
                         13,
                         14,
                         15,
