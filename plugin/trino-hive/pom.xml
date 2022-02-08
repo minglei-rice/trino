@@ -470,6 +470,11 @@
                             <excludes>
                                 <exclude>**/TestHiveGlueMetastore.java</exclude>
                                 <exclude>**/TestFullParquetReader.java</exclude>
+                                <exclude>**/TestHiveFailureRecoveryFile.java</exclude>
+                                <exclude>**/TestHiveFailureRecoveryMinIO.java</exclude>
+                                <exclude>**/TestHive2InsertOverwrite.java</exclude>
+                                <exclude>**/TestHive3InsertOverwrite.java</exclude>
+                                <exclude>**/BaseTestHiveInsertOverwrite.java</exclude>
                             </excludes>
                         </configuration>
                     </plugin>
