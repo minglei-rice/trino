@@ -1785,6 +1785,8 @@
                     <argLine>
                         -Djava.util.logging.config.file=${project.basedir}/src/test/resources/logging.properties
                     </argLine>
+                    <!-- some modules have no tests -->
+                    <failIfNoTests>false</failIfNoTests>
                     <includes>
                         <!-- Tests classes should start with "Test", but we do also want to include tests incorrectly named, with "Test" at the end -->
                         <include>**/Test*.java</include>
