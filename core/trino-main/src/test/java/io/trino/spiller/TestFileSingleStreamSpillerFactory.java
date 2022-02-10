@@ -104,7 +104,7 @@ public class TestFileSingleStreamSpillerFactory
         assertEquals(listFiles(spillPath2.toPath()).size(), 0);
     }
 
-    @Test
+    @Test(enabled = false)
     public void testDistributesSpillOverPathsBadDisk()
             throws Exception
     {
@@ -192,7 +192,7 @@ public class TestFileSingleStreamSpillerFactory
         assertEquals(listFiles(spillPath2.toPath()).size(), 2);
     }
 
-    @Test
+    @Test(enabled = false)
     public void testCacheInvalidatedOnBadDisk()
             throws Exception
     {
