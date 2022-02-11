@@ -16,7 +16,6 @@ package io.trino;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import io.airlift.log.Logging;
-import io.trino.plugin.mongodb.MongoPlugin;
 import io.trino.server.testing.TestingTrinoServer;
 import org.testng.SkipException;
 import org.testng.annotations.AfterClass;
@@ -96,7 +95,7 @@ public class TestJdbcCompatibility
         server = TestingTrinoServer.builder()
                 .build();
 
-        server.installPlugin(new MongoPlugin());
+//        server.installPlugin(new MongoPlugin());
 
         serverUrl = format("jdbc:trino://%s", server.getAddress());
     }
@@ -601,7 +600,7 @@ public class TestJdbcCompatibility
         checkDescribeTimestampType(query, "row(timestamp %s)", precision, true);
     }
 
-    @Test
+    @Test(enabled = false)
     public void testSelectMongoObjectId()
     {
         String query = "SELECT ObjectId('55b151633864d6438c61a9ce') AS objectId";
