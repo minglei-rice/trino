@@ -24,6 +24,7 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.FileSystemManager;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.permission.FsPermission;
+import org.apache.hadoop.ipc.CallerContext;
 
 import javax.inject.Inject;
 
@@ -68,7 +69,24 @@ public class HdfsEnvironment
     public FileSystem getFileSystem(HdfsContext context, Path path)
             throws IOException
     {
+        if (context.getSession().isPresent()) {
+            setCallerContext(context.getSession().get());
+        }
         return getFileSystem(context.getIdentity(), path, getConfiguration(context, path));
+    }
+
+    public FileSystem getFileSystem(ConnectorSession session, Path path, Configuration configuration)
+            throws IOException
+    {
+        setCallerContext(session);
+        return getFileSystem(session.getIdentity(), path, configuration);
+    }
+
+    private void setCallerContext(ConnectorSession session)
+    {
+        String callerContent = String.format("JobId:olap_trino_%s$User:%s", session.getQueryId(), session.getUser());
+        CallerContext callerContext = new CallerContext.Builder(callerContent).build();
+        CallerContext.setCurrent(callerContext);
     }
 
     public FileSystem getFileSystem(ConnectorIdentity identity, Path path, Configuration configuration)
@@ -105,21 +123,29 @@ public class HdfsEnvironment
     public static class HdfsContext
     {
         private final ConnectorIdentity identity;
+        private final Optional<ConnectorSession> session;
 
         public HdfsContext(ConnectorIdentity identity)
         {
             this.identity = requireNonNull(identity, "identity is null");
+            this.session = Optional.empty();
         }
 
         public HdfsContext(ConnectorSession session)
         {
             requireNonNull(session, "session is null");
             this.identity = requireNonNull(session.getIdentity(), "session.getIdentity() is null");
+            this.session = Optional.of(session);
         }
 
         public ConnectorIdentity getIdentity()
         {
             return identity;
+        }
+
+        public Optional<ConnectorSession> getSession()
+        {
+            return session;
         }
 
         @Override
