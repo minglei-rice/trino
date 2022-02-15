@@ -16,27 +16,37 @@ package io.trino.hdfs;
 import io.trino.spi.connector.ConnectorSession;
 import io.trino.spi.security.ConnectorIdentity;
 
+import java.util.Optional;
+
 import static com.google.common.base.MoreObjects.toStringHelper;
 import static java.util.Objects.requireNonNull;
 
 public class HdfsContext
 {
     private final ConnectorIdentity identity;
+    private final Optional<String> queryId;
 
     public HdfsContext(ConnectorIdentity identity)
     {
         this.identity = requireNonNull(identity, "identity is null");
+        this.queryId = Optional.empty();
     }
 
     public HdfsContext(ConnectorSession session)
     {
         requireNonNull(session, "session is null");
         this.identity = requireNonNull(session.getIdentity(), "session.getIdentity() is null");
+        this.queryId = Optional.of(session.getQueryId());
     }
 
     public ConnectorIdentity getIdentity()
     {
         return identity;
+    }
+
+    public Optional<String> getQueryId()
+    {
+        return queryId;
     }
 
     @Override

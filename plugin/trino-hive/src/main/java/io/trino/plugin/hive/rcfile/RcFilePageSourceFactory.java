@@ -152,7 +152,7 @@ public class RcFilePageSourceFactory
 
         RcFileDataSource dataSource;
         try {
-            FileSystem fileSystem = hdfsEnvironment.getFileSystem(session.getIdentity(), path, configuration);
+            FileSystem fileSystem = hdfsEnvironment.getFileSystem(session, path, configuration);
             FSDataInputStream inputStream = hdfsEnvironment.doAs(session.getIdentity(), () -> fileSystem.open(path));
             if (estimatedFileSize < BUFFER_SIZE.toBytes()) {
                 //  Handle potentially imprecise file lengths by reading the footer

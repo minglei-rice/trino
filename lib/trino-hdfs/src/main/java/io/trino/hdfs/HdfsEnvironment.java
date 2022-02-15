@@ -16,12 +16,14 @@ package io.trino.hdfs;
 import io.trino.hadoop.HadoopNative;
 import io.trino.hdfs.authentication.GenericExceptionAction;
 import io.trino.hdfs.authentication.HdfsAuthentication;
+import io.trino.spi.connector.ConnectorSession;
 import io.trino.spi.security.ConnectorIdentity;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.FileSystemManager;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.permission.FsPermission;
+import org.apache.hadoop.ipc.CallerContext;
 
 import javax.inject.Inject;
 
@@ -64,7 +66,24 @@ public class HdfsEnvironment
     public FileSystem getFileSystem(HdfsContext context, Path path)
             throws IOException
     {
+        if (context.getQueryId().isPresent()) {
+            setCallerContext(context.getIdentity(), context.getQueryId().get());
+        }
         return getFileSystem(context.getIdentity(), path, getConfiguration(context, path));
+    }
+
+    public FileSystem getFileSystem(ConnectorSession session, Path path, Configuration configuration)
+            throws IOException
+    {
+        setCallerContext(session.getIdentity(), session.getQueryId());
+        return getFileSystem(session.getIdentity(), path, configuration);
+    }
+
+    private void setCallerContext(ConnectorIdentity identity, String queryId)
+    {
+        String callerContent = String.format("JobId:olap_trino_%s$User:%s", queryId, identity.getUser());
+        CallerContext callerContext = new CallerContext.Builder(callerContent).build();
+        CallerContext.setCurrent(callerContext);
     }
 
     public FileSystem getFileSystem(ConnectorIdentity identity, Path path, Configuration configuration)
