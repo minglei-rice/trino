@@ -140,6 +140,7 @@ public final class SystemSessionProperties
     public static final String OMIT_DATETIME_TYPE_PRECISION = "omit_datetime_type_precision";
     public static final String USE_LEGACY_WINDOW_FILTER_PUSHDOWN = "use_legacy_window_filter_pushdown";
     public static final String MAX_UNACKNOWLEDGED_SPLITS_PER_TASK = "max_unacknowledged_splits_per_task";
+    public static final String IMPLICIT_CONVERSION = "implicit_conversion";
     public static final String MERGE_PROJECT_WITH_VALUES = "merge_project_with_values";
     public static final String TIME_ZONE_ID = "time_zone_id";
     public static final String LEGACY_CATALOG_ROLES = "legacy_catalog_roles";
@@ -643,6 +644,11 @@ public final class SystemSessionProperties
                         false,
                         value -> validateIntegerValue(value, MAX_UNACKNOWLEDGED_SPLITS_PER_TASK, 1, false),
                         object -> object),
+                booleanProperty(
+                        IMPLICIT_CONVERSION,
+                        "Enable data type implicit conversion",
+                        featuresConfig.isImplicitConversionEnabled(),
+                        false),
                 booleanProperty(
                         MERGE_PROJECT_WITH_VALUES,
                         "Inline project expressions into values",
@@ -1203,6 +1209,11 @@ public final class SystemSessionProperties
     public static int getMaxUnacknowledgedSplitsPerTask(Session session)
     {
         return session.getSystemProperty(MAX_UNACKNOWLEDGED_SPLITS_PER_TASK, Integer.class);
+    }
+
+    public static boolean isImplicitConversionEnabled(Session session)
+    {
+        return session.getSystemProperty(IMPLICIT_CONVERSION, Boolean.class);
     }
 
     public static boolean isMergeProjectWithValues(Session session)

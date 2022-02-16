@@ -21,6 +21,7 @@ import com.google.common.collect.Multimap;
 import com.google.common.collect.Streams;
 import io.airlift.slice.SliceUtf8;
 import io.trino.Session;
+import io.trino.SystemSessionProperties;
 import io.trino.execution.warnings.WarningCollector;
 import io.trino.metadata.BoundSignature;
 import io.trino.metadata.FunctionMetadata;
@@ -35,12 +36,14 @@ import io.trino.spi.ErrorCodeSupplier;
 import io.trino.spi.TrinoException;
 import io.trino.spi.TrinoWarning;
 import io.trino.spi.function.OperatorType;
+import io.trino.spi.type.ArrayType;
 import io.trino.spi.type.CharType;
 import io.trino.spi.type.DateType;
 import io.trino.spi.type.DecimalParseResult;
 import io.trino.spi.type.DecimalType;
 import io.trino.spi.type.Decimals;
 import io.trino.spi.type.RowType;
+import io.trino.spi.type.StandardTypes;
 import io.trino.spi.type.TimeType;
 import io.trino.spi.type.TimeWithTimeZoneType;
 import io.trino.spi.type.TimestampType;
@@ -206,6 +209,7 @@ import static io.trino.sql.analyzer.ExpressionTreeUtils.extractWindowExpressions
 import static io.trino.sql.analyzer.SemanticExceptions.missingAttributeException;
 import static io.trino.sql.analyzer.SemanticExceptions.semanticException;
 import static io.trino.sql.analyzer.TypeSignatureProvider.fromTypes;
+import static io.trino.sql.analyzer.TypeSignatureTranslator.toSqlType;
 import static io.trino.sql.analyzer.TypeSignatureTranslator.toTypeSignature;
 import static io.trino.sql.tree.ArrayConstructor.ARRAY_CONSTRUCTOR;
 import static io.trino.sql.tree.DereferenceExpression.isQualifiedAllFieldsReference;
@@ -731,6 +735,9 @@ public class ExpressionAnalyzer
         @Override
         protected Type visitComparisonExpression(ComparisonExpression node, StackableAstVisitorContext<Context> context)
         {
+            if (SystemSessionProperties.isImplicitConversionEnabled(session)) {
+                node = implicitConversionRewriteForComparison(node, context);
+            }
             OperatorType operatorType;
             switch (node.getOperator()) {
                 case EQUAL:
@@ -752,6 +759,48 @@ public class ExpressionAnalyzer
                     throw new UnsupportedOperationException("Unsupported comparison operator: " + node.getOperator());
             }
             return getOperator(context, node, operatorType, node.getLeft(), node.getRight());
+        }
+
+        private ComparisonExpression implicitConversionRewriteForComparison(ComparisonExpression node, StackableAstVisitorContext<Context> context)
+        {
+            Expression leftExpression = node.getLeft();
+            Expression rightExpression = node.getRight();
+            // If user add cast to the expression, then don't do implicit conversion.
+            if (leftExpression instanceof Cast || rightExpression instanceof Cast) {
+                return node;
+            }
+
+            Type leftType = process(leftExpression, context);
+            Type rightType = process(rightExpression, context);
+            // For comparison expression, already supports the same data type, digital type and character type. So we don't need do implicit conversion for these types.
+            if (!(leftType.getTypeSignature().getBase().equals(rightType.getTypeSignature().getBase())
+                    || (TypeCoercion.isDigitalTypeBase(leftType) && TypeCoercion.isDigitalTypeBase(rightType))
+                    || (TypeCoercion.isCharacterTypeBase(leftType) && TypeCoercion.isCharacterTypeBase(rightType)))) {
+                // If left type is digital type and right type is varchar type, then convert the right type to varchar type.
+                if (TypeCoercion.isDigitalTypeBase(leftType)
+                        && rightType.getTypeSignature().getBase().equals(StandardTypes.VARCHAR)) {
+                    Cast cast = new Cast(leftExpression, toSqlType(VARCHAR));
+                    node.setLeft(cast);
+                }
+                // If right type is digital type and left type is varchar type, then convert the left type to varchar type.
+                else if (leftType.getTypeSignature().getBase().equals(StandardTypes.VARCHAR)
+                        && TypeCoercion.isDigitalTypeBase(rightType)) {
+                    Cast cast = new Cast(rightExpression, toSqlType(VARCHAR));
+                    node.setRight(cast);
+                }
+                // Try to convert right type to left type.
+                else if (typeCoercion.canCoerceWithCast(rightType, leftType)) {
+                    Cast cast = new Cast(rightExpression, toSqlType(leftType));
+                    node.setRight(cast);
+                }
+                // Try to convert left type to right type.
+                else if (typeCoercion.canCoerceWithCast(leftType, rightType)) {
+                    Cast cast = new Cast(leftExpression, toSqlType(rightType));
+                    node.setLeft(cast);
+                }
+            }
+
+            return node;
         }
 
         @Override
@@ -913,7 +962,58 @@ public class ExpressionAnalyzer
         @Override
         protected Type visitArithmeticBinary(ArithmeticBinaryExpression node, StackableAstVisitorContext<Context> context)
         {
+            if (SystemSessionProperties.isImplicitConversionEnabled(session)) {
+                node = implicitConversionRewriteForArithmetic(node, context);
+            }
             return getOperator(context, node, OperatorType.valueOf(node.getOperator().name()), node.getLeft(), node.getRight());
+        }
+
+        private ArithmeticBinaryExpression implicitConversionRewriteForArithmetic(ArithmeticBinaryExpression node, StackableAstVisitorContext<Context> context)
+        {
+            Expression leftExpression = node.getLeft();
+            Expression rightExpression = node.getRight();
+            // If left or right expression is arithmetic expression, then process the expression recursively.
+            if (leftExpression instanceof ArithmeticBinaryExpression) {
+                leftExpression = implicitConversionRewriteForArithmetic((ArithmeticBinaryExpression) leftExpression, context);
+                node.setLeft(leftExpression);
+            }
+            if (rightExpression instanceof ArithmeticBinaryExpression) {
+                rightExpression = implicitConversionRewriteForArithmetic((ArithmeticBinaryExpression) rightExpression, context);
+                node.setRight(rightExpression);
+            }
+
+            // If user add cast to the expression, then don't do implicit conversion.
+            if (leftExpression instanceof Cast || rightExpression instanceof Cast) {
+                return node;
+            }
+
+            Type leftType = process(leftExpression, context);
+            Type rightType = process(rightExpression, context);
+            // For arithmetic expression, already supports digital type. So don't need to do implicit conversion for these types.
+            if (!(TypeCoercion.isDigitalTypeBase(leftType) && TypeCoercion.isDigitalTypeBase(rightType))) {
+                // If left type is digital type and right type is varchar type, then convert right type to double type.
+                if (TypeCoercion.isDigitalTypeBase(leftType)
+                        && rightType.getTypeSignature().getBase().equals(StandardTypes.VARCHAR)) {
+                    Expression newExpression = new Cast(rightExpression, toSqlType(DOUBLE));
+                    node.setRight(newExpression);
+                }
+                // If right type is digital type and left type is varchar type, then convert left type to double type.
+                else if (TypeCoercion.isDigitalTypeBase(rightType)
+                        && leftType.getTypeSignature().getBase().equals(StandardTypes.VARCHAR)) {
+                    Expression newExpression = new Cast(leftExpression, toSqlType(DOUBLE));
+                    node.setLeft(newExpression);
+                }
+                // If both right and left types are varchar types, then convert them to double types.
+                else if (leftType.getTypeSignature().getBase().equals(StandardTypes.VARCHAR)
+                        && rightType.getTypeSignature().getBase().equals(StandardTypes.VARCHAR)) {
+                    Expression newLeftExpression = new Cast(leftExpression, toSqlType(DOUBLE));
+                    node.setLeft(newLeftExpression);
+                    Expression newRightExpression = new Cast(rightExpression, toSqlType(DOUBLE));
+                    node.setRight(newRightExpression);
+                }
+            }
+
+            return node;
         }
 
         @Override
@@ -1123,15 +1223,19 @@ public class ExpressionAnalyzer
         @Override
         protected Type visitFunctionCall(FunctionCall node, StackableAstVisitorContext<Context> context)
         {
+            if (SystemSessionProperties.isImplicitConversionEnabled(session)) {
+                node = implicitConversionRewriteForConcat(node, context);
+            }
             boolean isRowPatternCount = context.getContext().isPatternRecognition() &&
                     plannerContext.getMetadata().isAggregationFunction(node.getName()) &&
                     node.getName().getSuffix().equalsIgnoreCase("count");
             // argument of the form `label.*` is only allowed for row pattern count function
+            int numberOfArgs = node.getArguments().size();
             node.getArguments().stream()
                     .filter(DereferenceExpression::isQualifiedAllFieldsReference)
                     .findAny()
                     .ifPresent(allRowsReference -> {
-                        if (!isRowPatternCount || node.getArguments().size() > 1) {
+                        if (!isRowPatternCount || numberOfArgs > 1) {
                             throw semanticException(INVALID_FUNCTION_ARGUMENT, allRowsReference, "label.* syntax is only supported as the only argument of row pattern count function");
                         }
                     });
@@ -1257,6 +1361,71 @@ public class ExpressionAnalyzer
 
             Type type = signature.getReturnType();
             return setExpressionType(node, type);
+        }
+
+        private FunctionCall implicitConversionRewriteForConcat(FunctionCall node, StackableAstVisitorContext<Context> context)
+        {
+            if (!node.getName().toString().equals("concat")) {
+                return node;
+            }
+
+            List<Expression> expressions = node.getArguments();
+            Expression leftExpression = expressions.get(0);
+            Expression rightExpression = expressions.get(1);
+            List<Expression> newExpressions = new ArrayList<>(expressions);
+            // If left or right expression is function call expression, then process the expression recursively.
+            if (leftExpression instanceof FunctionCall) {
+                newExpressions.set(0, implicitConversionRewriteForConcat((FunctionCall) leftExpression, context));
+            }
+            if (rightExpression instanceof FunctionCall) {
+                newExpressions.set(1, implicitConversionRewriteForConcat((FunctionCall) rightExpression, context));
+            }
+
+            // If user add cast to the expression, don't do implicit conversion.
+            if (leftExpression instanceof Cast || rightExpression instanceof Cast) {
+                return node;
+            }
+
+            Type leftType = process(leftExpression, context);
+            Type rightType = process(rightExpression, context);
+            // For concat expression, hetu already supports char, varchar and varbinary types,
+            // and also supports the types on the left and right can be different, but the types are both char or varchar.
+            if (!((leftType.getTypeSignature().getBase().equals(rightType.getTypeSignature().getBase()) && TypeCoercion.isConcatTypeBase(leftType))
+                    || (TypeCoercion.isCharacterTypeBase(leftType) && TypeCoercion.isCharacterTypeBase(rightType)))) {
+                // if left type is array type, try to convert right type to array element type.
+                if (leftType.getTypeSignature().getBase().equals(StandardTypes.ARRAY)) {
+                    Type elementType = ((ArrayType) leftType).getElementType();
+                    if (!typeCoercion.canArrayConcat(rightType, elementType) && typeCoercion.canCoerceWithCast(rightType, elementType)) {
+                        Expression newRightExpression = new Cast(rightExpression, toSqlType(elementType));
+                        newExpressions.set(1, newRightExpression);
+                    }
+                }
+                // If right type is array type, try to convert left type to array element type.
+                else if (rightType.getTypeSignature().getBase().equals(StandardTypes.ARRAY)) {
+                    Type elementType = ((ArrayType) rightType).getElementType();
+                    if (!typeCoercion.canArrayConcat(leftType, elementType) && typeCoercion.canCoerceWithCast(leftType, elementType)) {
+                        Expression newLeftExpression = new Cast(leftExpression, toSqlType(elementType));
+                        newExpressions.set(0, newLeftExpression);
+                    }
+                }
+                // For other types, try to convert both right and left types to varchar type
+                else {
+                    if (typeCoercion.canCoerceWithCast(leftType, VARCHAR)
+                            && typeCoercion.canCoerceWithCast(rightType, VARCHAR)) {
+                        if (!leftType.getTypeSignature().getBase().equals(StandardTypes.VARCHAR)) {
+                            Expression newLeftExpression = new Cast(leftExpression, toSqlType(VARCHAR));
+                            newExpressions.set(0, newLeftExpression);
+                        }
+                        if (!rightType.getTypeSignature().getBase().equals(StandardTypes.VARCHAR)) {
+                            Expression newRightExpression = new Cast(rightExpression, toSqlType(VARCHAR));
+                            newExpressions.set(1, newRightExpression);
+                        }
+                    }
+                }
+            }
+
+            node.setArguments(newExpressions);
+            return node;
         }
 
         private void analyzeWindow(ResolvedWindow window, StackableAstVisitorContext<Context> context, Node originalNode)
@@ -2068,6 +2237,27 @@ public class ExpressionAnalyzer
         @Override
         protected Type visitBetweenPredicate(BetweenPredicate node, StackableAstVisitorContext<Context> context)
         {
+            if (SystemSessionProperties.isImplicitConversionEnabled(session)) {
+                Type valueType = process(node.getValue(), context);
+                Type minType = process(node.getMin(), context);
+                Type maxType = process(node.getMax(), context);
+                // Same type or digital type or character type, don't need to convert
+                if (!((valueType.getTypeSignature().getBase().equals(minType.getTypeSignature().getBase()) && valueType.getTypeSignature().getBase().equals(maxType.getTypeSignature().getBase()))
+                        || (TypeCoercion.isDigitalTypeBase(valueType) && TypeCoercion.isDigitalTypeBase(minType) && TypeCoercion.isDigitalTypeBase(maxType))
+                        || (TypeCoercion.isCharacterTypeBase(valueType) && TypeCoercion.isCharacterTypeBase(minType) && TypeCoercion.isCharacterTypeBase(maxType)))) {
+                    // The min type is different from the value type and the min type can be converted to value type, then do the conversion
+                    if (!valueType.getTypeSignature().getBase().equals(minType.getTypeSignature().getBase())
+                            && typeCoercion.canCoerceWithCast(minType, valueType)) {
+                        node.setMin(new Cast(node.getMin(), toSqlType(valueType)));
+                    }
+                    // The max type is different from the value type and the max type can be converted to value type, then do the conversion
+                    if (!valueType.getTypeSignature().getBase().equals(maxType.getTypeSignature().getBase())
+                            && typeCoercion.canCoerceWithCast(maxType, valueType)) {
+                        node.setMax(new Cast(node.getMax(), toSqlType(valueType)));
+                    }
+                }
+            }
+
             Type valueType = process(node.getValue(), context);
             Type minType = process(node.getMin(), context);
             Type maxType = process(node.getMax(), context);

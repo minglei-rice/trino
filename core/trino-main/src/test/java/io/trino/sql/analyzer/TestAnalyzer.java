@@ -86,6 +86,7 @@ import java.util.Optional;
 import java.util.function.Consumer;
 
 import static com.google.common.collect.Iterables.getOnlyElement;
+import static io.trino.SystemSessionProperties.IMPLICIT_CONVERSION;
 import static io.trino.connector.CatalogName.createInformationSchemaCatalogName;
 import static io.trino.connector.CatalogName.createSystemTablesCatalogName;
 import static io.trino.metadata.MetadataManager.createTestMetadataManager;
@@ -204,6 +205,11 @@ public class TestAnalyzer
     private static final Session CLIENT_SESSION_FOR_IDENTIFIER_CHAIN_TESTS = testSessionBuilder()
             .setCatalog(CATALOG_FOR_IDENTIFIER_CHAIN_TESTS)
             .setSchema("a")
+            .build();
+    private static final Session CLIENT_SESSION_FOR_IMPLICIT_CONVERSION_TESTS = testSessionBuilder()
+            .setCatalog(TPCH_CATALOG)
+            .setSchema("s1")
+            .setSystemProperty(IMPLICIT_CONVERSION, "true")
             .build();
 
     private static final SqlParser SQL_PARSER = new SqlParser();
@@ -5154,6 +5160,43 @@ public class TestAnalyzer
                 accessControlManager)
                 .hasErrorCode(PERMISSION_DENIED)
                 .hasMessage("Access Denied: Cannot select from columns [a, b] in table or view tpch.s1.fresh_materialized_view");
+    }
+
+    @Test
+    public void testImplicitConversion()
+    {
+        // Comparison Expression
+        analyze(CLIENT_SESSION_FOR_IMPLICIT_CONVERSION_TESTS, "SELECT 9 = '9'");
+        analyze(CLIENT_SESSION_FOR_IMPLICIT_CONVERSION_TESTS, "SELECT '9' = 9");
+        analyze(CLIENT_SESSION_FOR_IMPLICIT_CONVERSION_TESTS, "SELECT 3 = true");
+        analyze(CLIENT_SESSION_FOR_IMPLICIT_CONVERSION_TESTS, "SELECT true = 3");
+        assertFails(CLIENT_SESSION_FOR_IMPLICIT_CONVERSION_TESTS, "SELECT CAST(9 as DOUBLE) = '9'")
+                .hasErrorCode(TYPE_MISMATCH);
+        assertFails(CLIENT_SESSION_FOR_IMPLICIT_CONVERSION_TESTS, "SELECT '9' = CAST(9 as DOUBLE)")
+                .hasErrorCode(TYPE_MISMATCH);
+        assertFails(CLIENT_SESSION_FOR_IMPLICIT_CONVERSION_TESTS, "SELECT array[2, 2] = 9")
+                .hasErrorCode(TYPE_MISMATCH);
+        assertFails(CLIENT_SESSION_FOR_IMPLICIT_CONVERSION_TESTS, "SELECT 9 = array[2, 2]")
+                .hasErrorCode(TYPE_MISMATCH);
+
+        // Arithmetic Binary Expression
+        analyze(CLIENT_SESSION_FOR_IMPLICIT_CONVERSION_TESTS, "SELECT (3 + '4.2') * ('2.5' - 1) - ('2' + '0.8')");
+        assertFails(CLIENT_SESSION_FOR_IMPLICIT_CONVERSION_TESTS, "SELECT CAST('3' as INTEGER) = '9'")
+                .hasErrorCode(TYPE_MISMATCH);
+        assertFails(CLIENT_SESSION_FOR_IMPLICIT_CONVERSION_TESTS, "SELECT '9' = CAST('3' as INTEGER)")
+                .hasErrorCode(TYPE_MISMATCH);
+
+        // Concat Function
+        analyze(CLIENT_SESSION_FOR_IMPLICIT_CONVERSION_TESTS,
+                "SELECT CONCAT(CONCAT(array[2, 2], true), CONCAT('3', array[2, 2]))");
+        analyze(CLIENT_SESSION_FOR_IMPLICIT_CONVERSION_TESTS, "SELECT CONCAT(3, true)");
+        assertFails(CLIENT_SESSION_FOR_IMPLICIT_CONVERSION_TESTS, "SELECT CONCAT(array[2, 2], CAST(true as VARCHAR))")
+                .hasErrorCode(FUNCTION_NOT_FOUND);
+        assertFails(CLIENT_SESSION_FOR_IMPLICIT_CONVERSION_TESTS, "SELECT CONCAT(CAST(3 as VARCHAR), array[2, 2])")
+                .hasErrorCode(FUNCTION_NOT_FOUND);
+
+        // Between Predicate
+        analyze(CLIENT_SESSION_FOR_IMPLICIT_CONVERSION_TESTS, "SELECT -4 BETWEEN '-10' AND true");
     }
 
     @BeforeClass

@@ -30,6 +30,7 @@ import io.trino.spi.type.TypeSignatureParameter;
 import io.trino.spi.type.VarcharType;
 import io.trino.type.setdigest.SetDigestType;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Function;
@@ -62,6 +63,114 @@ import static java.util.Objects.requireNonNull;
 public final class TypeCoercion
 {
     private final Function<TypeSignature, Type> lookupType;
+
+    private static final HashSet<String> DIGITAL_TYPES = new HashSet<String>() {
+        {
+            add(StandardTypes.TINYINT);
+            add(StandardTypes.SMALLINT);
+            add(StandardTypes.INTEGER);
+            add(StandardTypes.BIGINT);
+            add(StandardTypes.REAL);
+            add(StandardTypes.DOUBLE);
+            add(StandardTypes.DECIMAL);
+        }
+    };
+    private static final HashSet<String> CHARACTER_TYPE = new HashSet<String>() {
+        {
+            add(StandardTypes.CHAR);
+            add(StandardTypes.VARCHAR);
+        }
+    };
+    private static final HashSet<String> DATE_TYPE = new HashSet<String>() {
+        {
+            add(StandardTypes.DATE);
+            add(StandardTypes.TIMESTAMP);
+        }
+    };
+    private static final HashSet<String> CONCAT_TYPE = new HashSet<String>() {
+        {
+            add(StandardTypes.CHAR);
+            add(StandardTypes.VARCHAR);
+            add(StandardTypes.VARBINARY);
+        }
+    };
+
+    private static final HashSet<String> DIGITAL_CAST = new HashSet<String>() {
+        {
+            add(StandardTypes.BOOLEAN);
+            add(StandardTypes.TINYINT);
+            add(StandardTypes.SMALLINT);
+            add(StandardTypes.INTEGER);
+            add(StandardTypes.BIGINT);
+            add(StandardTypes.REAL);
+            add(StandardTypes.DOUBLE);
+            add(StandardTypes.DECIMAL);
+            add(StandardTypes.VARCHAR);
+            add(StandardTypes.JSON);
+        }
+    };
+    private static final HashSet<String> DATE_CAST = new HashSet<String>() {
+        {
+            add(StandardTypes.JSON);
+            add(StandardTypes.VARCHAR);
+            add(StandardTypes.TIMESTAMP);
+            add(StandardTypes.TIMESTAMP_WITH_TIME_ZONE);
+        }
+    };
+    private static final HashSet<String> TIME_CAST = new HashSet<String>() {
+        {
+            add(StandardTypes.VARCHAR);
+            add(StandardTypes.TIMESTAMP);
+            add(StandardTypes.TIME_WITH_TIME_ZONE);
+            add(StandardTypes.TIMESTAMP_WITH_TIME_ZONE);
+        }
+    };
+    private static final HashSet<String> TIMESTAMP_CAST = new HashSet<String>() {
+        {
+            add(StandardTypes.VARCHAR);
+            add(StandardTypes.DATE);
+            add(StandardTypes.TIME);
+            add(StandardTypes.TIME_WITH_TIME_ZONE);
+            add(StandardTypes.TIMESTAMP_WITH_TIME_ZONE);
+        }
+    };
+    private static final HashSet<String> TIME_WITH_TIME_ZONE_CAST = new HashSet<String>() {
+        {
+            add(StandardTypes.VARCHAR);
+            add(StandardTypes.TIME);
+            add(StandardTypes.TIMESTAMP);
+            add(StandardTypes.TIMESTAMP_WITH_TIME_ZONE);
+        }
+    };
+    private static final HashSet<String> TIMESTAMP_WITH_TIME_ZONE_CAST = new HashSet<String>() {
+        {
+            add(StandardTypes.VARCHAR);
+            add(StandardTypes.DATE);
+            add(StandardTypes.TIME);
+            add(StandardTypes.TIMESTAMP);
+            add(StandardTypes.TIME_WITH_TIME_ZONE);
+        }
+    };
+    private static final HashSet<String> VARCHAR_CAST = new HashSet<String>() {
+        {
+            add(StandardTypes.JSON);
+            add(StandardTypes.CHAR);
+            add(StandardTypes.BOOLEAN);
+            add(StandardTypes.TINYINT);
+            add(StandardTypes.SMALLINT);
+            add(StandardTypes.INTEGER);
+            add(StandardTypes.BIGINT);
+            add(StandardTypes.REAL);
+            add(StandardTypes.DOUBLE);
+            add(StandardTypes.DECIMAL);
+            add(StandardTypes.VARBINARY);
+            add(StandardTypes.DATE);
+            add(StandardTypes.TIME);
+            add(StandardTypes.TIMESTAMP);
+            add(StandardTypes.TIME_WITH_TIME_ZONE);
+            add(StandardTypes.TIMESTAMP_WITH_TIME_ZONE);
+        }
+    };
 
     public TypeCoercion(Function<TypeSignature, Type> lookupType)
     {
@@ -171,6 +280,68 @@ public final class TypeCoercion
     {
         TypeCompatibility typeCompatibility = compatibility(fromType, toType);
         return typeCompatibility.isCoercible();
+    }
+
+    public boolean canCoerceWithCast(Type fromType, Type toType)
+    {
+        String sourceTypeName = fromType.getTypeSignature().getBase();
+        String resultTypeBase = toType.getTypeSignature().getBase();
+        if (sourceTypeName.equals(resultTypeBase)) {
+            return true;
+        }
+
+        switch (sourceTypeName) {
+            case StandardTypes.BOOLEAN:
+            case StandardTypes.TINYINT:
+            case StandardTypes.SMALLINT:
+            case StandardTypes.INTEGER:
+            case StandardTypes.BIGINT:
+            case StandardTypes.REAL:
+            case StandardTypes.DECIMAL:
+            case StandardTypes.DOUBLE: {
+                return DIGITAL_CAST.contains(resultTypeBase);
+            }
+            case StandardTypes.DATE: {
+                return DATE_CAST.contains(resultTypeBase);
+            }
+            case StandardTypes.TIME: {
+                return TIME_CAST.contains(resultTypeBase);
+            }
+            case StandardTypes.TIMESTAMP: {
+                return TIMESTAMP_CAST.contains(resultTypeBase);
+            }
+            case StandardTypes.TIME_WITH_TIME_ZONE: {
+                return TIME_WITH_TIME_ZONE_CAST.contains(resultTypeBase);
+            }
+            case StandardTypes.TIMESTAMP_WITH_TIME_ZONE: {
+                return TIMESTAMP_WITH_TIME_ZONE_CAST.contains(resultTypeBase);
+            }
+            case StandardTypes.CHAR:
+            case StandardTypes.JSON: {
+                if (resultTypeBase.equals(StandardTypes.VARCHAR)) {
+                    return true;
+                }
+                else {
+                    return false;
+                }
+            }
+            case StandardTypes.VARCHAR: {
+                return VARCHAR_CAST.contains(resultTypeBase);
+            }
+            default:
+                return false;
+        }
+    }
+
+    public boolean canArrayConcat(Type firstType, Type secondType)
+    {
+        if (firstType.getTypeSignature().getBase().equals(secondType.getTypeSignature().getBase())
+                || (DIGITAL_TYPES.contains(firstType.getTypeSignature().getBase()) && DIGITAL_TYPES.contains(secondType.getTypeSignature().getBase()))
+                || (CHARACTER_TYPE.contains(firstType.getTypeSignature().getBase()) && CHARACTER_TYPE.contains(secondType.getTypeSignature().getBase()))
+                || (DATE_TYPE.contains(firstType.getTypeSignature().getBase()) && DATE_TYPE.contains(secondType.getTypeSignature().getBase()))) {
+            return true;
+        }
+        return false;
     }
 
     private TypeCompatibility compatibility(Type fromType, Type toType)
@@ -530,6 +701,21 @@ public final class TypeCoercion
     public static boolean isCovariantTypeBase(String typeBase)
     {
         return typeBase.equals(StandardTypes.ARRAY) || typeBase.equals(StandardTypes.MAP);
+    }
+
+    public static boolean isDigitalTypeBase(Type type)
+    {
+        return DIGITAL_TYPES.contains(type.getTypeSignature().getBase());
+    }
+
+    public static boolean isCharacterTypeBase(Type type)
+    {
+        return CHARACTER_TYPE.contains(type.getTypeSignature().getBase());
+    }
+
+    public static boolean isConcatTypeBase(Type type)
+    {
+        return CONCAT_TYPE.contains(type.getTypeSignature().getBase());
     }
 
     private static boolean isCovariantParametrizedType(Type type)

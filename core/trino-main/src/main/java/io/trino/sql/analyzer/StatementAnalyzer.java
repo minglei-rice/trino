@@ -664,7 +664,9 @@ class StatementAnalyzer
                         return false;
                     }
                 }
-                else if (!typeCoercion.isCompatible(queryTypes.get(i), tableTypes.get(i))) {
+                else if (!(typeCoercion.isCompatible(queryTypes.get(i), tableTypes.get(i))
+                        || (SystemSessionProperties.isImplicitConversionEnabled(session)
+                        && typeCoercion.canCoerceWithCast(queryTypes.get(i), tableTypes.get(i))))) {
                     return false;
                 }
             }

@@ -98,6 +98,7 @@ public class FeaturesConfig
     private boolean distributedSort = true;
     private boolean omitDateTimeTypePrecision;
     private int maxRecursionDepth = 10;
+    private boolean implicitConversion;
 
     private boolean dictionaryAggregation;
 
@@ -932,6 +933,18 @@ public class FeaturesConfig
     public FeaturesConfig setMaxRecursionDepth(int maxRecursionDepth)
     {
         this.maxRecursionDepth = maxRecursionDepth;
+        return this;
+    }
+
+    public boolean isImplicitConversionEnabled()
+    {
+        return implicitConversion;
+    }
+
+    @Config("implicit-conversion")
+    public FeaturesConfig setImplicitConversionEnabled(boolean implicitConversion)
+    {
+        this.implicitConversion = implicitConversion;
         return this;
     }
 
