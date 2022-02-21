@@ -69,6 +69,7 @@ public final class IcebergSessionProperties
     private static final String DYNAMIC_FILTERING_WAIT_TIMEOUT = "dynamic_filtering_wait_timeout";
     private static final String STATISTICS_ENABLED = "statistics_enabled";
     private static final String PROJECTION_PUSHDOWN_ENABLED = "projection_pushdown_enabled";
+    private static final String READ_INDICES_SWITCH_ON = "read_indices_switch_on";
     private final List<PropertyMetadata<?>> sessionProperties;
 
     @Inject
@@ -210,6 +211,11 @@ public final class IcebergSessionProperties
                         "Read only required fields from a struct",
                         icebergConfig.isProjectionPushdownEnabled(),
                         false))
+                .add(booleanProperty(
+                        READ_INDICES_SWITCH_ON,
+                        "Switch to read iceberg indices, default false",
+                        icebergConfig.isReadIndicesSwitchOn(),
+                        false))
                 .build();
     }
 
@@ -344,5 +350,10 @@ public final class IcebergSessionProperties
     public static boolean isProjectionPushdownEnabled(ConnectorSession session)
     {
         return session.getProperty(PROJECTION_PUSHDOWN_ENABLED, Boolean.class);
+    }
+
+    public static boolean isReadIndicesSwitchOn(ConnectorSession session)
+    {
+        return session.getProperty(READ_INDICES_SWITCH_ON, Boolean.class);
     }
 }

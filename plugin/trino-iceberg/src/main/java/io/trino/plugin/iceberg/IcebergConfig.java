@@ -38,6 +38,7 @@ public class IcebergConfig
     private Duration dynamicFilteringWaitTimeout = new Duration(0, SECONDS);
     private boolean tableStatisticsEnabled = true;
     private boolean projectionPushdownEnabled = true;
+    private boolean readIndicesSwitchOn;
 
     public CatalogType getCatalogType()
     {
@@ -165,6 +166,18 @@ public class IcebergConfig
     public IcebergConfig setProjectionPushdownEnabled(boolean projectionPushdownEnabled)
     {
         this.projectionPushdownEnabled = projectionPushdownEnabled;
+        return this;
+    }
+
+    public boolean isReadIndicesSwitchOn()
+    {
+        return readIndicesSwitchOn;
+    }
+
+    @Config("iceberg.read-indices-switch-on")
+    public IcebergConfig setReadIndicesSwitchOn(boolean readIndicesSwitchOn)
+    {
+        this.readIndicesSwitchOn = readIndicesSwitchOn;
         return this;
     }
 }

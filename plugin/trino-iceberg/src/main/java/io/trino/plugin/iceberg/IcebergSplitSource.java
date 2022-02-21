@@ -18,6 +18,7 @@ import com.google.common.base.Stopwatch;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Iterators;
 import com.google.common.collect.Streams;
+import io.airlift.log.Logger;
 import io.airlift.units.Duration;
 import io.trino.spi.TrinoException;
 import io.trino.spi.connector.ColumnHandle;
@@ -33,16 +34,22 @@ import io.trino.spi.predicate.TupleDomain;
 import io.trino.spi.predicate.ValueSet;
 import org.apache.iceberg.CombinedScanTask;
 import org.apache.iceberg.FileScanTask;
+import org.apache.iceberg.IndexSpec;
 import org.apache.iceberg.TableScan;
 import org.apache.iceberg.expressions.Expression;
+import org.apache.iceberg.expressions.ExpressionVisitors;
+import org.apache.iceberg.index.util.IndexVerifyVisitor;
 import org.apache.iceberg.io.CloseableIterable;
 import org.apache.iceberg.types.Type;
 
 import javax.annotation.Nullable;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.ObjectOutputStream;
 import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
+import java.util.Base64;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -71,6 +78,8 @@ import static org.apache.iceberg.types.Conversions.fromByteBuffer;
 public class IcebergSplitSource
         implements ConnectorSplitSource
 {
+    private static final Logger log = Logger.get(IcebergSplitSource.class);
+
     private static final ConnectorSplitBatch EMPTY_BATCH = new ConnectorSplitBatch(ImmutableList.of(), false);
     private static final ConnectorSplitBatch NO_MORE_SPLITS_BATCH = new ConnectorSplitBatch(ImmutableList.of(), true);
 
@@ -82,6 +91,7 @@ public class IcebergSplitSource
     private final long dynamicFilteringWaitTimeoutMillis;
     private final Stopwatch dynamicFilterWaitStopwatch;
     private final Constraint constraint;
+    private final boolean indicesEnable;
 
     private CloseableIterable<CombinedScanTask> combinedScanIterable;
     private Iterator<FileScanTask> fileScanIterator;
@@ -93,7 +103,8 @@ public class IcebergSplitSource
             TableScan tableScan,
             DynamicFilter dynamicFilter,
             Duration dynamicFilteringWaitTimeout,
-            Constraint constraint)
+            Constraint constraint,
+            boolean indicesEnabled)
     {
         this.tableHandle = requireNonNull(tableHandle, "tableHandle is null");
         this.identityPartitionColumns = requireNonNull(identityPartitionColumns, "identityPartitionColumns is null");
@@ -103,6 +114,7 @@ public class IcebergSplitSource
         this.dynamicFilteringWaitTimeoutMillis = requireNonNull(dynamicFilteringWaitTimeout, "dynamicFilteringWaitTimeout is null").toMillis();
         this.dynamicFilterWaitStopwatch = Stopwatch.createStarted();
         this.constraint = requireNonNull(constraint, "constraint is null");
+        this.indicesEnable = indicesEnabled;
     }
 
     @Override
@@ -115,6 +127,7 @@ public class IcebergSplitSource
                     .completeOnTimeout(EMPTY_BATCH, timeLeft, MILLISECONDS);
         }
 
+        boolean includeIndexInSplit = false;
         if (combinedScanIterable == null) {
             // Used to avoid duplicating work if the Dynamic Filter was already pushed down to the Iceberg API
             this.pushedDownDynamicFilterPredicate = dynamicFilter.getCurrentPredicate().transformKeys(IcebergColumnHandle.class::cast);
@@ -136,6 +149,12 @@ public class IcebergSplitSource
             }
 
             Expression filterExpression = toIcebergExpression(effectivePredicate);
+            if (indicesEnable) {
+                IndexSpec indexSpec = tableScan.table().indexSpec();
+                IndexVerifyVisitor iv = new IndexVerifyVisitor(tableScan.table().schema().asStruct(), indexSpec);
+                includeIndexInSplit = ExpressionVisitors.visit(filterExpression, iv);
+            }
+
             this.combinedScanIterable = tableScan
                     .filter(filterExpression)
                     .includeColumnStats()
@@ -161,7 +180,7 @@ public class IcebergSplitSource
                 throw new TrinoException(NOT_SUPPORTED, "Iceberg tables with delete files are not supported: " + tableHandle.getSchemaTableName());
             }
 
-            IcebergSplit icebergSplit = toIcebergSplit(scanTask);
+            IcebergSplit icebergSplit = toIcebergSplit(scanTask, includeIndexInSplit);
 
             Supplier<Map<ColumnHandle, NullableValue>> partitionValues = memoize(() -> {
                 Map<ColumnHandle, NullableValue> bindings = new HashMap<>();
@@ -331,8 +350,19 @@ public class IcebergSplitSource
         return true;
     }
 
-    private static IcebergSplit toIcebergSplit(FileScanTask task)
+    private static IcebergSplit toIcebergSplit(FileScanTask task, boolean includeIndexInSplit)
     {
+        String fileScanTaskEncode = null;
+        if (includeIndexInSplit && task.file().indices() != null && !task.file().indices().isEmpty()) {
+            try (ByteArrayOutputStream ba = new ByteArrayOutputStream(); ObjectOutputStream ob = new ObjectOutputStream(ba)) {
+                ob.writeObject(task);
+                fileScanTaskEncode = Base64.getEncoder().encodeToString(ba.toByteArray());
+            }
+            catch (Exception e) {
+                log.error(e, "Encode fileScanTask error %s", task.file().path());
+            }
+        }
+
         return new IcebergSplit(
                 task.file().path().toString(),
                 task.start(),
@@ -340,6 +370,7 @@ public class IcebergSplitSource
                 task.file().fileSizeInBytes(),
                 task.file().format(),
                 ImmutableList.of(),
-                getPartitionKeys(task));
+                getPartitionKeys(task),
+                fileScanTaskEncode);
     }
 }

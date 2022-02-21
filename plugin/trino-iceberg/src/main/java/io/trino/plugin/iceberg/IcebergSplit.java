@@ -17,10 +17,15 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import io.airlift.log.Logger;
 import io.trino.spi.HostAddress;
 import io.trino.spi.connector.ConnectorSplit;
 import org.apache.iceberg.FileFormat;
+import org.apache.iceberg.FileScanTask;
 
+import java.io.ByteArrayInputStream;
+import java.io.ObjectInputStream;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -31,6 +36,8 @@ import static java.util.Objects.requireNonNull;
 public class IcebergSplit
         implements ConnectorSplit
 {
+    private static final Logger log = Logger.get(IcebergSplit.class);
+
     private final String path;
     private final long start;
     private final long length;
@@ -38,6 +45,8 @@ public class IcebergSplit
     private final FileFormat fileFormat;
     private final List<HostAddress> addresses;
     private final Map<Integer, Optional<String>> partitionKeys;
+    private final String fileScanTaskEncode;
+    private FileScanTask fileScanTask;
 
     @JsonCreator
     public IcebergSplit(
@@ -47,7 +56,8 @@ public class IcebergSplit
             @JsonProperty("fileSize") long fileSize,
             @JsonProperty("fileFormat") FileFormat fileFormat,
             @JsonProperty("addresses") List<HostAddress> addresses,
-            @JsonProperty("partitionKeys") Map<Integer, Optional<String>> partitionKeys)
+            @JsonProperty("partitionKeys") Map<Integer, Optional<String>> partitionKeys,
+            @JsonProperty("fileScanTaskEncode") String fileScanTaskEncode)
     {
         this.path = requireNonNull(path, "path is null");
         this.start = start;
@@ -56,6 +66,7 @@ public class IcebergSplit
         this.fileFormat = requireNonNull(fileFormat, "fileFormat is null");
         this.addresses = ImmutableList.copyOf(requireNonNull(addresses, "addresses is null"));
         this.partitionKeys = ImmutableMap.copyOf(requireNonNull(partitionKeys, "partitionKeys is null"));
+        this.fileScanTaskEncode = fileScanTaskEncode;
     }
 
     @Override
@@ -105,6 +116,30 @@ public class IcebergSplit
     public Map<Integer, Optional<String>> getPartitionKeys()
     {
         return partitionKeys;
+    }
+
+    @JsonProperty
+    public String getFileScanTaskEncode()
+    {
+        return fileScanTaskEncode;
+    }
+
+    public FileScanTask decodeFileScanTask()
+    {
+        if (fileScanTask != null) {
+            return fileScanTask;
+        }
+
+        if (getFileScanTaskEncode() != null && !getFileScanTaskEncode().isBlank()) {
+            byte[] decode = Base64.getDecoder().decode(getFileScanTaskEncode());
+            try (ObjectInputStream ob = new ObjectInputStream(new ByteArrayInputStream(decode))) {
+                fileScanTask = (FileScanTask) ob.readObject();
+            }
+            catch (Exception e) {
+                log.error(e, "Decode fileScanTask error");
+            }
+        }
+        return fileScanTask;
     }
 
     @Override

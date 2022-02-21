@@ -158,7 +158,8 @@ public class TestIcebergSplitSource
                     }
                 },
                 new Duration(2, SECONDS),
-                alwaysTrue());
+                alwaysTrue(),
+                false);
 
         ImmutableList.Builder<IcebergSplit> splits = ImmutableList.builder();
         while (!splitSource.isFinished()) {

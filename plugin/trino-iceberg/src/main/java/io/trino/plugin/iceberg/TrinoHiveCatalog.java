@@ -50,8 +50,11 @@ import io.trino.spi.type.TypeManager;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.iceberg.BaseTable;
+import org.apache.iceberg.Distribution;
+import org.apache.iceberg.IndexSpec;
 import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.Schema;
+import org.apache.iceberg.SortOrder;
 import org.apache.iceberg.Table;
 import org.apache.iceberg.TableMetadata;
 import org.apache.iceberg.TableOperations;
@@ -259,7 +262,8 @@ class TrinoHiveCatalog
     public Transaction newCreateTableTransaction(ConnectorSession session, SchemaTableName schemaTableName,
             Schema schema, PartitionSpec partitionSpec, String location, Map<String, String> properties)
     {
-        TableMetadata metadata = newTableMetadata(schema, partitionSpec, location, properties);
+        TableMetadata metadata = newTableMetadata(schema, partitionSpec, IndexSpec.noneIndexSpec(),
+                SortOrder.unsorted(), Distribution.noneDistribution(), location, properties);
         TableOperations ops = tableOperationsProvider.createTableOperations(
                 metastore,
                 session,
