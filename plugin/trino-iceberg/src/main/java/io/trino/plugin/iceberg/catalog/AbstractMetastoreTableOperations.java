@@ -292,6 +292,8 @@ public abstract class AbstractMetastoreTableOperations
         Tasks.foreach(newLocation)
                 .retry(20)
                 .exponentialBackoff(100, 5000, 600000, 4.0)
+                .throwFailureWhenFinished()
+                .shouldRetryTest(e -> e.getCause() == null || !e.getCause().toString().contains("Permission denied"))
                 .run(metadataLocation -> newMetadata.set(
                         TableMetadataParser.read(this, io().newInputFile(metadataLocation))));
 
