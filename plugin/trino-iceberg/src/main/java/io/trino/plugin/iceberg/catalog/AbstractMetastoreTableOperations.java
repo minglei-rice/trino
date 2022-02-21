@@ -13,6 +13,8 @@
  */
 package io.trino.plugin.iceberg.catalog;
 
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import io.airlift.log.Logger;
 import io.trino.plugin.hive.authentication.HiveIdentity;
 import io.trino.plugin.hive.metastore.Column;
@@ -46,6 +48,7 @@ import javax.annotation.concurrent.NotThreadSafe;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static com.google.common.base.Preconditions.checkState;
@@ -78,6 +81,8 @@ public abstract class AbstractMetastoreTableOperations
     public static final String METADATA_LOCATION = "metadata_location";
     public static final String PREVIOUS_METADATA_LOCATION = "previous_metadata_location";
     protected static final String METADATA_FOLDER_NAME = "metadata";
+    private static final Cache<String, AtomicReference<TableMetadata>> TABLE_METADATA_CACHE = Caffeine.newBuilder()
+            .maximumSize(1000).expireAfterAccess(1, TimeUnit.MINUTES).build();
 
     protected static final StorageFormat STORAGE_FORMAT = StorageFormat.create(
             LazySimpleSerDe.class.getName(),
@@ -288,14 +293,20 @@ public abstract class AbstractMetastoreTableOperations
             return;
         }
 
-        AtomicReference<TableMetadata> newMetadata = new AtomicReference<>();
-        Tasks.foreach(newLocation)
-                .retry(20)
-                .exponentialBackoff(100, 5000, 600000, 4.0)
-                .throwFailureWhenFinished()
-                .shouldRetryTest(e -> e.getCause() == null || !e.getCause().toString().contains("Permission denied"))
-                .run(metadataLocation -> newMetadata.set(
-                        TableMetadataParser.read(this, io().newInputFile(metadataLocation))));
+        AtomicReference<TableMetadata> newMetadata = TABLE_METADATA_CACHE.get(newLocation, location -> {
+            AtomicReference<TableMetadata> metadata = new AtomicReference<>();
+            long start = System.currentTimeMillis();
+            log.info("Start to read tableMetadata [%s],", newLocation);
+            Tasks.foreach(newLocation)
+                    .retry(20)
+                    .exponentialBackoff(100, 5000, 600000, 4.0)
+                    .throwFailureWhenFinished()
+                    .shouldRetryTest(e -> e.getCause() == null || !e.getCause().toString().contains("Permission denied"))
+                    .run(metadataLocation -> metadata.set(
+                            TableMetadataParser.read(this, io().newInputFile(metadataLocation))));
+            log.info("End to read tableMetadata [%s], time spend [%s] ms", newLocation, System.currentTimeMillis() - start);
+            return metadata;
+        });
 
         String newUUID = newMetadata.get().uuid();
         if (currentMetadata != null) {
