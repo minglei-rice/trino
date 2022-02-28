@@ -316,6 +316,8 @@ public class DriverContext
         List<OperatorStats> operators = getOperatorStats();
         OperatorStats inputOperator = getFirst(operators, null);
 
+        Duration indexReadTime;
+
         DataSize physicalInputDataSize;
         long physicalInputPositions;
         Duration physicalInputReadTime;
@@ -334,6 +336,8 @@ public class DriverContext
         long outputPositions;
         Duration outputBlockedTime;
         if (inputOperator != null) {
+            indexReadTime = inputOperator.getIndexReadTime();
+
             physicalInputDataSize = inputOperator.getPhysicalInputDataSize();
             physicalInputPositions = inputOperator.getPhysicalInputPositions();
             physicalInputReadTime = inputOperator.getPhysicalInputReadTime();
@@ -357,6 +361,8 @@ public class DriverContext
             outputBlockedTime = outputOperator.getBlockedWall();
         }
         else {
+            indexReadTime = new Duration(0, MILLISECONDS);
+
             physicalInputDataSize = DataSize.ofBytes(0);
             physicalInputPositions = 0;
             physicalInputReadTime = new Duration(0, MILLISECONDS);
@@ -401,6 +407,7 @@ public class DriverContext
                 new Duration(totalBlockedTime, NANOSECONDS).convertToMostSuccinctTimeUnit(),
                 blockedMonitor != null,
                 builder.build(),
+                indexReadTime,
                 physicalInputDataSize.succinct(),
                 physicalInputPositions,
                 physicalInputReadTime,

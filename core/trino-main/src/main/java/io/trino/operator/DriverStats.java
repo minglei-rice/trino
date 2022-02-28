@@ -50,6 +50,8 @@ public class DriverStats
     private final boolean fullyBlocked;
     private final Set<BlockedReason> blockedReasons;
 
+    private final Duration indexReadTime;
+
     private final DataSize physicalInputDataSize;
     private final long physicalInputPositions;
     private final Duration physicalInputReadTime;
@@ -91,6 +93,8 @@ public class DriverStats
         this.totalBlockedTime = new Duration(0, MILLISECONDS);
         this.fullyBlocked = false;
         this.blockedReasons = ImmutableSet.of();
+
+        this.indexReadTime = new Duration(0, MILLISECONDS);
 
         this.physicalInputDataSize = DataSize.ofBytes(0);
         this.physicalInputPositions = 0;
@@ -135,6 +139,8 @@ public class DriverStats
             @JsonProperty("fullyBlocked") boolean fullyBlocked,
             @JsonProperty("blockedReasons") Set<BlockedReason> blockedReasons,
 
+            @JsonProperty("indexReadTime") Duration indexReadTime,
+
             @JsonProperty("physicalInputDataSize") DataSize physicalInputDataSize,
             @JsonProperty("physicalInputPositions") long physicalInputPositions,
             @JsonProperty("physicalInputReadTime") Duration physicalInputReadTime,
@@ -174,6 +180,8 @@ public class DriverStats
         this.totalBlockedTime = requireNonNull(totalBlockedTime, "totalBlockedTime is null");
         this.fullyBlocked = fullyBlocked;
         this.blockedReasons = ImmutableSet.copyOf(requireNonNull(blockedReasons, "blockedReasons is null"));
+
+        this.indexReadTime = requireNonNull(indexReadTime, "indexReadTime is null");
 
         this.physicalInputDataSize = requireNonNull(physicalInputDataSize, "physicalInputDataSize is null");
         checkArgument(physicalInputPositions >= 0, "physicalInputPositions is negative");
@@ -278,6 +286,12 @@ public class DriverStats
     public Set<BlockedReason> getBlockedReasons()
     {
         return blockedReasons;
+    }
+
+    @JsonProperty
+    public Duration getIndexReadTime()
+    {
+        return indexReadTime;
     }
 
     @JsonProperty

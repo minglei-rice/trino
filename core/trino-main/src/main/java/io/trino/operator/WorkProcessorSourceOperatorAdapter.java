@@ -53,6 +53,7 @@ public class WorkProcessorSourceOperatorAdapter
     private long previousInputBytes;
     private long previousInputPositions;
     private long previousReadTimeNanos;
+    private long previousIndexReadTimeMillis;
     private long previousDynamicFilterSplitsProcessed;
 
     public interface AdapterWorkProcessorSourceOperatorFactory
@@ -192,6 +193,7 @@ public class WorkProcessorSourceOperatorAdapter
         long currentInputBytes = sourceOperator.getInputDataSize().toBytes();
         long currentInputPositions = sourceOperator.getInputPositions();
 
+        long currentIndexReadTimeMillis = sourceOperator.getIndexReadTimeMillis();
         long currentDynamicFilterSplitsProcessed = sourceOperator.getDynamicFilterSplitsProcessed();
         Metrics currentMetrics = sourceOperator.getMetrics();
         Metrics currentConnectorMetrics = sourceOperator.getConnectorMetrics();
@@ -232,6 +234,11 @@ public class WorkProcessorSourceOperatorAdapter
         if (currentDynamicFilterSplitsProcessed != previousDynamicFilterSplitsProcessed) {
             operatorContext.recordDynamicFilterSplitProcessed(currentDynamicFilterSplitsProcessed - previousDynamicFilterSplitsProcessed);
             previousDynamicFilterSplitsProcessed = currentDynamicFilterSplitsProcessed;
+        }
+
+        if (currentIndexReadTimeMillis != previousIndexReadTimeMillis) {
+            operatorContext.recordIndexReadTime(currentIndexReadTimeMillis - previousIndexReadTimeMillis);
+            previousIndexReadTimeMillis = currentIndexReadTimeMillis;
         }
 
         operatorContext.setLatestMetrics(currentMetrics);

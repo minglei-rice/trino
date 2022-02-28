@@ -43,12 +43,7 @@ public interface ConnectorSplit
         throw new UnsupportedOperationException("This connector does not provide memory accounting capabilities for ConnectorSplit");
     }
 
-    default boolean isSkippedByIndex()
-    {
-        return false;
-    }
-
-    default long getIndexReadTime()
+    default long getIndexReadTimeMillis()
     {
         return 0;
     }

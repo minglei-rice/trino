@@ -19,6 +19,7 @@ import com.google.common.collect.ImmutableSet;
 import com.google.common.util.concurrent.AtomicDouble;
 import com.google.common.util.concurrent.ListenableFuture;
 import io.airlift.stats.CounterStat;
+import io.airlift.stats.Distribution;
 import io.airlift.stats.GcMonitor;
 import io.airlift.units.DataSize;
 import io.airlift.units.Duration;
@@ -420,6 +421,8 @@ public class TaskContext
         long totalCpuTime = 0;
         long totalBlockedTime = 0;
 
+        Distribution indexReadTimeMillis = new Distribution();
+
         long physicalInputDataSize = 0;
         long physicalInputPositions = 0;
         long physicalInputReadTime = 0;
@@ -486,6 +489,13 @@ public class TaskContext
                 processedInputPositions += pipeline.getProcessedInputPositions();
 
                 inputBlockedTime += pipeline.getInputBlockedTime().roundTo(NANOSECONDS);
+
+                for (DriverStats driver : pipeline.getDrivers()) {
+                    long driverIndexReadTimeMillis = driver.getIndexReadTime().roundTo(MILLISECONDS);
+                    if (driverIndexReadTimeMillis > 0) {
+                        indexReadTimeMillis.add(driverIndexReadTimeMillis);
+                    }
+                }
             }
 
             if (pipeline.isOutputPipeline()) {
@@ -511,6 +521,13 @@ public class TaskContext
         }
         else {
             elapsedTime = new Duration(System.nanoTime() - createNanos, NANOSECONDS);
+        }
+
+        double avgIndexReadTimeMillis = 0;
+        double maxIndexReadTimeMillis = 0;
+        if (indexReadTimeMillis.getCount() > 0) {
+            avgIndexReadTimeMillis = indexReadTimeMillis.getAvg();
+            maxIndexReadTimeMillis = indexReadTimeMillis.getMax();
         }
 
         int fullGcCount = getFullGcCount();
@@ -556,6 +573,8 @@ public class TaskContext
                 new Duration(totalBlockedTime, NANOSECONDS).convertToMostSuccinctTimeUnit(),
                 fullyBlocked && (runningDrivers > 0 || runningPartitionedDrivers > 0),
                 blockedReasons.build(),
+                new Duration(avgIndexReadTimeMillis, MILLISECONDS),
+                new Duration(maxIndexReadTimeMillis, MILLISECONDS),
                 succinctBytes(physicalInputDataSize),
                 physicalInputPositions,
                 new Duration(physicalInputReadTime, NANOSECONDS).convertToMostSuccinctTimeUnit(),

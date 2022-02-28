@@ -31,6 +31,7 @@ import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Verify.verify;
 import static java.lang.Math.max;
 import static java.util.Objects.requireNonNull;
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.NANOSECONDS;
 
 @Immutable
@@ -63,6 +64,7 @@ public class OperatorStats
     private final DataSize outputDataSize;
     private final long outputPositions;
 
+    private final Duration indexReadTime;
     private final long dynamicFilterSplitsProcessed;
     private final Metrics metrics;
     private final Metrics connectorMetrics;
@@ -117,6 +119,7 @@ public class OperatorStats
             @JsonProperty("outputDataSize") DataSize outputDataSize,
             @JsonProperty("outputPositions") long outputPositions,
 
+            @JsonProperty("indexReadTime") Duration indexReadTime,
             @JsonProperty("dynamicFilterSplitsProcessed") long dynamicFilterSplitsProcessed,
             @JsonProperty("metrics") Metrics metrics,
             @JsonProperty("connectorMetrics") Metrics connectorMetrics,
@@ -173,6 +176,7 @@ public class OperatorStats
         checkArgument(outputPositions >= 0, "outputPositions is negative");
         this.outputPositions = outputPositions;
 
+        this.indexReadTime = requireNonNull(indexReadTime, "indexReadTime is null");
         this.dynamicFilterSplitsProcessed = dynamicFilterSplitsProcessed;
         this.metrics = requireNonNull(metrics, "metrics is null");
         this.connectorMetrics = requireNonNull(connectorMetrics, "connectorMetrics is null");
@@ -338,6 +342,12 @@ public class OperatorStats
     }
 
     @JsonProperty
+    public Duration getIndexReadTime()
+    {
+        return indexReadTime;
+    }
+
+    @JsonProperty
     public long getDynamicFilterSplitsProcessed()
     {
         return dynamicFilterSplitsProcessed;
@@ -462,6 +472,7 @@ public class OperatorStats
         long outputDataSize = this.outputDataSize.toBytes();
         long outputPositions = this.outputPositions;
 
+        long indexReadTimeMillis = this.indexReadTime.roundTo(MILLISECONDS);
         long dynamicFilterSplitsProcessed = this.dynamicFilterSplitsProcessed;
         Metrics.Accumulator metricsAccumulator = Metrics.accumulator().add(this.getMetrics());
         Metrics.Accumulator connectorMetricsAccumulator = Metrics.accumulator().add(this.getConnectorMetrics());
@@ -510,6 +521,7 @@ public class OperatorStats
             outputDataSize += operator.getOutputDataSize().toBytes();
             outputPositions += operator.getOutputPositions();
 
+            indexReadTimeMillis += operator.getIndexReadTime().roundTo(MILLISECONDS);
             dynamicFilterSplitsProcessed += operator.getDynamicFilterSplitsProcessed();
             metricsAccumulator.add(operator.getMetrics());
             connectorMetricsAccumulator.add(operator.getConnectorMetrics());
@@ -570,6 +582,7 @@ public class OperatorStats
                 DataSize.ofBytes(outputDataSize),
                 outputPositions,
 
+                new Duration(indexReadTimeMillis, MILLISECONDS).convertToMostSuccinctTimeUnit(),
                 dynamicFilterSplitsProcessed,
                 metricsAccumulator.get(),
                 connectorMetricsAccumulator.get(),
@@ -641,6 +654,7 @@ public class OperatorStats
                 getOutputCpu,
                 outputDataSize,
                 outputPositions,
+                indexReadTime,
                 dynamicFilterSplitsProcessed,
                 metrics,
                 connectorMetrics,

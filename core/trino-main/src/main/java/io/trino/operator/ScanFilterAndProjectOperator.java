@@ -83,6 +83,7 @@ public class ScanFilterAndProjectOperator
     private long physicalBytes;
     private long physicalPositions;
     private long readTimeNanos;
+    private long indexReadTimeMillis;
     private long dynamicFilterSplitsProcessed;
     private Metrics metrics = Metrics.EMPTY;
 
@@ -158,6 +159,12 @@ public class ScanFilterAndProjectOperator
     public Duration getReadTime()
     {
         return new Duration(readTimeNanos, NANOSECONDS);
+    }
+
+    @Override
+    public long getIndexReadTimeMillis()
+    {
+        return indexReadTimeMillis;
     }
 
     @Override
@@ -277,6 +284,7 @@ public class ScanFilterAndProjectOperator
             }
             else {
                 source = pageSourceProvider.createPageSource(session, split, table, columns, dynamicFilter);
+                indexReadTimeMillis += split.getIndexReadTimeMillis();
             }
 
             if (source instanceof RecordPageSource) {

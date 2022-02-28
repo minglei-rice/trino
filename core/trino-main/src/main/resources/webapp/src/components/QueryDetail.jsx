@@ -17,7 +17,6 @@ import Reactable from "reactable";
 
 import {
     addToHistory,
-    computeAvgDuration,
     computeRate,
     formatCount,
     formatDataSize,
@@ -431,6 +430,8 @@ class StageSummary extends React.Component {
 
         const scheduledTimes = stage.tasks.map(task => parseDuration(task.stats.totalScheduledTime));
         const cpuTimes = stage.tasks.map(task => parseDuration(task.stats.totalCpuTime));
+        const avgIndexReadTimes = stage.tasks.map(task => parseDuration(task.stats.avgIndexReadTime));
+        const maxIndexReadTimes = stage.tasks.map(task => parseDuration(task.stats.maxIndexReadTime));
 
         // prevent multiple calls to componentDidUpdate (resulting from calls to setState or otherwise) within the refresh interval from re-rendering sparklines/charts
         if (this.state.lastRender === null || (Date.now() - this.state.lastRender) >= 1000) {
@@ -439,6 +440,10 @@ class StageSummary extends React.Component {
 
             StageSummary.renderHistogram('#scheduled-time-histogram-' + stageId, scheduledTimes, formatDuration);
             StageSummary.renderHistogram('#cpu-time-histogram-' + stageId, cpuTimes, formatDuration);
+            if (!maxIndexReadTimes.every(maxIndexReadTime => !maxIndexReadTime || maxIndexReadTime <= 0)) {
+                StageSummary.renderHistogram('#avg-index-read-time-histogram-' + stageId, avgIndexReadTimes, formatDuration);
+                StageSummary.renderHistogram('#max-index-read-time-histogram-' + stageId, maxIndexReadTimes, formatDuration);
+            }
 
             if (this.state.expanded) {
                 // this needs to be a string otherwise it will also be passed to numberFormatter

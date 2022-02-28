@@ -60,6 +60,7 @@ import static io.trino.spi.metrics.DataSkippingMetrics.MetricType.READ;
 import static java.lang.Math.max;
 import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.NANOSECONDS;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
@@ -92,6 +93,7 @@ public class OperatorContext
     private final CounterStat outputDataSize = new CounterStat();
     private final CounterStat outputPositions = new CounterStat();
 
+    private final AtomicLong indexReadTimeMillis = new AtomicLong();
     private final AtomicLong dynamicFilterSplitsProcessed = new AtomicLong();
     private final AtomicReference<Metrics> metrics = new AtomicReference<>(Metrics.EMPTY);  // this is not incremental, but gets overwritten by the latest value.
     private final AtomicReference<Metrics> connectorMetrics = new AtomicReference<>(Metrics.EMPTY); // this is not incremental, but gets overwritten by the latest value.
@@ -224,6 +226,11 @@ public class OperatorContext
     {
         outputDataSize.update(sizeInBytes);
         outputPositions.update(positions);
+    }
+
+    public void recordIndexReadTime(long indexReadTimeMillis)
+    {
+        this.indexReadTimeMillis.getAndAdd(indexReadTimeMillis);
     }
 
     public void recordDynamicFilterSplitProcessed(long dynamicFilterSplits)
@@ -588,6 +595,7 @@ public class OperatorContext
                 DataSize.ofBytes(outputDataSize.getTotalCount()),
                 outputPositions.getTotalCount(),
 
+                new Duration(indexReadTimeMillis.get(), MILLISECONDS).convertToMostSuccinctTimeUnit(),
                 dynamicFilterSplitsProcessed.get(),
                 getOperatorMetrics(
                         metrics.get(),

@@ -22,6 +22,7 @@ import org.joda.time.DateTime;
 import org.testng.annotations.Test;
 
 import static io.trino.operator.TestPipelineStats.assertExpectedPipelineStats;
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.NANOSECONDS;
 import static org.joda.time.DateTimeZone.UTC;
 import static org.testng.Assert.assertEquals;
@@ -56,6 +57,9 @@ public class TestTaskStats
             new Duration(18, NANOSECONDS),
             false,
             ImmutableSet.of(),
+
+            new Duration(2000, MILLISECONDS),
+            new Duration(2001, MILLISECONDS),
 
             DataSize.ofBytes(191),
             201,
@@ -123,6 +127,9 @@ public class TestTaskStats
         assertEquals(actual.getTotalScheduledTime(), new Duration(15, NANOSECONDS));
         assertEquals(actual.getTotalCpuTime(), new Duration(16, NANOSECONDS));
         assertEquals(actual.getTotalBlockedTime(), new Duration(18, NANOSECONDS));
+
+        assertEquals(actual.getAvgIndexReadTime(), new Duration(2000, MILLISECONDS));
+        assertEquals(actual.getMaxIndexReadTime(), new Duration(2001, MILLISECONDS));
 
         assertEquals(actual.getPhysicalInputDataSize(), DataSize.ofBytes(191));
         assertEquals(actual.getPhysicalInputPositions(), 201);

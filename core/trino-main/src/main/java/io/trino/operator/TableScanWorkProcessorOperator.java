@@ -89,6 +89,12 @@ public class TableScanWorkProcessorOperator
     }
 
     @Override
+    public long getIndexReadTimeMillis()
+    {
+        return splitToPages.indexReadTimeMillis;
+    }
+
+    @Override
     public DataSize getPhysicalInputDataSize()
     {
         return splitToPages.getPhysicalInputDataSize();
@@ -148,6 +154,7 @@ public class TableScanWorkProcessorOperator
 
         long processedBytes;
         long processedPositions;
+        long indexReadTimeMillis;
         long dynamicFilterSplitsProcessed;
 
         @Nullable
@@ -186,6 +193,7 @@ public class TableScanWorkProcessorOperator
             }
             else {
                 source = pageSourceProvider.createPageSource(session, split, table, columns, dynamicFilter);
+                indexReadTimeMillis += split.getIndexReadTimeMillis();
             }
 
             return TransformationState.ofResult(

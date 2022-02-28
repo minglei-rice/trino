@@ -75,6 +75,11 @@ public final class Split
         return connectorSplit.getSplitWeight();
     }
 
+    public long getIndexReadTimeMillis()
+    {
+        return connectorSplit.getIndexReadTimeMillis();
+    }
+
     @Override
     public String toString()
     {

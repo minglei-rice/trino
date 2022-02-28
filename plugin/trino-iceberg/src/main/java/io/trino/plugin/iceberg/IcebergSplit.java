@@ -59,8 +59,7 @@ public class IcebergSplit
     private final SplitWeight splitWeight;
     private final String fileScanTaskEncode;
     private FileScanTask fileScanTask;
-    private boolean isSkippedByIndex;
-    private long indexReadTime;
+    private long indexReadTimeMillis;
 
     @JsonCreator
     public IcebergSplit(
@@ -227,25 +226,14 @@ public class IcebergSplit
         return fileScanTask;
     }
 
-    public void setIsSkippedByIndex(boolean isSkippedByIndex)
+    public void setIndexReadTimeMillis(long indexReadTimeMillis)
     {
-        this.isSkippedByIndex = isSkippedByIndex;
-    }
-
-    public void setIndexReadTime(long indexReadTime)
-    {
-        this.indexReadTime = indexReadTime;
+        this.indexReadTimeMillis = indexReadTimeMillis;
     }
 
     @Override
-    public boolean isSkippedByIndex()
+    public long getIndexReadTimeMillis()
     {
-        return isSkippedByIndex;
-    }
-
-    @Override
-    public long getIndexReadTime()
-    {
-        return indexReadTime;
+        return indexReadTimeMillis;
     }
 }

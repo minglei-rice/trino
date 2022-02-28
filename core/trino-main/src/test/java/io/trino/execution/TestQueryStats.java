@@ -32,6 +32,7 @@ import java.util.Optional;
 
 import static io.airlift.units.DataSize.succinctBytes;
 import static io.trino.server.DynamicFilterService.DynamicFiltersStats;
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.NANOSECONDS;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.joda.time.DateTimeZone.UTC;
@@ -64,6 +65,7 @@ public class TestQueryStats
                     new Duration(114, NANOSECONDS),
                     succinctBytes(116L),
                     117L,
+                    new Duration(1834, MILLISECONDS),
                     1833,
                     Metrics.EMPTY,
                     Metrics.EMPTY,
@@ -104,6 +106,7 @@ public class TestQueryStats
                     new Duration(214, NANOSECONDS),
                     succinctBytes(216L),
                     217L,
+                    new Duration(2834, MILLISECONDS),
                     2833,
                     Metrics.EMPTY,
                     Metrics.EMPTY,
@@ -144,6 +147,7 @@ public class TestQueryStats
                     new Duration(314, NANOSECONDS),
                     succinctBytes(316L),
                     317L,
+                    new Duration(3834, MILLISECONDS),
                     3833,
                     Metrics.EMPTY,
                     Metrics.EMPTY,

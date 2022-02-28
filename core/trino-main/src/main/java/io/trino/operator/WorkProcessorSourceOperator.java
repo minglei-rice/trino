@@ -64,6 +64,11 @@ public interface WorkProcessorSourceOperator
         return new Duration(0, NANOSECONDS);
     }
 
+    default long getIndexReadTimeMillis()
+    {
+        return 0;
+    }
+
     default long getDynamicFilterSplitsProcessed()
     {
         return 0;

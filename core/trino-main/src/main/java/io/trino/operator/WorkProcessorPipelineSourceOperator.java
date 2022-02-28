@@ -56,6 +56,7 @@ import static io.trino.operator.WorkProcessor.ProcessState.Type.BLOCKED;
 import static io.trino.operator.WorkProcessor.ProcessState.Type.FINISHED;
 import static io.trino.operator.project.MergePages.mergePages;
 import static java.util.Objects.requireNonNull;
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.NANOSECONDS;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
@@ -238,6 +239,9 @@ public class WorkProcessorPipelineSourceOperator
 
             long deltaReadTimeNanos = deltaAndSet(context.readTimeNanos, sourceOperator.getReadTime().roundTo(NANOSECONDS));
 
+            long deltaIndexReadTimeMillis = deltaAndSet(context.indexReadTimeMillis, sourceOperator.getIndexReadTimeMillis());
+            operatorContext.recordIndexReadTime(deltaIndexReadTimeMillis);
+
             context.dynamicFilterSplitsProcessed.set(sourceOperator.getDynamicFilterSplitsProcessed());
             context.connectorMetrics.set(sourceOperator.getConnectorMetrics());
 
@@ -342,6 +346,7 @@ public class WorkProcessorPipelineSourceOperator
                         succinctBytes(context.outputDataSize.get()),
                         context.outputPositions.get(),
 
+                        new Duration(context.indexReadTimeMillis.get(), MILLISECONDS),
                         context.dynamicFilterSplitsProcessed.get(),
                         getOperatorMetrics(
                                 context.metrics.get(),
@@ -691,6 +696,7 @@ public class WorkProcessorPipelineSourceOperator
         final AtomicLong outputDataSize = new AtomicLong();
         final AtomicLong outputPositions = new AtomicLong();
 
+        final AtomicLong indexReadTimeMillis = new AtomicLong();
         final AtomicLong dynamicFilterSplitsProcessed = new AtomicLong();
         final AtomicReference<Metrics> metrics = new AtomicReference<>(Metrics.EMPTY);
         final AtomicReference<Metrics> connectorMetrics = new AtomicReference<>(Metrics.EMPTY);

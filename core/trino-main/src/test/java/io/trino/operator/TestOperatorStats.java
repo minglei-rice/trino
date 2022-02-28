@@ -27,6 +27,7 @@ import org.testng.annotations.Test;
 import java.util.Optional;
 
 import static io.trino.testing.TestingHandles.TEST_CATALOG_HANDLE;
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.NANOSECONDS;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNull;
@@ -63,6 +64,7 @@ public class TestOperatorStats
             new Duration(11, NANOSECONDS),
             DataSize.ofBytes(12),
             13,
+            new Duration(2000, MILLISECONDS),
             533,
             new Metrics(ImmutableMap.of("metrics", new LongCount(42))),
             new Metrics(ImmutableMap.of("connectorMetrics", new LongCount(43))),
@@ -111,6 +113,7 @@ public class TestOperatorStats
             new Duration(11, NANOSECONDS),
             DataSize.ofBytes(12),
             13,
+            new Duration(2000, MILLISECONDS),
             533,
             new Metrics(ImmutableMap.of("metrics", new LongCount(42))),
             new Metrics(ImmutableMap.of("connectorMetrics", new LongCount(43))),
@@ -169,6 +172,7 @@ public class TestOperatorStats
         assertEquals(actual.getOutputDataSize(), DataSize.ofBytes(12));
         assertEquals(actual.getOutputPositions(), 13);
 
+        assertEquals(actual.getIndexReadTime(), new Duration(2000, MILLISECONDS));
         assertEquals(actual.getDynamicFilterSplitsProcessed(), 533);
         assertEquals(actual.getMetrics().getMetrics(), ImmutableMap.of("metrics", new LongCount(42)));
         assertEquals(actual.getConnectorMetrics().getMetrics(), ImmutableMap.of("connectorMetrics", new LongCount(43)));
@@ -220,6 +224,7 @@ public class TestOperatorStats
         assertEquals(actual.getOutputDataSize(), DataSize.ofBytes(3 * 12));
         assertEquals(actual.getOutputPositions(), 3 * 13);
 
+        assertEquals(actual.getIndexReadTime(), new Duration(3 * 2000, MILLISECONDS));
         assertEquals(actual.getDynamicFilterSplitsProcessed(), 3 * 533);
         assertEquals(actual.getMetrics().getMetrics(), ImmutableMap.of("metrics", new LongCount(3 * 42)));
         assertEquals(actual.getConnectorMetrics().getMetrics(), ImmutableMap.of("connectorMetrics", new LongCount(3 * 43)));
@@ -269,6 +274,7 @@ public class TestOperatorStats
         assertEquals(actual.getOutputDataSize(), DataSize.ofBytes(3 * 12));
         assertEquals(actual.getOutputPositions(), 3 * 13);
 
+        assertEquals(actual.getIndexReadTime(), new Duration(3 * 2000, MILLISECONDS));
         assertEquals(actual.getDynamicFilterSplitsProcessed(), 3 * 533);
         assertEquals(actual.getMetrics().getMetrics(), ImmutableMap.of("metrics", new LongCount(3 * 42)));
         assertEquals(actual.getConnectorMetrics().getMetrics(), ImmutableMap.of("connectorMetrics", new LongCount(3 * 43)));

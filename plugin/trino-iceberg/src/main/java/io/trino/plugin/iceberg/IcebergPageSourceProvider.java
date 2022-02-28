@@ -267,11 +267,10 @@ public class IcebergPageSourceProvider
                 long start = System.currentTimeMillis();
                 HdfsFileSystem hdfsFileSystem = new HdfsFileSystem(fs.getEnvironment(), hdfsContext);
                 MatchResult indexMatchResult = fileScanTask.isRequired(hdfsFileSystem.toFileIo(), false);
-                split.setIsSkippedByIndex(!indexMatchResult.result());
-                split.setIndexReadTime(System.currentTimeMillis() - start);
+                split.setIndexReadTimeMillis(System.currentTimeMillis() - start);
                 rowSet = indexMatchResult.getRowSet();
-                if (split.isSkippedByIndex()) {
-                    log.info("Indices hit for file : %s, split skipped, time spent : %s ms", fileScanTask.file().path(), split.getIndexReadTime());
+                if (!indexMatchResult.result()) {
+                    log.info("Indices hit for file : %s, split skipped, time spent : %s ms", fileScanTask.file().path(), split.getIndexReadTimeMillis());
                     return new EmptyPageSource(makeMetrics(SKIPPED_BY_INDEX_IN_WORKER, 1, split.getLength()));
                 }
                 log.info("Indices missed for file : %s, time spent : %s ms", fileScanTask.file().path(), System.currentTimeMillis() - start);

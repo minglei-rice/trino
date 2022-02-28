@@ -62,6 +62,9 @@ public class TaskStats
     private final boolean fullyBlocked;
     private final Set<BlockedReason> blockedReasons;
 
+    private final Duration avgIndexReadTime;
+    private final Duration maxIndexReadTime;
+
     private final DataSize physicalInputDataSize;
     private final long physicalInputPositions;
     private final Duration physicalInputReadTime;
@@ -116,6 +119,8 @@ public class TaskStats
                 new Duration(0, MILLISECONDS),
                 false,
                 ImmutableSet.of(),
+                new Duration(0, MILLISECONDS),
+                new Duration(0, MILLISECONDS),
                 DataSize.ofBytes(0),
                 0,
                 new Duration(0, MILLISECONDS),
@@ -165,6 +170,9 @@ public class TaskStats
             @JsonProperty("totalBlockedTime") Duration totalBlockedTime,
             @JsonProperty("fullyBlocked") boolean fullyBlocked,
             @JsonProperty("blockedReasons") Set<BlockedReason> blockedReasons,
+
+            @JsonProperty("avgIndexReadTime") Duration avgIndexReadTime,
+            @JsonProperty("maxIndexReadTime") Duration maxIndexReadTime,
 
             @JsonProperty("physicalInputDataSize") DataSize physicalInputDataSize,
             @JsonProperty("physicalInputPositions") long physicalInputPositions,
@@ -233,6 +241,9 @@ public class TaskStats
         this.totalBlockedTime = requireNonNull(totalBlockedTime, "totalBlockedTime is null");
         this.fullyBlocked = fullyBlocked;
         this.blockedReasons = ImmutableSet.copyOf(requireNonNull(blockedReasons, "blockedReasons is null"));
+
+        this.avgIndexReadTime = requireNonNull(avgIndexReadTime, "avgIndexReadTime is null");
+        this.maxIndexReadTime = requireNonNull(maxIndexReadTime, "maxIndexReadTime is null");
 
         this.physicalInputDataSize = requireNonNull(physicalInputDataSize, "physicalInputDataSize is null");
         checkArgument(physicalInputPositions >= 0, "physicalInputPositions is negative");
@@ -399,6 +410,18 @@ public class TaskStats
     }
 
     @JsonProperty
+    public Duration getAvgIndexReadTime()
+    {
+        return avgIndexReadTime;
+    }
+
+    @JsonProperty
+    public Duration getMaxIndexReadTime()
+    {
+        return maxIndexReadTime;
+    }
+
+    @JsonProperty
     public DataSize getPhysicalInputDataSize()
     {
         return physicalInputDataSize;
@@ -552,6 +575,8 @@ public class TaskStats
                 totalBlockedTime,
                 fullyBlocked,
                 blockedReasons,
+                avgIndexReadTime,
+                maxIndexReadTime,
                 physicalInputDataSize,
                 physicalInputPositions,
                 physicalInputReadTime,
@@ -599,6 +624,8 @@ public class TaskStats
                 totalBlockedTime,
                 fullyBlocked,
                 blockedReasons,
+                avgIndexReadTime,
+                maxIndexReadTime,
                 physicalInputDataSize,
                 physicalInputPositions,
                 physicalInputReadTime,

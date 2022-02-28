@@ -306,6 +306,7 @@ public class TableScanOperator
                 operatorContext.recordDynamicFilterSplitProcessed(1L);
             }
             source = pageSourceProvider.createPageSource(operatorContext.getSession(), split, table, columns, dynamicFilter);
+            operatorContext.recordIndexReadTime(split.getIndexReadTimeMillis());
         }
 
         Page page = source.getNextPage();
