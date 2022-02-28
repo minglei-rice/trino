@@ -76,6 +76,9 @@ public class ScanFilterAndProjectOperator
     @Nullable
     private ConnectorPageSource pageSource;
 
+    private long skippedSplitsByIndex;
+    private long indexReadTime;
+
     private long processedPositions;
     private long processedBytes;
     private long physicalBytes;
@@ -126,6 +129,18 @@ public class ScanFilterAndProjectOperator
             }
             return Optional.empty();
         };
+    }
+
+    @Override
+    public long getSkippedSplitsByIndex()
+    {
+        return skippedSplitsByIndex;
+    }
+
+    @Override
+    public long getIndexReadTime()
+    {
+        return indexReadTime;
     }
 
     @Override
@@ -266,6 +281,8 @@ public class ScanFilterAndProjectOperator
             }
             else {
                 source = pageSourceProvider.createPageSource(session, split, table, columns, dynamicFilter);
+                skippedSplitsByIndex += split.isSkippedByIndex() ? 1 : 0;
+                indexReadTime += split.getIndexReadTime();
             }
 
             if (source instanceof RecordPageSource) {

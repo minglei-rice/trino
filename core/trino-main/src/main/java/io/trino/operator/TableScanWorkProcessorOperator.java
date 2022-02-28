@@ -89,6 +89,18 @@ public class TableScanWorkProcessorOperator
     }
 
     @Override
+    public long getSkippedSplitsByIndex()
+    {
+        return splitToPages.skippedSplitsByIndex;
+    }
+
+    @Override
+    public long getIndexReadTime()
+    {
+        return splitToPages.indexReadTime;
+    }
+
+    @Override
     public DataSize getPhysicalInputDataSize()
     {
         return splitToPages.getPhysicalInputDataSize();
@@ -146,6 +158,9 @@ public class TableScanWorkProcessorOperator
         final DynamicFilter dynamicFilter;
         final AggregatedMemoryContext aggregatedMemoryContext;
 
+        long skippedSplitsByIndex;
+        long indexReadTime;
+
         long processedBytes;
         long processedPositions;
         long dynamicFilterSplitsProcessed;
@@ -185,6 +200,8 @@ public class TableScanWorkProcessorOperator
             }
             else {
                 source = pageSourceProvider.createPageSource(session, split, table, columns, dynamicFilter);
+                skippedSplitsByIndex += split.isSkippedByIndex() ? 1 : 0;
+                indexReadTime += split.getIndexReadTime();
             }
 
             return TransformationState.ofResult(

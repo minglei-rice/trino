@@ -81,6 +81,16 @@ public final class Split
         return connectorSplit.getSplitWeight();
     }
 
+    public boolean isSkippedByIndex()
+    {
+        return connectorSplit.isSkippedByIndex();
+    }
+
+    public long getIndexReadTime()
+    {
+        return connectorSplit.getIndexReadTime();
+    }
+
     @Override
     public String toString()
     {

@@ -30,4 +30,14 @@ public interface ConnectorSplit
     {
         return SplitWeight.standard();
     }
+
+    default boolean isSkippedByIndex()
+    {
+        return false;
+    }
+
+    default long getIndexReadTime()
+    {
+        return 0;
+    }
 }

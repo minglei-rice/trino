@@ -56,6 +56,7 @@ import static io.trino.spi.StandardErrorCode.GENERIC_INTERNAL_ERROR;
 import static java.lang.Math.max;
 import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.NANOSECONDS;
 
 /**
@@ -71,6 +72,9 @@ public class OperatorContext
     private final String operatorType;
     private final DriverContext driverContext;
     private final Executor executor;
+
+    private final AtomicLong skippedSplitsByIndex = new AtomicLong();
+    private final AtomicLong indexReadTime = new AtomicLong();
 
     private final CounterStat physicalInputDataSize = new CounterStat();
     private final CounterStat physicalInputPositions = new CounterStat();
@@ -163,6 +167,16 @@ public class OperatorContext
     public boolean isDone()
     {
         return driverContext.isDone();
+    }
+
+    /**
+     * Record the number of splits skipped by index and the total time of reading indices in an operator.
+     * This metric is valid only for source operators reading iceberg tables.
+     */
+    public void recordIndexStats(long skippedSplitsByIndex, long indexReadTime)
+    {
+        this.skippedSplitsByIndex.getAndAdd(skippedSplitsByIndex);
+        this.indexReadTime.getAndAdd(indexReadTime);
     }
 
     void recordAddInput(OperationTimer operationTimer, Page page)
@@ -552,6 +566,9 @@ public class OperatorContext
                 operatorType,
 
                 1,
+
+                skippedSplitsByIndex.get(),
+                new Duration(indexReadTime.get(), MILLISECONDS).convertToMostSuccinctTimeUnit(),
 
                 addInputTiming.getCalls(),
                 new Duration(addInputTiming.getWallNanos(), NANOSECONDS).convertToMostSuccinctTimeUnit(),

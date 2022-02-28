@@ -46,6 +46,9 @@ public class WorkProcessorSourceOperatorAdapter
 
     private boolean operatorFinishing;
 
+    private long previousSkippedSplitsByIndex;
+    private long previousIndexReadTime;
+
     private long previousPhysicalInputBytes;
     private long previousPhysicalInputPositions;
     private long previousInternalNetworkInputBytes;
@@ -183,6 +186,9 @@ public class WorkProcessorSourceOperatorAdapter
 
     private void updateOperatorStats()
     {
+        long currentSkippedSplitsByIndex = sourceOperator.getSkippedSplitsByIndex();
+        long currentIndexReadTime = sourceOperator.getIndexReadTime();
+
         long currentPhysicalInputBytes = sourceOperator.getPhysicalInputDataSize().toBytes();
         long currentPhysicalInputPositions = sourceOperator.getPhysicalInputPositions();
         long currentReadTimeNanos = sourceOperator.getReadTime().roundTo(NANOSECONDS);
@@ -196,6 +202,16 @@ public class WorkProcessorSourceOperatorAdapter
         long currentDynamicFilterSplitsProcessed = sourceOperator.getDynamicFilterSplitsProcessed();
         Metrics currentMetrics = sourceOperator.getMetrics();
         Metrics currentConnectorMetrics = sourceOperator.getConnectorMetrics();
+
+        if (currentSkippedSplitsByIndex != previousSkippedSplitsByIndex
+                || currentIndexReadTime != previousIndexReadTime) {
+            operatorContext.recordIndexStats(
+                    currentSkippedSplitsByIndex - previousSkippedSplitsByIndex,
+                    currentIndexReadTime - previousIndexReadTime);
+
+            previousSkippedSplitsByIndex = currentSkippedSplitsByIndex;
+            previousIndexReadTime = currentIndexReadTime;
+        }
 
         if (currentPhysicalInputBytes != previousPhysicalInputBytes
                 || currentPhysicalInputPositions != previousPhysicalInputPositions

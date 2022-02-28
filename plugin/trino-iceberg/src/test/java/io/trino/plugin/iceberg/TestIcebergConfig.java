@@ -45,7 +45,7 @@ public class TestIcebergConfig
                 .setDynamicFilteringWaitTimeout(new Duration(0, MINUTES))
                 .setTableStatisticsEnabled(true)
                 .setProjectionPushdownEnabled(true)
-                .setReadIndicesSwitchOn(false));
+                .setReadIndicesSwitchOn(true));
     }
 
     @Test
@@ -61,7 +61,7 @@ public class TestIcebergConfig
                 .put("iceberg.dynamic-filtering.wait-timeout", "1h")
                 .put("iceberg.table-statistics-enabled", "false")
                 .put("iceberg.projection-pushdown-enabled", "false")
-                .put("iceberg.read-indices-switch-on", "true")
+                .put("iceberg.read-indices-switch-on", "false")
                 .build();
 
         IcebergConfig expected = new IcebergConfig()
@@ -74,7 +74,7 @@ public class TestIcebergConfig
                 .setDynamicFilteringWaitTimeout(Duration.valueOf("1h"))
                 .setTableStatisticsEnabled(false)
                 .setProjectionPushdownEnabled(false)
-                .setReadIndicesSwitchOn(true);
+                .setReadIndicesSwitchOn(false);
 
         assertFullMapping(properties, expected);
     }

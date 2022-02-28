@@ -32,6 +32,7 @@ import java.util.Optional;
 
 import static io.airlift.units.DataSize.succinctBytes;
 import static io.trino.server.DynamicFilterService.DynamicFiltersStats;
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.NANOSECONDS;
 import static org.joda.time.DateTimeZone.UTC;
 import static org.testng.Assert.assertEquals;
@@ -46,6 +47,8 @@ public class TestQueryStats
                     new PlanNodeId("13"),
                     TableWriterOperator.class.getSimpleName(),
                     14L,
+                    183L,
+                    new Duration(184, MILLISECONDS),
                     15L,
                     new Duration(16, NANOSECONDS),
                     new Duration(17, NANOSECONDS),
@@ -87,6 +90,8 @@ public class TestQueryStats
                     new PlanNodeId("23"),
                     FilterAndProjectOperator.class.getSimpleName(),
                     24L,
+                    283L,
+                    new Duration(284, MILLISECONDS),
                     25L,
                     new Duration(26, NANOSECONDS),
                     new Duration(27, NANOSECONDS),
@@ -128,6 +133,8 @@ public class TestQueryStats
                     new PlanNodeId("33"),
                     TableWriterOperator.class.getSimpleName(),
                     34L,
+                    383L,
+                    new Duration(384, MILLISECONDS),
                     35L,
                     new Duration(36, NANOSECONDS),
                     new Duration(37, NANOSECONDS),

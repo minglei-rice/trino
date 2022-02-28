@@ -190,11 +190,13 @@ public class IcebergPageSourceProvider
         if (fileScanTask != null) {
             long start = System.currentTimeMillis();
             HdfsFileIo hdfsFileIo = new HdfsFileIo(hdfsEnvironment, hdfsContext);
-            if (!fileScanTask.isRequired(hdfsFileIo, false)) {
-                log.debug("Indices hit for file : %s, split skipped, time spent : %s ms", fileScanTask.file().path(), System.currentTimeMillis() - start);
+            split.setIsSkippedByIndex(!fileScanTask.isRequired(hdfsFileIo, false));
+            split.setIndexReadTime(System.currentTimeMillis() - start);
+            if (split.isSkippedByIndex()) {
+                log.info("Indices hit for file : %s, split skipped, time spent : %s ms", fileScanTask.file().path(), split.getIndexReadTime());
                 return new EmptyPageSource();
             }
-            log.debug("Indices missed for file : %s, time spent : %s ms", fileScanTask.file().path(), System.currentTimeMillis() - start);
+            log.info("Indices missed for file : %s, time spent : %s ms", fileScanTask.file().path(), split.getIndexReadTime());
         }
 
         List<IcebergColumnHandle> icebergColumns = columns.stream()

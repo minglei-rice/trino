@@ -324,6 +324,17 @@ export function computeRate(count: number, ms: number): number {
     return (count / ms) * 1000.0;
 }
 
+export function computeAvgDuration(duration: string, count: number): string {
+    if (count === 0) {
+        return formatDuration(0)
+    }
+    const number = parseDuration(duration)
+    if (number === null) {
+        return null
+    }
+    return formatDuration(number / count)
+}
+
 export function precisionRound(n: number): string {
     if (n < 10) {
         return n.toFixed(2);

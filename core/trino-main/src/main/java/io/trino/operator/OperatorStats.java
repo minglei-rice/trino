@@ -31,6 +31,7 @@ import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Verify.verify;
 import static java.lang.Math.max;
 import static java.util.Objects.requireNonNull;
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.NANOSECONDS;
 
 @Immutable
@@ -43,6 +44,9 @@ public class OperatorStats
     private final String operatorType;
 
     private final long totalDrivers;
+
+    private final long skippedSplitsByIndex;
+    private final Duration indexReadTime;
 
     private final long addInputCalls;
     private final Duration addInputWall;
@@ -99,6 +103,9 @@ public class OperatorStats
 
             @JsonProperty("totalDrivers") long totalDrivers,
 
+            @JsonProperty("skippedSplitsByIndex") long skippedSplitsByIndex,
+            @JsonProperty("indexReadTime") Duration indexReadTime,
+
             @JsonProperty("addInputCalls") long addInputCalls,
             @JsonProperty("addInputWall") Duration addInputWall,
             @JsonProperty("addInputCpu") Duration addInputCpu,
@@ -153,6 +160,9 @@ public class OperatorStats
         this.operatorType = requireNonNull(operatorType, "operatorType is null");
 
         this.totalDrivers = totalDrivers;
+
+        this.skippedSplitsByIndex = skippedSplitsByIndex;
+        this.indexReadTime = requireNonNull(indexReadTime, "indexReadTime is null");
 
         this.addInputCalls = addInputCalls;
         this.addInputWall = requireNonNull(addInputWall, "addInputWall is null");
@@ -236,6 +246,18 @@ public class OperatorStats
     public long getTotalDrivers()
     {
         return totalDrivers;
+    }
+
+    @JsonProperty
+    public long getSkippedSplitsByIndex()
+    {
+        return skippedSplitsByIndex;
+    }
+
+    @JsonProperty
+    public Duration getIndexReadTime()
+    {
+        return indexReadTime;
     }
 
     @JsonProperty
@@ -452,6 +474,9 @@ public class OperatorStats
     {
         long totalDrivers = this.totalDrivers;
 
+        long skippedSplitsByIndex = this.skippedSplitsByIndex;
+        long indexReadTime = this.indexReadTime.roundTo(MILLISECONDS);
+
         long addInputCalls = this.addInputCalls;
         long addInputWall = this.addInputWall.roundTo(NANOSECONDS);
         long addInputCpu = this.addInputCpu.roundTo(NANOSECONDS);
@@ -500,6 +525,9 @@ public class OperatorStats
             checkArgument(operator.getOperatorType().equals(operatorType), "Expected operatorType to be %s but was %s", operatorType, operator.getOperatorType());
 
             totalDrivers += operator.totalDrivers;
+
+            skippedSplitsByIndex += operator.getSkippedSplitsByIndex();
+            indexReadTime += operator.getIndexReadTime().roundTo(MILLISECONDS);
 
             addInputCalls += operator.getAddInputCalls();
             addInputWall += operator.getAddInputWall().roundTo(NANOSECONDS);
@@ -561,6 +589,9 @@ public class OperatorStats
                 operatorType,
 
                 totalDrivers,
+
+                skippedSplitsByIndex,
+                new Duration(indexReadTime, MILLISECONDS).convertToMostSuccinctTimeUnit(),
 
                 addInputCalls,
                 new Duration(addInputWall, NANOSECONDS).convertToMostSuccinctTimeUnit(),
@@ -636,6 +667,8 @@ public class OperatorStats
                 planNodeId,
                 operatorType,
                 totalDrivers,
+                skippedSplitsByIndex,
+                indexReadTime,
                 addInputCalls,
                 addInputWall,
                 addInputCpu,

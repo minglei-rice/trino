@@ -51,6 +51,9 @@ public class TestPipelineStats
             19,
             4,
 
+            143,
+            getTestDistribution(144),
+
             DataSize.ofBytes(5),
             DataSize.ofBytes(6),
             DataSize.ofBytes(7),
@@ -113,6 +116,9 @@ public class TestPipelineStats
         assertEquals(actual.getRunningPartitionedSplitsWeight(), 22L);
         assertEquals(actual.getBlockedDrivers(), 19);
         assertEquals(actual.getCompletedDrivers(), 4);
+
+        assertEquals(actual.getSkippedSplitsByIndex(), 143);
+        assertEquals(actual.getIndexReadTime().getCount(), 144.0);
 
         assertEquals(actual.getUserMemoryReservation(), DataSize.ofBytes(5));
         assertEquals(actual.getRevocableMemoryReservation(), DataSize.ofBytes(6));

@@ -51,6 +51,9 @@ public class TaskStats
     private final int blockedDrivers;
     private final int completedDrivers;
 
+    private final long skippedSplitsByIndex;
+    private final Duration totalIndexReadTime;
+
     private final double cumulativeUserMemory;
     private final double cumulativeSystemMemory;
     private final DataSize userMemoryReservation;
@@ -104,6 +107,8 @@ public class TaskStats
                 0L,
                 0,
                 0,
+                0,
+                new Duration(0, MILLISECONDS),
                 0.0,
                 0.0,
                 DataSize.ofBytes(0),
@@ -150,6 +155,9 @@ public class TaskStats
             @JsonProperty("runningPartitionedSplitsWeight") long runningPartitionedSplitsWeight,
             @JsonProperty("blockedDrivers") int blockedDrivers,
             @JsonProperty("completedDrivers") int completedDrivers,
+
+            @JsonProperty("skippedSplitsByIndex") long skippedSplitsByIndex,
+            @JsonProperty("totalIndexReadTime") Duration totalIndexReadTime,
 
             @JsonProperty("cumulativeUserMemory") double cumulativeUserMemory,
             @JsonProperty("cumulativeSystemMemory") double cumulativeSystemMemory,
@@ -215,6 +223,9 @@ public class TaskStats
 
         checkArgument(completedDrivers >= 0, "completedDrivers is negative");
         this.completedDrivers = completedDrivers;
+
+        this.skippedSplitsByIndex = skippedSplitsByIndex;
+        this.totalIndexReadTime = requireNonNull(totalIndexReadTime, "totalIndexReadTime is null");
 
         this.cumulativeUserMemory = cumulativeUserMemory;
         this.cumulativeSystemMemory = cumulativeSystemMemory;
@@ -332,6 +343,18 @@ public class TaskStats
     public int getCompletedDrivers()
     {
         return completedDrivers;
+    }
+
+    @JsonProperty
+    public long getSkippedSplitsByIndex()
+    {
+        return skippedSplitsByIndex;
+    }
+
+    @JsonProperty
+    public Duration getTotalIndexReadTime()
+    {
+        return totalIndexReadTime;
     }
 
     @JsonProperty
@@ -527,6 +550,8 @@ public class TaskStats
                 runningPartitionedSplitsWeight,
                 blockedDrivers,
                 completedDrivers,
+                skippedSplitsByIndex,
+                totalIndexReadTime,
                 cumulativeUserMemory,
                 cumulativeSystemMemory,
                 userMemoryReservation,
@@ -573,6 +598,8 @@ public class TaskStats
                 runningPartitionedSplitsWeight,
                 blockedDrivers,
                 completedDrivers,
+                skippedSplitsByIndex,
+                totalIndexReadTime,
                 cumulativeUserMemory,
                 cumulativeSystemMemory,
                 userMemoryReservation,

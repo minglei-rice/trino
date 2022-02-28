@@ -426,6 +426,9 @@ public class TaskContext
         int blockedDrivers = 0;
         int completedDrivers = 0;
 
+        long skippedSplitsByIndex = 0;
+        long totalIndexReadTime = 0;
+
         long totalScheduledTime = 0;
         long totalCpuTime = 0;
         long totalBlockedTime = 0;
@@ -478,6 +481,9 @@ public class TaskContext
             totalBlockedTime += pipeline.getTotalBlockedTime().roundTo(NANOSECONDS);
 
             if (pipeline.isInputPipeline()) {
+                skippedSplitsByIndex += pipeline.getSkippedSplitsByIndex();
+                totalIndexReadTime += Math.round(pipeline.getIndexReadTime().getTotal());
+
                 physicalInputDataSize += pipeline.getPhysicalInputDataSize().toBytes();
                 physicalInputPositions += pipeline.getPhysicalInputPositions();
                 physicalInputReadTime += pipeline.getPhysicalInputReadTime().roundTo(NANOSECONDS);
@@ -553,6 +559,8 @@ public class TaskContext
                 runningPartitionedSplitsWeight,
                 blockedDrivers,
                 completedDrivers,
+                skippedSplitsByIndex,
+                new Duration(totalIndexReadTime, MILLISECONDS).convertToMostSuccinctTimeUnit(),
                 cumulativeUserMemory.get(),
                 cumulativeSystemMemory.get(),
                 succinctBytes(userMemory),

@@ -56,6 +56,7 @@ import static io.trino.operator.WorkProcessor.ProcessState.Type.BLOCKED;
 import static io.trino.operator.WorkProcessor.ProcessState.Type.FINISHED;
 import static io.trino.operator.project.MergePages.mergePages;
 import static java.util.Objects.requireNonNull;
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.NANOSECONDS;
 
 public class WorkProcessorPipelineSourceOperator
@@ -226,6 +227,9 @@ public class WorkProcessorPipelineSourceOperator
             // update input stats for source operator
             WorkProcessorSourceOperator sourceOperator = (WorkProcessorSourceOperator) context.operator;
 
+            long deltaSkippedSplitsByIndex = deltaAndSet(context.skippedSplitsByIndex, sourceOperator.getSkippedSplitsByIndex());
+            long deltaIndexReadTime = deltaAndSet(context.indexReadTime, sourceOperator.getIndexReadTime());
+
             long deltaPhysicalInputDataSize = deltaAndSet(context.physicalInputDataSize, sourceOperator.getPhysicalInputDataSize().toBytes());
             long deltaPhysicalInputPositions = deltaAndSet(context.physicalInputPositions, sourceOperator.getPhysicalInputPositions());
 
@@ -240,6 +244,7 @@ public class WorkProcessorPipelineSourceOperator
             context.dynamicFilterSplitsProcessed.set(sourceOperator.getDynamicFilterSplitsProcessed());
             context.connectorMetrics.set(sourceOperator.getConnectorMetrics());
 
+            operatorContext.recordIndexStats(deltaSkippedSplitsByIndex, deltaIndexReadTime);
             operatorContext.recordPhysicalInputWithTiming(deltaPhysicalInputDataSize, deltaPhysicalInputPositions, deltaReadTimeNanos);
             operatorContext.recordNetworkInput(deltaInternalNetworkInputDataSize, deltaInternalNetworkInputPositions);
             operatorContext.recordProcessedInput(deltaInputDataSize, deltaInputPositions);
@@ -316,6 +321,9 @@ public class WorkProcessorPipelineSourceOperator
                         context.planNodeId,
                         context.operatorType,
                         1,
+
+                        context.skippedSplitsByIndex.get(),
+                        new Duration(context.indexReadTime.get(), MILLISECONDS),
 
                         // WorkProcessorOperator doesn't have addInput call
                         0,
@@ -671,6 +679,9 @@ public class WorkProcessorPipelineSourceOperator
         final PlanNodeId planNodeId;
         final String operatorType;
         final MemoryTrackingContext memoryTrackingContext;
+
+        final AtomicLong skippedSplitsByIndex = new AtomicLong();
+        final AtomicLong indexReadTime = new AtomicLong();
 
         final OperationTiming operatorTiming = new OperationTiming();
         final AtomicLong blockedWallNanos = new AtomicLong();

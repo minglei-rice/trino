@@ -27,6 +27,7 @@ import org.testng.annotations.Test;
 
 import java.util.Optional;
 
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.NANOSECONDS;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNull;
@@ -44,6 +45,8 @@ public class TestOperatorStats
             "test",
 
             1,
+            53,
+            new Duration(54, MILLISECONDS),
 
             2,
             new Duration(3, NANOSECONDS),
@@ -93,6 +96,8 @@ public class TestOperatorStats
             "test",
 
             1,
+            53,
+            new Duration(54, MILLISECONDS),
 
             2,
             new Duration(3, NANOSECONDS),
@@ -152,6 +157,8 @@ public class TestOperatorStats
         assertEquals(actual.getOperatorType(), "test");
 
         assertEquals(actual.getTotalDrivers(), 1);
+        assertEquals(actual.getSkippedSplitsByIndex(), 53);
+        assertEquals(actual.getIndexReadTime(), new Duration(54, MILLISECONDS));
         assertEquals(actual.getAddInputCalls(), 2);
         assertEquals(actual.getAddInputWall(), new Duration(3, NANOSECONDS));
         assertEquals(actual.getAddInputCpu(), new Duration(4, NANOSECONDS));
@@ -204,6 +211,8 @@ public class TestOperatorStats
         assertEquals(actual.getOperatorType(), "test");
 
         assertEquals(actual.getTotalDrivers(), 3 * 1);
+        assertEquals(actual.getSkippedSplitsByIndex(), 3 * 53);
+        assertEquals(actual.getIndexReadTime(), new Duration(3 * 54, MILLISECONDS));
         assertEquals(actual.getAddInputCalls(), 3 * 2);
         assertEquals(actual.getAddInputWall(), new Duration(3 * 3, NANOSECONDS));
         assertEquals(actual.getAddInputCpu(), new Duration(3 * 4, NANOSECONDS));
@@ -254,6 +263,8 @@ public class TestOperatorStats
         assertEquals(actual.getOperatorType(), "test");
 
         assertEquals(actual.getTotalDrivers(), 3 * 1);
+        assertEquals(actual.getSkippedSplitsByIndex(), 3 * 53);
+        assertEquals(actual.getIndexReadTime(), new Duration(3 * 54, MILLISECONDS));
         assertEquals(actual.getAddInputCalls(), 3 * 2);
         assertEquals(actual.getAddInputWall(), new Duration(3 * 3, NANOSECONDS));
         assertEquals(actual.getAddInputCpu(), new Duration(3 * 4, NANOSECONDS));

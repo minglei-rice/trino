@@ -38,7 +38,7 @@ public class IcebergConfig
     private Duration dynamicFilteringWaitTimeout = new Duration(0, SECONDS);
     private boolean tableStatisticsEnabled = true;
     private boolean projectionPushdownEnabled = true;
-    private boolean readIndicesSwitchOn;
+    private boolean readIndicesSwitchOn = true;
 
     public CatalogType getCatalogType()
     {

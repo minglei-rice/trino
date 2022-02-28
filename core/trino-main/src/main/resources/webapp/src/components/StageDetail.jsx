@@ -271,6 +271,14 @@ class OperatorDetail extends React.Component {
                                         {formatCount(rowOutputRate) + " rows/s (" + formatDataSize(byteOutputRate) + "/s)"}
                                     </td>
                                 </tr>
+                                <tr>
+                                    <td>
+                                        Skipped Splits by Index
+                                    </td>
+                                    <td>
+                                        {operator.skippedSplitsByIndex}
+                                    </td>
+                                </tr>
                                 </tbody>
                             </table>
                         </div>
@@ -307,6 +315,14 @@ class OperatorDetail extends React.Component {
                                     </td>
                                     <td>
                                         {operatorTasks.length}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td>
+                                        Total Index Read Time
+                                    </td>
+                                    <td>
+                                        {formatDuration(parseDuration(operator.indexReadTime))}
                                     </td>
                                 </tr>
                                 </tbody>

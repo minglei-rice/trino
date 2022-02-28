@@ -53,6 +53,9 @@ public class PipelineStats
     private final int blockedDrivers;
     private final int completedDrivers;
 
+    private final long skippedSplitsByIndex;
+    private final DistributionSnapshot indexReadTime;
+
     private final DataSize userMemoryReservation;
     private final DataSize revocableMemoryReservation;
     private final DataSize systemMemoryReservation;
@@ -107,6 +110,9 @@ public class PipelineStats
             @JsonProperty("runningPartitionedSplitsWeight") long runningPartitionedSplitsWeight,
             @JsonProperty("blockedDrivers") int blockedDrivers,
             @JsonProperty("completedDrivers") int completedDrivers,
+
+            @JsonProperty("skippedSplitsByIndex") long skippedSplitsByIndex,
+            @JsonProperty("indexReadTime") DistributionSnapshot indexReadTime,
 
             @JsonProperty("userMemoryReservation") DataSize userMemoryReservation,
             @JsonProperty("revocableMemoryReservation") DataSize revocableMemoryReservation,
@@ -169,6 +175,9 @@ public class PipelineStats
         this.blockedDrivers = blockedDrivers;
         checkArgument(completedDrivers >= 0, "completedDrivers is negative");
         this.completedDrivers = completedDrivers;
+
+        this.skippedSplitsByIndex = skippedSplitsByIndex;
+        this.indexReadTime = requireNonNull(indexReadTime, "indexReadTime is null");
 
         this.userMemoryReservation = requireNonNull(userMemoryReservation, "userMemoryReservation is null");
         this.revocableMemoryReservation = requireNonNull(revocableMemoryReservation, "revocableMemoryReservation is null");
@@ -301,6 +310,18 @@ public class PipelineStats
     public int getCompletedDrivers()
     {
         return completedDrivers;
+    }
+
+    @JsonProperty
+    public long getSkippedSplitsByIndex()
+    {
+        return skippedSplitsByIndex;
+    }
+
+    @JsonProperty
+    public DistributionSnapshot getIndexReadTime()
+    {
+        return indexReadTime;
     }
 
     @JsonProperty
@@ -465,6 +486,8 @@ public class PipelineStats
                 runningPartitionedSplitsWeight,
                 blockedDrivers,
                 completedDrivers,
+                skippedSplitsByIndex,
+                indexReadTime,
                 userMemoryReservation,
                 revocableMemoryReservation,
                 systemMemoryReservation,

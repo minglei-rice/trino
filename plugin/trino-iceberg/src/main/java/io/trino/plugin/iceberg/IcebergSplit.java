@@ -47,6 +47,8 @@ public class IcebergSplit
     private final Map<Integer, Optional<String>> partitionKeys;
     private final String fileScanTaskEncode;
     private FileScanTask fileScanTask;
+    private boolean isSkippedByIndex;
+    private long indexReadTime;
 
     @JsonCreator
     public IcebergSplit(
@@ -140,6 +142,28 @@ public class IcebergSplit
             }
         }
         return fileScanTask;
+    }
+
+    public void setIsSkippedByIndex(boolean isSkippedByIndex)
+    {
+        this.isSkippedByIndex = isSkippedByIndex;
+    }
+
+    public void setIndexReadTime(long indexReadTime)
+    {
+        this.indexReadTime = indexReadTime;
+    }
+
+    @Override
+    public boolean isSkippedByIndex()
+    {
+        return isSkippedByIndex;
+    }
+
+    @Override
+    public long getIndexReadTime()
+    {
+        return indexReadTime;
     }
 
     @Override

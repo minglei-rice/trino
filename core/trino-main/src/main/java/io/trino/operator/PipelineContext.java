@@ -47,6 +47,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import static com.google.common.base.Preconditions.checkArgument;
 import static io.airlift.units.DataSize.succinctBytes;
 import static java.util.Objects.requireNonNull;
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.NANOSECONDS;
 import static java.util.stream.Collectors.toList;
 
@@ -68,6 +69,9 @@ public class PipelineContext
     private final AtomicLong totalSplitsWeight = new AtomicLong();
     private final AtomicInteger completedDrivers = new AtomicInteger();
     private final AtomicLong completedSplitsWeight = new AtomicLong();
+
+    private final AtomicLong skippedSplitsByIndex = new AtomicLong();
+    private final Distribution indexReadTime = new Distribution();
 
     private final AtomicReference<DateTime> executionStartTime = new AtomicReference<>();
     private final AtomicReference<DateTime> lastExecutionStartTime = new AtomicReference<>();
@@ -190,6 +194,12 @@ public class PipelineContext
         completedDrivers.getAndIncrement();
         if (partitioned) {
             completedSplitsWeight.addAndGet(driverContext.getSplitWeight());
+        }
+
+        skippedSplitsByIndex.getAndAdd(driverStats.getSkippedSplitsByIndex());
+        long driverIndexReadTime = driverStats.getIndexReadTime().roundTo(MILLISECONDS);
+        if (driverIndexReadTime > 0) {
+            indexReadTime.add(driverIndexReadTime);
         }
 
         queuedTime.add(driverStats.getQueuedTime().roundTo(NANOSECONDS));
@@ -353,6 +363,9 @@ public class PipelineContext
 
         int totalDrivers = completedDrivers + driverContexts.size();
 
+        long skippedSplitsByIndex = this.skippedSplitsByIndex.get();
+        Distribution indexReadTime = this.indexReadTime.duplicate();
+
         Distribution queuedTime = this.queuedTime.duplicate();
         Distribution elapsedTime = this.elapsedTime.duplicate();
 
@@ -468,6 +481,9 @@ public class PipelineContext
                 pipelineStatus.getRunningPartitionedSplitsWeight(),
                 pipelineStatus.getBlockedDrivers(),
                 completedDrivers,
+
+                skippedSplitsByIndex,
+                indexReadTime.snapshot(),
 
                 succinctBytes(pipelineMemoryContext.getUserMemory()),
                 succinctBytes(pipelineMemoryContext.getRevocableMemory()),

@@ -22,6 +22,7 @@ import org.joda.time.DateTime;
 import org.testng.annotations.Test;
 
 import static io.trino.operator.TestPipelineStats.assertExpectedPipelineStats;
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.NANOSECONDS;
 import static org.joda.time.DateTimeZone.UTC;
 import static org.testng.Assert.assertEquals;
@@ -46,6 +47,9 @@ public class TestTaskStats
             29L,
             24,
             10,
+
+            193,
+            new Duration(194, MILLISECONDS),
 
             11.0,
             5.0,
@@ -111,6 +115,9 @@ public class TestTaskStats
         assertEquals(actual.getRunningPartitionedSplitsWeight(), 29L);
         assertEquals(actual.getBlockedDrivers(), 24);
         assertEquals(actual.getCompletedDrivers(), 10);
+
+        assertEquals(actual.getSkippedSplitsByIndex(), 193);
+        assertEquals(actual.getTotalIndexReadTime(), new Duration(194, MILLISECONDS));
 
         assertEquals(actual.getCumulativeUserMemory(), 11.0);
         assertEquals(actual.getCumulativeSystemMemory(), 5.0);

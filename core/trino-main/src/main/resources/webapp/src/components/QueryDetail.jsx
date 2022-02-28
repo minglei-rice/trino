@@ -16,7 +16,7 @@ import React from "react";
 import Reactable from "reactable";
 
 import {
-    addToHistory,
+    addToHistory, computeAvgDuration,
     computeRate,
     formatCount,
     formatDataSize,
@@ -154,6 +154,12 @@ class TaskList extends React.Component {
                     <Td column="splitsDone" value={task.stats.completedDrivers}>
                         {task.stats.completedDrivers}
                     </Td>
+                    <Td column="splitsSkippedByIndex" value={task.stats.skippedSplitsByIndex}>
+                        {task.stats.skippedSplitsByIndex}
+                    </Td>
+                    <Td column="avgIndexReadTime" value={parseDuration(computeAvgDuration(task.stats.totalIndexReadTime, task.stats.completedDrivers))}>
+                        {computeAvgDuration(task.stats.totalIndexReadTime, task.stats.completedDrivers)}
+                    </Td>
                     <Td column="elapsedTime" value={parseDuration(task.stats.elapsedTime)}>
                         {task.stats.elapsedTime}
                     </Td>
@@ -180,6 +186,8 @@ class TaskList extends React.Component {
                     'splitsRunning',
                     'splitsBlocked',
                     'splitsDone',
+                    'splitsSkippedByIndex',
+                    'avgIndexReadTime',
                     'rows',
                     'rowsSec',
                     'bytes',
@@ -201,6 +209,10 @@ class TaskList extends React.Component {
                                                  title="Blocked splits"/></Th>
                 <Th column="splitsDone"><span className="glyphicon glyphicon-ok" style={GLYPHICON_HIGHLIGHT} data-toggle="tooltip" data-placement="top"
                                               title="Completed splits"/></Th>
+                <Th column="splitsSkippedByIndex"><span className="glyphicon glyphicon-share-alt" style={GLYPHICON_HIGHLIGHT} data-toggle="tooltip" data-placement="top"
+                                              title="Skipped splits by index"/></Th>
+                <Th column="avgIndexReadTime"><span className="glyphicon glyphicon-align-justify" style={GLYPHICON_HIGHLIGHT} data-toggle="tooltip" data-placement="top"
+                                              title="Average index read time per driver/split"/></Th>
                 <Th column="rows">Rows</Th>
                 <Th column="rowsSec">Rows/s</Th>
                 <Th column="bytes">Bytes</Th>

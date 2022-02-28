@@ -29,6 +29,16 @@ public interface WorkProcessorSourceOperator
 {
     Supplier<Optional<UpdatablePageSource>> getUpdatablePageSourceSupplier();
 
+    default long getSkippedSplitsByIndex()
+    {
+        return 0;
+    }
+
+    default long getIndexReadTime()
+    {
+        return 0;
+    }
+
     default DataSize getPhysicalInputDataSize()
     {
         return DataSize.ofBytes(0);

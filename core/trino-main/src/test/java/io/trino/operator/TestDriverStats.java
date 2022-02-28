@@ -23,6 +23,7 @@ import org.joda.time.DateTime;
 import org.testng.annotations.Test;
 
 import static io.trino.operator.TestOperatorStats.assertExpectedOperatorStats;
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.NANOSECONDS;
 import static org.joda.time.DateTimeZone.UTC;
 import static org.testng.Assert.assertEquals;
@@ -48,6 +49,9 @@ public class TestDriverStats
             new Duration(12, NANOSECONDS),
             false,
             ImmutableSet.of(),
+
+            143,
+            new Duration(144, MILLISECONDS),
 
             DataSize.ofBytes(131),
             141,
@@ -99,6 +103,9 @@ public class TestDriverStats
         assertEquals(actual.getTotalScheduledTime(), new Duration(9, NANOSECONDS));
         assertEquals(actual.getTotalCpuTime(), new Duration(10, NANOSECONDS));
         assertEquals(actual.getTotalBlockedTime(), new Duration(12, NANOSECONDS));
+
+        assertEquals(actual.getSkippedSplitsByIndex(), 143);
+        assertEquals(actual.getIndexReadTime(), new Duration(144, MILLISECONDS));
 
         assertEquals(actual.getPhysicalInputDataSize(), DataSize.ofBytes(131));
         assertEquals(actual.getPhysicalInputPositions(), 141);
