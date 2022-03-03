@@ -173,7 +173,30 @@
                 <enabled>false</enabled>
             </snapshots>
         </repository>
+        <repository>
+            <id>bilibili-nexus-releases</id>
+            <url>http://nexus.bilibili.co/content/repositories/releases/</url>
+        </repository>
+        <repository>
+            <id>bilibili-nexus-snapshots</id>
+            <url>http://nexus.bilibili.co/content/repositories/snapshots/</url>
+        </repository>
+
     </repositories>
+
+    <distributionManagement>
+        <repository>
+            <id>bilibili-nexus-releases</id>
+            <name>Nexus Release Repository</name>
+            <url>http://nexus.bilibili.co/content/repositories/releases/</url>
+        </repository>
+
+        <snapshotRepository>
+            <id>bilibili-nexus-snapshots</id>
+            <name>Nexus Snapshot Repository</name>
+            <url>http://nexus.bilibili.co/content/repositories/snapshots/</url>
+        </snapshotRepository>
+    </distributionManagement>
 
     <dependencyManagement>
         <dependencies>
@@ -1754,6 +1777,12 @@
                     <ignoredResourcePatterns combine.children="append">
                         <ignoredResourcePattern>logging.properties</ignoredResourcePattern>
                     </ignoredResourcePatterns>
+                    <ignoredDependencies>
+                        <dependency>
+                            <groupId>com.hadoop.gplcompression</groupId>
+                            <artifactId>hadoop-lzo</artifactId>
+                        </dependency>
+                    </ignoredDependencies>
                 </configuration>
             </plugin>
 
