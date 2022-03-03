@@ -17,6 +17,8 @@ import io.trino.plugin.hive.HdfsEnvironment;
 import io.trino.plugin.hive.HdfsEnvironment.HdfsContext;
 import io.trino.spi.TrinoException;
 import io.trino.spi.security.ConnectorIdentity;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.iceberg.hadoop.HadoopInputFile;
 import org.apache.iceberg.io.InputFile;
@@ -41,7 +43,10 @@ public class HdfsInputFile
         this.environment = requireNonNull(environment, "environment is null");
         requireNonNull(context, "context is null");
         try {
-            this.delegate = HadoopInputFile.fromPath(path, environment.getFileSystem(context, path), environment.getConfiguration(context, path));
+            FileSystem fileSystem = environment.getFileSystem(context, path);
+            Configuration configuration = environment.getConfiguration(context, path);
+            this.delegate = environment.doAs(context.getIdentity(),
+                    () -> HadoopInputFile.fromPath(path, fileSystem, configuration));
         }
         catch (IOException e) {
             throw new TrinoException(ICEBERG_FILESYSTEM_ERROR, "Failed to create input file: " + path, e);
