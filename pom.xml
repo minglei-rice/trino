@@ -175,11 +175,11 @@
         </repository>
         <repository>
             <id>bilibili-nexus-releases</id>
-            <url>http://nexus.bilibili.co/content/repositories/releases/</url>
+            <url>https://nexus.bilibili.co/content/repositories/releases/</url>
         </repository>
         <repository>
             <id>bilibili-nexus-snapshots</id>
-            <url>http://nexus.bilibili.co/content/repositories/snapshots/</url>
+            <url>https://nexus.bilibili.co/content/repositories/snapshots/</url>
         </repository>
 
     </repositories>
@@ -188,13 +188,13 @@
         <repository>
             <id>bilibili-nexus-releases</id>
             <name>Nexus Release Repository</name>
-            <url>http://nexus.bilibili.co/content/repositories/releases/</url>
+            <url>https://nexus.bilibili.co/content/repositories/releases/</url>
         </repository>
 
         <snapshotRepository>
             <id>bilibili-nexus-snapshots</id>
             <name>Nexus Snapshot Repository</name>
-            <url>http://nexus.bilibili.co/content/repositories/snapshots/</url>
+            <url>https://nexus.bilibili.co/content/repositories/snapshots/</url>
         </snapshotRepository>
     </distributionManagement>
 
@@ -570,7 +570,7 @@
             <dependency>
                 <groupId>io.trino.hadoop</groupId>
                 <artifactId>hadoop-apache</artifactId>
-                <version>3.2.0-16-olap</version>
+                <version>3.2.0-16-olap-SNAPSHOT</version>
             </dependency>
 
             <dependency>
