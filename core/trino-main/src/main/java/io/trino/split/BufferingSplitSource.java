@@ -17,6 +17,7 @@ import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import io.trino.connector.CatalogHandle;
 import io.trino.metadata.Split;
+import io.trino.spi.metrics.Metrics;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -68,6 +69,12 @@ public class BufferingSplitSource
     public Optional<List<Object>> getTableExecuteSplitsInfo()
     {
         return source.getTableExecuteSplitsInfo();
+    }
+
+    @Override
+    public Optional<Metrics> getMetrics()
+    {
+        return source.getMetrics();
     }
 
     private static class GetNextBatch

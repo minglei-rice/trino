@@ -27,6 +27,7 @@ import io.trino.hdfs.HdfsContext;
 import io.trino.hdfs.HdfsEnvironment;
 import io.trino.plugin.iceberg.delete.DeleteFile;
 import io.trino.plugin.iceberg.util.DataFileWithDeleteFiles;
+import io.trino.plugin.iceberg.util.MetricsUtils;
 import io.trino.spi.SplitWeight;
 import io.trino.spi.TrinoException;
 import io.trino.spi.connector.ColumnHandle;
@@ -35,6 +36,7 @@ import io.trino.spi.connector.ConnectorSplit;
 import io.trino.spi.connector.ConnectorSplitSource;
 import io.trino.spi.connector.Constraint;
 import io.trino.spi.connector.DynamicFilter;
+import io.trino.spi.metrics.Metrics;
 import io.trino.spi.predicate.Domain;
 import io.trino.spi.predicate.NullableValue;
 import io.trino.spi.predicate.Range;
@@ -44,8 +46,10 @@ import io.trino.spi.type.TypeManager;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.Path;
 import org.apache.iceberg.FileScanTask;
+import org.apache.iceberg.FilterMetrics;
 import org.apache.iceberg.PartitionSpecParser;
 import org.apache.iceberg.Schema;
+import org.apache.iceberg.SystemProperties;
 import org.apache.iceberg.TableScan;
 import org.apache.iceberg.expressions.Expression;
 import org.apache.iceberg.io.CloseableIterable;
@@ -136,6 +140,12 @@ public class IcebergSplitSource
     private final boolean recordScannedFiles;
     private final ImmutableSet.Builder<DataFileWithDeleteFiles> scannedFiles = ImmutableSet.builder();
 
+    private FilterMetrics filterMetrics;
+    private int skippedSplitsByDynamicFilter;
+    private long skippedDataSizeByDynamicFilter;
+    private int skippedSplitsByPartitionFilter;
+    private long skippedDataSizeByPartitionFilter;
+
     public IcebergSplitSource(
             ConnectorSession session,
             HdfsEnvironment hdfsEnvironment,
@@ -214,7 +224,9 @@ public class IcebergSplitSource
             Expression filterExpression = toIcebergExpression(effectivePredicate);
             // If the Dynamic Filter will be evaluated against each file, stats are required. Otherwise, skip them.
             boolean requiresColumnStats = usedSimplifiedPredicate || !dynamicFilterIsComplete;
-            TableScan scan = tableScan.filter(filterExpression).withThreadName(threadNamePrefix + "producer");
+            TableScan scan = tableScan.filter(filterExpression)
+                    .option(SystemProperties.SCAN_FILTER_METRICS_ENABLED, "true")
+                    .withThreadName(threadNamePrefix + "producer");
             if (requiresColumnStats) {
                 scan = scan.includeColumnStats();
             }
@@ -224,6 +236,7 @@ public class IcebergSplitSource
                 closer.register(fileScanTaskIterable);
                 this.fileScanTaskIterator = fileScanTaskIterable.iterator();
                 closer.register(fileScanTaskIterator);
+                this.filterMetrics = scan.filterMetrics();
             }
             finally {
                 scanLock.writeLock().unlock();
@@ -296,6 +309,7 @@ public class IcebergSplitSource
                         identityPartitionColumns,
                         partitionValues,
                         dynamicFilterPredicate)) {
+                    recordSkipMetricsForDynamicFilter(1, icebergSplit.getLength());
                     continue;
                 }
                 if (!fileMatchesPredicate(
@@ -304,10 +318,12 @@ public class IcebergSplitSource
                         scanTask.file().lowerBounds(),
                         scanTask.file().upperBounds(),
                         scanTask.file().nullValueCounts())) {
+                    recordSkipMetricsForDynamicFilter(1, icebergSplit.getLength());
                     continue;
                 }
             }
             if (!partitionMatchesConstraint(identityPartitionColumns, partitionValues, constraint)) {
+                recordSkipMetricsForPartitionFilter(1, icebergSplit.getLength());
                 continue;
             }
             if (recordScannedFiles) {
@@ -330,6 +346,18 @@ public class IcebergSplitSource
         catch (IOException e) {
             throw new TrinoException(ICEBERG_FILESYSTEM_ERROR, "Failed to get file modification time: " + path, e);
         }
+    }
+
+    private void recordSkipMetricsForDynamicFilter(int splitCount, long dataSize)
+    {
+        skippedSplitsByDynamicFilter += splitCount;
+        skippedDataSizeByDynamicFilter += dataSize;
+    }
+
+    private void recordSkipMetricsForPartitionFilter(int splitCount, long dataSize)
+    {
+        skippedSplitsByPartitionFilter += splitCount;
+        skippedDataSizeByPartitionFilter += dataSize;
     }
 
     private void finish()
@@ -365,6 +393,25 @@ public class IcebergSplitSource
             return Optional.empty();
         }
         return Optional.of(ImmutableList.copyOf(scannedFiles.build()));
+    }
+
+    @Override
+    public Optional<Metrics> getMetrics()
+    {
+        Metrics metrics;
+        scanLock.readLock().lock();
+        try {
+            metrics = MetricsUtils.makeMetrics(
+                    filterMetrics,
+                    skippedSplitsByDynamicFilter,
+                    skippedDataSizeByDynamicFilter,
+                    skippedSplitsByPartitionFilter,
+                    skippedDataSizeByPartitionFilter);
+        }
+        finally {
+            scanLock.readLock().unlock();
+        }
+        return Optional.of(metrics);
     }
 
     @Override

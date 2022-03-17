@@ -25,6 +25,7 @@ import io.trino.server.BasicQueryInfo;
 import io.trino.server.BasicQueryStats;
 import io.trino.spi.ErrorCode;
 import io.trino.spi.QueryId;
+import io.trino.spi.metrics.Metrics;
 import org.joda.time.DateTime;
 
 import java.net.URI;
@@ -246,6 +247,8 @@ public class MockManagedQueryExecution
 
                         DataSize.ofBytes(31),
                         DataSize.ofBytes(0),
+
+                        Metrics.EMPTY,
 
                         ImmutableList.of(),
                         DynamicFiltersStats.EMPTY,

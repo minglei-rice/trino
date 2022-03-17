@@ -32,6 +32,7 @@ import io.trino.plugin.base.metrics.DurationTiming;
 import io.trino.plugin.base.metrics.TDigestHistogram;
 import io.trino.spi.Page;
 import io.trino.spi.TrinoException;
+import io.trino.spi.metrics.DataSkippingMetrics;
 import io.trino.spi.metrics.Metrics;
 import io.trino.sql.planner.plan.PlanNodeId;
 
@@ -40,6 +41,7 @@ import javax.annotation.concurrent.GuardedBy;
 import javax.annotation.concurrent.ThreadSafe;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicLong;
@@ -49,10 +51,12 @@ import java.util.function.Supplier;
 import static com.google.common.base.MoreObjects.toStringHelper;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
+import static com.google.common.collect.ImmutableMap.toImmutableMap;
 import static com.google.common.util.concurrent.MoreExecutors.directExecutor;
 import static io.trino.operator.BlockedReason.WAITING_FOR_MEMORY;
 import static io.trino.operator.Operator.NOT_BLOCKED;
 import static io.trino.spi.StandardErrorCode.GENERIC_INTERNAL_ERROR;
+import static io.trino.spi.metrics.DataSkippingMetrics.MetricType.READ;
 import static java.lang.Math.max;
 import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
@@ -519,14 +523,27 @@ public class OperatorContext
                 "Wall time distribution (s)", TDigestHistogram.fromValue(wallTimeSeconds))));
     }
 
-    public static Metrics getConnectorMetrics(Metrics connectorMetrics, long physicalInputReadTimeNanos)
+    public static Metrics getConnectorMetrics(Metrics connectorMetrics, long physicalInputReadTimeNanos, long physicalInputDataSizeInBytes)
     {
-        if (physicalInputReadTimeNanos == 0) {
-            return connectorMetrics;
+        Metrics.Accumulator accumulator = Metrics.accumulator();
+
+        if (physicalInputReadTimeNanos > 0) {
+            accumulator.add(new Metrics(ImmutableMap.of(
+                    "Physical input read time", new DurationTiming(new Duration(physicalInputReadTimeNanos, NANOSECONDS)))));
         }
 
-        return connectorMetrics.mergeWith(new Metrics(ImmutableMap.of(
-                "Physical input read time", new DurationTiming(new Duration(physicalInputReadTimeNanos, NANOSECONDS)))));
+        // Fill readDataSize for DataSkippingMetrics. The provided DataSkippingMetrics is correct only if
+        // readSplitCount is set somewhere and readDataSize is 0 before calling this method
+        Metrics extraDataSkippingMetrics = new Metrics(connectorMetrics.getMetrics().entrySet().stream()
+                .filter(entry -> entry.getValue() instanceof DataSkippingMetrics)
+                .collect(toImmutableMap(
+                        Map.Entry::getKey,
+                        entry -> DataSkippingMetrics.builder()
+                                .withMetric(READ, 0, physicalInputDataSizeInBytes)
+                                .build())));
+        accumulator.add(extraDataSkippingMetrics);
+
+        return accumulator.get();
     }
 
     public <C, R> R accept(QueryContextVisitor<C, R> visitor, C context)
@@ -540,6 +557,7 @@ public class OperatorContext
         OperatorInfo info = Optional.ofNullable(infoSupplier).map(Supplier::get).orElse(null);
 
         long inputPositionsCount = inputPositions.getTotalCount();
+        long physicalInputDataSizeInBytes = physicalInputDataSize.getTotalCount();
 
         return new OperatorStats(
                 driverContext.getTaskId().getStageId().getId(),
@@ -553,12 +571,12 @@ public class OperatorContext
                 addInputTiming.getCalls(),
                 new Duration(addInputTiming.getWallNanos(), NANOSECONDS).convertToMostSuccinctTimeUnit(),
                 new Duration(addInputTiming.getCpuNanos(), NANOSECONDS).convertToMostSuccinctTimeUnit(),
-                DataSize.ofBytes(physicalInputDataSize.getTotalCount()),
+                DataSize.ofBytes(physicalInputDataSizeInBytes),
                 physicalInputPositions.getTotalCount(),
                 new Duration(physicalInputReadTimeNanos.get(), NANOSECONDS).convertToMostSuccinctTimeUnit(),
                 DataSize.ofBytes(internalNetworkInputDataSize.getTotalCount()),
                 internalNetworkPositions.getTotalCount(),
-                DataSize.ofBytes(physicalInputDataSize.getTotalCount() + internalNetworkInputDataSize.getTotalCount()),
+                DataSize.ofBytes(physicalInputDataSizeInBytes + internalNetworkInputDataSize.getTotalCount()),
                 DataSize.ofBytes(inputDataSize.getTotalCount()),
                 inputPositionsCount,
                 (double) inputPositionsCount * inputPositionsCount,
@@ -575,7 +593,7 @@ public class OperatorContext
                         inputPositionsCount,
                         new Duration(addInputTiming.getCpuNanos() + getOutputTiming.getCpuNanos() + finishTiming.getCpuNanos(), NANOSECONDS).convertTo(SECONDS).getValue(),
                         new Duration(addInputTiming.getWallNanos() + getOutputTiming.getWallNanos() + finishTiming.getWallNanos(), NANOSECONDS).convertTo(SECONDS).getValue()),
-                getConnectorMetrics(connectorMetrics.get(), physicalInputReadTimeNanos.get()),
+                getConnectorMetrics(connectorMetrics.get(), physicalInputReadTimeNanos.get(), physicalInputDataSizeInBytes),
 
                 DataSize.ofBytes(physicalWrittenDataSize.get()),
 

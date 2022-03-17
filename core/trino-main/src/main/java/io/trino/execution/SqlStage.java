@@ -23,6 +23,7 @@ import io.trino.execution.buffer.OutputBuffers;
 import io.trino.execution.scheduler.SplitSchedulerStats;
 import io.trino.metadata.InternalNode;
 import io.trino.metadata.Split;
+import io.trino.spi.metrics.Metrics;
 import io.trino.sql.planner.PlanFragment;
 import io.trino.sql.planner.plan.DynamicFilterId;
 import io.trino.sql.planner.plan.PlanNodeId;
@@ -261,6 +262,11 @@ public final class SqlStage
     public void recordGetSplitTime(long start)
     {
         stateMachine.recordGetSplitTime(start);
+    }
+
+    public void updateConnectorMetrics(Metrics newConnectorMetrics, PlanNodeId planNodeId)
+    {
+        stateMachine.updateConnectorMetrics(newConnectorMetrics, planNodeId);
     }
 
     private synchronized void updateTaskStatus(TaskStatus status)

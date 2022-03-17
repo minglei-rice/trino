@@ -25,6 +25,7 @@ import io.trino.operator.RetryPolicy;
 import io.trino.spi.QueryId;
 import io.trino.spi.StandardErrorCode;
 import io.trino.spi.eventlistener.StageGcStatistics;
+import io.trino.spi.metrics.Metrics;
 import io.trino.spi.resourcegroups.QueryType;
 import org.joda.time.DateTime;
 import org.testng.annotations.Test;
@@ -124,6 +125,7 @@ public class TestBasicQueryInfo
                                 new Duration(104, SECONDS),
                                 DataSize.valueOf("51GB"),
                                 DataSize.valueOf("52GB"),
+                                Metrics.EMPTY,
                                 ImmutableList.of(new StageGcStatistics(
                                         101,
                                         102,

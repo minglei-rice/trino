@@ -24,6 +24,7 @@ import io.trino.execution.QueryStats;
 import io.trino.execution.resourcegroups.InternalResourceGroup;
 import io.trino.operator.RetryPolicy;
 import io.trino.spi.QueryId;
+import io.trino.spi.metrics.Metrics;
 import io.trino.spi.resourcegroups.QueryType;
 import org.joda.time.DateTime;
 import org.testng.annotations.Test;
@@ -174,6 +175,7 @@ public class TestQueryStateInfo
                         new Duration(104, SECONDS),
                         DataSize.valueOf("40GB"),
                         DataSize.valueOf("41GB"),
+                        Metrics.EMPTY,
                         ImmutableList.of(),
                         DynamicFiltersStats.EMPTY,
                         ImmutableList.of()),

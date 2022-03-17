@@ -23,10 +23,15 @@ import io.trino.execution.scheduler.SplitSchedulerStats;
 import io.trino.operator.BlockedReason;
 import io.trino.operator.OperatorStats;
 import io.trino.operator.PipelineStats;
+import io.trino.operator.ScanFilterAndProjectOperator;
 import io.trino.operator.TaskStats;
 import io.trino.plugin.base.metrics.TDigestHistogram;
 import io.trino.spi.eventlistener.StageGcStatistics;
+import io.trino.spi.metrics.DataSkippingMetrics;
+import io.trino.spi.metrics.Metrics;
+import io.trino.spi.metrics.TableLevelDataSkippingMetrics;
 import io.trino.sql.planner.PlanFragment;
+import io.trino.sql.planner.plan.PlanNode;
 import io.trino.sql.planner.plan.PlanNodeId;
 import io.trino.sql.planner.plan.TableScanNode;
 import io.trino.util.Failures;
@@ -42,6 +47,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -51,6 +58,7 @@ import java.util.function.Supplier;
 import static com.google.common.base.MoreObjects.toStringHelper;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
+import static com.google.common.collect.ImmutableMap.toImmutableMap;
 import static io.airlift.units.DataSize.succinctBytes;
 import static io.airlift.units.Duration.succinctDuration;
 import static io.trino.execution.StageState.ABORTED;
@@ -61,6 +69,7 @@ import static io.trino.execution.StageState.PLANNED;
 import static io.trino.execution.StageState.RUNNING;
 import static io.trino.execution.StageState.SCHEDULING;
 import static io.trino.execution.StageState.TERMINAL_STAGE_STATES;
+import static io.trino.sql.planner.optimizations.PlanNodeSearcher.searchFrom;
 import static java.lang.Math.max;
 import static java.lang.Math.min;
 import static java.lang.Math.toIntExact;
@@ -72,6 +81,7 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 public class StageStateMachine
 {
     private static final Logger log = Logger.get(StageStateMachine.class);
+    private static final String TABLE_LEVEL_METRICS_SUFFIX = "_table_level";
 
     private final StageId stageId;
     private final PlanFragment fragment;
@@ -90,6 +100,9 @@ public class StageStateMachine
     private final AtomicLong currentUserMemory = new AtomicLong();
     private final AtomicLong currentRevocableMemory = new AtomicLong();
     private final AtomicLong currentTotalMemory = new AtomicLong();
+
+    private final AtomicReference<Metrics> connectorMetrics = new AtomicReference<>(Metrics.EMPTY);
+    private final ConcurrentMap<PlanNodeId, PlanNodeId> projectOrFilterNodeToTableScan = new ConcurrentHashMap<>();
 
     public StageStateMachine(
             StageId stageId,
@@ -218,6 +231,29 @@ public class StageStateMachine
         currentTotalMemory.addAndGet(deltaTotalMemoryInBytes);
         peakUserMemory.updateAndGet(currentPeakValue -> max(currentUserMemory.get(), currentPeakValue));
         peakRevocableMemory.updateAndGet(currentPeakValue -> max(currentRevocableMemory.get(), currentPeakValue));
+    }
+
+    public void updateConnectorMetrics(Metrics newConnectorMetrics, PlanNodeId planNodeId)
+    {
+        connectorMetrics.updateAndGet(metrics -> metrics.mergeWith(newConnectorMetrics));
+        if (isValidTableScanNodeId(planNodeId)) {
+            connectorMetrics.updateAndGet(metrics -> metrics.mergeWith(processTableLevelMetrics(newConnectorMetrics, planNodeId)));
+        }
+    }
+
+    private boolean isValidTableScanNodeId(PlanNodeId planNodeId)
+    {
+        return planNodeId != null && tables.containsKey(planNodeId);
+    }
+
+    private Metrics processTableLevelMetrics(Metrics metrics, PlanNodeId planNodeId)
+    {
+        String table = stageId.getId() + ":" + planNodeId + ":" + tables.get(planNodeId).getTableName().asSchemaTableName().toString();
+        return new Metrics(metrics.getMetrics().entrySet().stream()
+                .filter(entry -> entry.getValue() instanceof DataSkippingMetrics)
+                .collect(toImmutableMap(
+                        entry -> entry.getKey() + TABLE_LEVEL_METRICS_SUFFIX,
+                        entry -> new TableLevelDataSkippingMetrics(ImmutableMap.of(table, (DataSkippingMetrics) entry.getValue())))));
     }
 
     public BasicStageStats getBasicStageStats(Supplier<Iterable<TaskInfo>> taskInfosSupplier)
@@ -434,6 +470,8 @@ public class StageStateMachine
         long physicalWrittenDataSize = 0;
         long failedPhysicalWrittenDataSize = 0;
 
+        Metrics.Accumulator connectorMetricsAccumulator = Metrics.accumulator().add(connectorMetrics.get());
+
         int fullGcCount = 0;
         int fullGcTaskCount = 0;
         int minFullGcSec = 0;
@@ -542,6 +580,18 @@ public class StageStateMachine
                 for (OperatorStats operatorStats : pipeline.getOperatorSummaries()) {
                     String id = pipeline.getPipelineId() + "." + operatorStats.getOperatorId();
                     operatorToStats.compute(id, (k, v) -> v == null ? operatorStats : v.add(operatorStats));
+
+                    connectorMetricsAccumulator.add(operatorStats.getConnectorMetrics());
+
+                    // generate table level data skipping metrics for TableScan node
+                    PlanNodeId planNodeId = operatorStats.getPlanNodeId();
+                    if (planNodeId != null && ScanFilterAndProjectOperator.class.getSimpleName().equals(operatorStats.getOperatorType())) {
+                        // need to map Project/Filter node to TableScan node for ScanFilterAndProjectOperator
+                        planNodeId = getTableScanNodeFromProjectOrFilter(planNodeId);
+                    }
+                    if (isValidTableScanNodeId(planNodeId)) {
+                        connectorMetricsAccumulator.add(processTableLevelMetrics(operatorStats.getConnectorMetrics(), planNodeId));
+                    }
                 }
             }
         }
@@ -610,6 +660,8 @@ public class StageStateMachine
                 succinctBytes(physicalWrittenDataSize),
                 succinctBytes(failedPhysicalWrittenDataSize),
 
+                connectorMetricsAccumulator.get(),
+
                 new StageGcStatistics(
                         stageId.getId(),
                         totalTasks,
@@ -636,6 +688,25 @@ public class StageStateMachine
                 ImmutableList.of(),
                 tables,
                 failureInfo);
+    }
+
+    private PlanNodeId getTableScanNodeFromProjectOrFilter(PlanNodeId planNodeId)
+    {
+        if (projectOrFilterNodeToTableScan.containsKey(planNodeId)) {
+            return projectOrFilterNodeToTableScan.get(planNodeId);
+        }
+
+        PlanNode planNode = searchFrom(fragment.getRoot())
+                .where(node -> node.getId().equals(planNodeId))
+                .findSingle()
+                .get();
+        PlanNodeId tableScanNodeId = searchFrom(planNode)
+                .where(TableScanNode.class::isInstance)
+                .findSingle()
+                .get()
+                .getId();
+        projectOrFilterNodeToTableScan.put(planNodeId, tableScanNodeId);
+        return tableScanNodeId;
     }
 
     public void recordGetSplitTime(long startNanos)

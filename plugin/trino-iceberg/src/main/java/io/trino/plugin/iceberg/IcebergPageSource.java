@@ -49,12 +49,17 @@ import static com.google.common.base.Throwables.throwIfInstanceOf;
 import static com.google.common.base.Verify.verify;
 import static io.trino.plugin.base.util.Closables.closeAllSuppress;
 import static io.trino.plugin.iceberg.IcebergErrorCode.ICEBERG_BAD_DATA;
+import static io.trino.plugin.iceberg.util.MetricsUtils.makeMetrics;
+import static io.trino.spi.metrics.DataSkippingMetrics.MetricType.READ;
 import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
 
 public class IcebergPageSource
         implements UpdatablePageSource
 {
+    // To avoid inconsistency with physicalInputDataSize, readDataSize is set when creating operatorStats
+    private static final Metrics metrics = makeMetrics(READ, 1, 0);
+
     private final Schema schema;
     private final int[] expectedColumnIndexes;
     private final ConnectorPageSource delegate;
@@ -313,7 +318,7 @@ public class IcebergPageSource
     @Override
     public Metrics getMetrics()
     {
-        return delegate.getMetrics();
+        return delegate.getMetrics() == Metrics.EMPTY ? metrics : metrics.mergeWith(delegate.getMetrics());
     }
 
     protected void closeWithSuppression(Throwable throwable)

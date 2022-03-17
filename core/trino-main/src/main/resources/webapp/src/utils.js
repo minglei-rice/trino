@@ -506,3 +506,15 @@ export function formatShortDateTime(date: Date): string {
     const dayOfMonth = "" + date.getDate();
     return year + "-" + (month[1] ? month : "0" + month[0]) + "-" + (dayOfMonth[1] ? dayOfMonth: "0" + dayOfMonth[0]) + " " + formatShortTime(date);
 }
+
+export function getTotalFromLongCountMetrics(longCount: any): number {
+    if (longCount == null || longCount.total == null) {
+        return 0;
+    }
+    return longCount.total;
+}
+
+export function formatPercentage(numerator: number, denominator: number): string {
+    const percentage = denominator === 0 ? 0 : numerator / denominator * 100;
+    return precisionRound(percentage) + "%";
+}

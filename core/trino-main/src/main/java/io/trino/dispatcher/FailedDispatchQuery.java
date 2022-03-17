@@ -29,6 +29,7 @@ import io.trino.operator.RetryPolicy;
 import io.trino.server.BasicQueryInfo;
 import io.trino.spi.ErrorCode;
 import io.trino.spi.QueryId;
+import io.trino.spi.metrics.Metrics;
 import io.trino.spi.resourcegroups.ResourceGroupId;
 import org.joda.time.DateTime;
 
@@ -318,6 +319,7 @@ public class FailedDispatchQuery
                 new Duration(0, MILLISECONDS),
                 DataSize.ofBytes(0),
                 DataSize.ofBytes(0),
+                Metrics.EMPTY,
                 ImmutableList.of(),
                 DynamicFiltersStats.EMPTY,
                 ImmutableList.of());

@@ -182,7 +182,10 @@ import static io.trino.plugin.iceberg.TypeConverter.ICEBERG_BINARY_TYPE;
 import static io.trino.plugin.iceberg.TypeConverter.ORC_ICEBERG_ID_KEY;
 import static io.trino.plugin.iceberg.delete.EqualityDeleteFilter.readEqualityDeletes;
 import static io.trino.plugin.iceberg.delete.PositionDeleteFilter.readPositionDeletes;
+import static io.trino.plugin.iceberg.util.MetricsUtils.makeMetrics;
 import static io.trino.spi.StandardErrorCode.NOT_SUPPORTED;
+import static io.trino.spi.metrics.DataSkippingMetrics.MetricType.SKIPPED_BY_DF_IN_WORKER;
+import static io.trino.spi.metrics.DataSkippingMetrics.MetricType.SKIPPED_BY_INDEX_IN_WORKER;
 import static io.trino.spi.predicate.Utils.nativeValueToBlock;
 import static io.trino.spi.type.BigintType.BIGINT;
 import static io.trino.spi.type.BooleanType.BOOLEAN;
@@ -269,7 +272,7 @@ public class IcebergPageSourceProvider
                 rowSet = indexMatchResult.getRowSet();
                 if (split.isSkippedByIndex()) {
                     log.info("Indices hit for file : %s, split skipped, time spent : %s ms", fileScanTask.file().path(), split.getIndexReadTime());
-                    return new EmptyPageSource();
+                    return new EmptyPageSource(makeMetrics(SKIPPED_BY_INDEX_IN_WORKER, 1, split.getLength()));
                 }
                 log.info("Indices missed for file : %s, time spent : %s ms", fileScanTask.file().path(), System.currentTimeMillis() - start);
             }
@@ -331,7 +334,7 @@ public class IcebergPageSourceProvider
                 .intersect(dynamicFilter.getCurrentPredicate().transformKeys(IcebergColumnHandle.class::cast))
                 .simplify(ICEBERG_DOMAIN_COMPACTION_THRESHOLD);
         if (effectivePredicate.isNone()) {
-            return new EmptyPageSource();
+            return new EmptyPageSource(makeMetrics(SKIPPED_BY_DF_IN_WORKER, 1, split.getLength()));
         }
 
         TrinoFileSystem fileSystem = fileSystemFactory.create(session);

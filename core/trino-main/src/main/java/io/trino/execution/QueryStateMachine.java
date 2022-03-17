@@ -41,6 +41,7 @@ import io.trino.spi.TrinoException;
 import io.trino.spi.eventlistener.RoutineInfo;
 import io.trino.spi.eventlistener.StageGcStatistics;
 import io.trino.spi.eventlistener.TableInfo;
+import io.trino.spi.metrics.Metrics;
 import io.trino.spi.resourcegroups.QueryType;
 import io.trino.spi.resourcegroups.ResourceGroupId;
 import io.trino.spi.security.SelectedRole;
@@ -547,6 +548,8 @@ public class QueryStateMachine
         long physicalWrittenDataSize = 0;
         long failedPhysicalWrittenDataSize = 0;
 
+        Metrics.Accumulator connectorMetricsAccumulator = Metrics.accumulator();
+
         ImmutableList.Builder<StageGcStatistics> stageGcStatistics = ImmutableList.builderWithExpectedSize(allStages.size());
 
         boolean fullyBlocked = rootStage.isPresent();
@@ -614,6 +617,8 @@ public class QueryStateMachine
 
             physicalWrittenDataSize += stageStats.getPhysicalWrittenDataSize().toBytes();
             failedPhysicalWrittenDataSize += stageStats.getFailedPhysicalWrittenDataSize().toBytes();
+
+            connectorMetricsAccumulator.add(stageStats.getConnectorMetrics());
 
             stageGcStatistics.add(stageStats.getGcInfo());
 
@@ -711,6 +716,8 @@ public class QueryStateMachine
 
                 succinctBytes(physicalWrittenDataSize),
                 succinctBytes(failedPhysicalWrittenDataSize),
+
+                connectorMetricsAccumulator.get(),
 
                 stageGcStatistics.build(),
 
@@ -1305,6 +1312,7 @@ public class QueryStateMachine
                 queryStats.getFailedOutputBlockedTime(),
                 queryStats.getPhysicalWrittenDataSize(),
                 queryStats.getFailedPhysicalWrittenDataSize(),
+                queryStats.getConnectorMetrics(),
                 queryStats.getStageGcStatistics(),
                 queryStats.getDynamicFiltersStats(),
                 ImmutableList.of()); // Remove the operator summaries as OperatorInfo (especially DirectExchangeClientStatus) can hold onto a large amount of memory

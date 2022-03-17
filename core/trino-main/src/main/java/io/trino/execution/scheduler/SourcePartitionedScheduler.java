@@ -309,6 +309,8 @@ public class SourcePartitionedScheduler
                 tableExecuteContext.setSplitsInfo(info);
             });
 
+            splitSource.getMetrics().ifPresent(metrics -> stageExecution.updateConnectorMetrics(metrics, partitionedNode));
+
             splitSource.close();
             return new ScheduleResult(
                     true,

@@ -15,6 +15,7 @@ package io.trino.plugin.base.classloader;
 
 import io.trino.spi.classloader.ThreadContextClassLoader;
 import io.trino.spi.connector.ConnectorSplitSource;
+import io.trino.spi.metrics.Metrics;
 
 import javax.inject.Inject;
 
@@ -50,6 +51,14 @@ public class ClassLoaderSafeConnectorSplitSource
     {
         try (ThreadContextClassLoader ignored = new ThreadContextClassLoader(classLoader)) {
             return delegate.getTableExecuteSplitsInfo();
+        }
+    }
+
+    @Override
+    public Optional<Metrics> getMetrics()
+    {
+        try (ThreadContextClassLoader ignored = new ThreadContextClassLoader(classLoader)) {
+            return delegate.getMetrics();
         }
     }
 

@@ -37,6 +37,7 @@ import io.trino.failuredetector.FailureDetector;
 import io.trino.metadata.InternalNode;
 import io.trino.metadata.Split;
 import io.trino.spi.TrinoException;
+import io.trino.spi.metrics.Metrics;
 import io.trino.split.RemoteSplit;
 import io.trino.sql.planner.PlanFragment;
 import io.trino.sql.planner.plan.PlanFragmentId;
@@ -530,6 +531,12 @@ public class PipelinedStageExecution
     public void recordGetSplitTime(long start)
     {
         stage.recordGetSplitTime(start);
+    }
+
+    @Override
+    public void updateConnectorMetrics(Metrics newConnectorMetrics, PlanNodeId planNodeId)
+    {
+        stage.updateConnectorMetrics(newConnectorMetrics, planNodeId);
     }
 
     @Override

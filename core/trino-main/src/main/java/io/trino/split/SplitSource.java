@@ -16,6 +16,7 @@ package io.trino.split;
 import com.google.common.util.concurrent.ListenableFuture;
 import io.trino.connector.CatalogHandle;
 import io.trino.metadata.Split;
+import io.trino.spi.metrics.Metrics;
 
 import java.io.Closeable;
 import java.util.List;
@@ -36,6 +37,11 @@ public interface SplitSource
     boolean isFinished();
 
     Optional<List<Object>> getTableExecuteSplitsInfo();
+
+    default Optional<Metrics> getMetrics()
+    {
+        return Optional.empty();
+    }
 
     class SplitBatch
     {
