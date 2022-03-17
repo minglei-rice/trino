@@ -51,6 +51,7 @@ import io.trino.plugin.hive.parquet.HdfsParquetDataSource;
 import io.trino.plugin.hive.parquet.ParquetPageSource;
 import io.trino.plugin.hive.parquet.ParquetReaderConfig;
 import io.trino.plugin.iceberg.IcebergParquetColumnIOConverter.FieldContext;
+import io.trino.plugin.iceberg.util.MetricsUtils;
 import io.trino.spi.TrinoException;
 import io.trino.spi.connector.ColumnHandle;
 import io.trino.spi.connector.ConnectorPageSource;
@@ -61,6 +62,7 @@ import io.trino.spi.connector.ConnectorTableHandle;
 import io.trino.spi.connector.ConnectorTransactionHandle;
 import io.trino.spi.connector.DynamicFilter;
 import io.trino.spi.connector.EmptyPageSource;
+import io.trino.spi.metrics.Metrics;
 import io.trino.spi.predicate.Domain;
 import io.trino.spi.predicate.TupleDomain;
 import io.trino.spi.type.ArrayType;
@@ -184,6 +186,7 @@ public class IcebergPageSourceProvider
     {
         IcebergSplit split = (IcebergSplit) connectorSplit;
         IcebergTableHandle table = (IcebergTableHandle) connectorTable;
+        Metrics.Accumulator metricsAccumulator = Metrics.accumulator();
 
         HdfsContext hdfsContext = new HdfsContext(session);
         FileScanTask fileScanTask = split.decodeFileScanTask();
@@ -192,9 +195,11 @@ public class IcebergPageSourceProvider
             HdfsFileIo hdfsFileIo = new HdfsFileIo(hdfsEnvironment, hdfsContext);
             split.setIsSkippedByIndex(!fileScanTask.isRequired(hdfsFileIo, false));
             split.setIndexReadTime(System.currentTimeMillis() - start);
+            metricsAccumulator.add(MetricsUtils.makeLongCountMetrics(
+                    MetricsUtils.SKIPPED_SPLITS_BY_INDEX, split.isSkippedByIndex() ? 1 : 0));
             if (split.isSkippedByIndex()) {
                 log.info("Indices hit for file : %s, split skipped, time spent : %s ms", fileScanTask.file().path(), split.getIndexReadTime());
-                return new EmptyPageSource();
+                return new EmptyPageSource(metricsAccumulator.get());
             }
             log.info("Indices missed for file : %s, time spent : %s ms", fileScanTask.file().path(), split.getIndexReadTime());
         }
@@ -231,7 +236,9 @@ public class IcebergPageSourceProvider
                         readerColumns,
                         column -> ((IcebergColumnHandle) column).getType(),
                         IcebergPageSourceProvider::applyProjection));
-        return new IcebergPageSource(icebergColumns, partitionKeys, dataPageSource.get(), projectionsAdapter);
+        metricsAccumulator.add(MetricsUtils.makeLongCountMetrics(MetricsUtils.TOTAL_SPLITS_READ, 1));
+        return new IcebergPageSource(icebergColumns, partitionKeys, dataPageSource.get(),
+                projectionsAdapter, metricsAccumulator.get());
     }
 
     private ReaderPageSource createDataPageSource(

@@ -16,13 +16,15 @@ import React from "react";
 import Reactable from "reactable";
 
 import {
-    addToHistory, computeAvgDuration,
+    addToHistory,
+    computeAvgDuration,
     computeRate,
     formatCount,
     formatDataSize,
     formatDataSizeBytes,
     formatDuration,
     formatShortDateTime,
+    getCountWithPercentage,
     getFirstParameter,
     getHostAndPort,
     getHostname,
@@ -31,6 +33,7 @@ import {
     getStageStateColor,
     getTaskIdSuffix,
     getTaskNumber,
+    getTotalFromLongCountMetrics,
     GLYPHICON_HIGHLIGHT,
     parseAndFormatDataSize,
     parseDataSize,
@@ -1069,6 +1072,79 @@ export class QueryDetail extends React.Component {
         return renderedEstimates;
     }
 
+    renderSplitFilterMetrics() {
+        const metrics = this.state.query.queryStats.connectorMetrics;
+        if (metrics) {
+            const totalSplitsInPartitions = getTotalFromLongCountMetrics(metrics.iceberg_total_splits_in_partitions)
+            const totalSplitsRead = getTotalFromLongCountMetrics(metrics.iceberg_total_splits_read)
+            const skippedSplitsByIndex = getTotalFromLongCountMetrics(metrics.iceberg_skipped_splits_by_index)
+            const skippedSplitsByMinMax = getTotalFromLongCountMetrics(metrics.iceberg_skipped_splits_by_minmax)
+            const skippedSplitsByDFInCoordinator = getTotalFromLongCountMetrics(metrics.iceberg_skipped_splits_by_df_in_coordinator)
+            const skippedSplitsByDFInWorker = getTotalFromLongCountMetrics(metrics.iceberg_skipped_splits_by_df_in_worker)
+            return (
+                <div className="col-xs-6">
+                    <h3>Source Split Filter Metrics (Iceberg Only)</h3>
+                    <hr className="h3-hr"/>
+                    <table className="table">
+                        <tbody>
+                        <tr>
+                            <td className="info-title" style={{width: '50%'}}>
+                                Total Splits in Target Partitions
+                            </td>
+                            <td className="info-text">
+                                {totalSplitsInPartitions}
+                            </td>
+                        </tr>
+                        <tr>
+                            <td className="info-title">
+                                Total Splits Read
+                            </td>
+                            <td className="info-text">
+                                {getCountWithPercentage(totalSplitsRead, totalSplitsInPartitions)}
+                            </td>
+                        </tr>
+                        <tr>
+                            <td className="info-title">
+                                Skipped Splits by Index
+                            </td>
+                            <td className="info-text">
+                                {getCountWithPercentage(skippedSplitsByIndex, totalSplitsInPartitions)}
+                            </td>
+                        </tr>
+                        <tr>
+                            <td className="info-title">
+                                Skipped Splits by MinMax Statistics
+                            </td>
+                            <td className="info-text">
+                                {getCountWithPercentage(skippedSplitsByMinMax, totalSplitsInPartitions)}
+                            </td>
+                        </tr>
+                        <tr>
+                            <td className="info-title">
+                                Skipped Splits by Dynamic Filter in Coordinator
+                            </td>
+                            <td className="info-text">
+                                {getCountWithPercentage(skippedSplitsByDFInCoordinator, totalSplitsInPartitions)}
+                            </td>
+                        </tr>
+                        <tr>
+                            <td className="info-title">
+                                Skipped Splits by Dynamic Filter in Worker
+                            </td>
+                            <td className="info-text">
+                                {getCountWithPercentage(skippedSplitsByDFInWorker, totalSplitsInPartitions)}
+                            </td>
+                        </tr>
+                        </tbody>
+                    </table>
+                </div>
+            );
+        }
+        else {
+            return null;
+        }
+    }
+
     renderWarningInfo() {
         const query = this.state.query;
         if (query.warnings.length > 0) {
@@ -1616,6 +1692,7 @@ export class QueryDetail extends React.Component {
                         </div>
                     </div>
                 </div>
+                {this.renderSplitFilterMetrics()}
                 {this.renderWarningInfo()}
                 {this.renderFailureInfo()}
                 <div className="row">

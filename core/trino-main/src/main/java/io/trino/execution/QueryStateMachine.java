@@ -41,6 +41,7 @@ import io.trino.spi.TrinoException;
 import io.trino.spi.eventlistener.RoutineInfo;
 import io.trino.spi.eventlistener.StageGcStatistics;
 import io.trino.spi.eventlistener.TableInfo;
+import io.trino.spi.metrics.Metrics;
 import io.trino.spi.resourcegroups.QueryType;
 import io.trino.spi.resourcegroups.ResourceGroupId;
 import io.trino.spi.security.SelectedRole;
@@ -501,6 +502,8 @@ public class QueryStateMachine
 
         long physicalWrittenDataSize = 0;
 
+        Metrics.Accumulator connectorMetricsAccumulator = Metrics.accumulator();
+
         ImmutableList.Builder<StageGcStatistics> stageGcStatistics = ImmutableList.builder();
 
         boolean fullyBlocked = rootStage.isPresent();
@@ -550,6 +553,8 @@ public class QueryStateMachine
             }
 
             physicalWrittenDataSize += stageStats.getPhysicalWrittenDataSize().toBytes();
+
+            connectorMetricsAccumulator.add(stageStats.getConnectorMetrics());
 
             stageGcStatistics.add(stageStats.getGcInfo());
 
@@ -624,6 +629,8 @@ public class QueryStateMachine
                 outputPositions,
 
                 succinctBytes(physicalWrittenDataSize),
+
+                connectorMetricsAccumulator.get(),
 
                 stageGcStatistics.build(),
 
@@ -1184,6 +1191,7 @@ public class QueryStateMachine
                 queryStats.getOutputDataSize(),
                 queryStats.getOutputPositions(),
                 queryStats.getPhysicalWrittenDataSize(),
+                queryStats.getConnectorMetrics(),
                 queryStats.getStageGcStatistics(),
                 queryStats.getDynamicFiltersStats(),
                 ImmutableList.of()); // Remove the operator summaries as OperatorInfo (especially ExchangeClientStatus) can hold onto a large amount of memory

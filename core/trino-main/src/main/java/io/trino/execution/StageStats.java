@@ -23,6 +23,7 @@ import io.airlift.units.Duration;
 import io.trino.operator.BlockedReason;
 import io.trino.operator.OperatorStats;
 import io.trino.spi.eventlistener.StageGcStatistics;
+import io.trino.spi.metrics.Metrics;
 import org.joda.time.DateTime;
 
 import javax.annotation.concurrent.Immutable;
@@ -87,6 +88,8 @@ public class StageStats
 
     private final DataSize physicalWrittenDataSize;
 
+    private final Metrics connectorMetrics;
+
     private final StageGcStatistics gcInfo;
 
     private final List<OperatorStats> operatorSummaries;
@@ -140,6 +143,8 @@ public class StageStats
             @JsonProperty("outputPositions") long outputPositions,
 
             @JsonProperty("physicalWrittenDataSize") DataSize physicalWrittenDataSize,
+
+            @JsonProperty("connectorMetrics") Metrics connectorMetrics,
 
             @JsonProperty("gcInfo") StageGcStatistics gcInfo,
 
@@ -206,6 +211,8 @@ public class StageStats
         this.outputPositions = outputPositions;
 
         this.physicalWrittenDataSize = requireNonNull(physicalWrittenDataSize, "physicalWrittenDataSize is null");
+
+        this.connectorMetrics = requireNonNull(connectorMetrics, "connectorMetrics is null");
 
         this.gcInfo = requireNonNull(gcInfo, "gcInfo is null");
 
@@ -426,6 +433,12 @@ public class StageStats
     public DataSize getPhysicalWrittenDataSize()
     {
         return physicalWrittenDataSize;
+    }
+
+    @JsonProperty
+    public Metrics getConnectorMetrics()
+    {
+        return connectorMetrics;
     }
 
     @JsonProperty

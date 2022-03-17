@@ -24,6 +24,7 @@ import io.trino.execution.QueryStats;
 import io.trino.execution.resourcegroups.InternalResourceGroup;
 import io.trino.spi.QueryId;
 import io.trino.spi.memory.MemoryPoolId;
+import io.trino.spi.metrics.Metrics;
 import io.trino.spi.resourcegroups.QueryType;
 import org.joda.time.DateTime;
 import org.testng.annotations.Test;
@@ -158,6 +159,7 @@ public class TestQueryStateInfo
                         DataSize.valueOf("31GB"),
                         32,
                         DataSize.valueOf("33GB"),
+                        Metrics.EMPTY,
                         ImmutableList.of(),
                         DynamicFiltersStats.EMPTY,
                         ImmutableList.of()),

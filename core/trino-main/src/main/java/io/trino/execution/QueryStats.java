@@ -23,6 +23,7 @@ import io.trino.operator.BlockedReason;
 import io.trino.operator.OperatorStats;
 import io.trino.operator.TableWriterOperator;
 import io.trino.spi.eventlistener.StageGcStatistics;
+import io.trino.spi.metrics.Metrics;
 import org.joda.time.DateTime;
 
 import javax.annotation.Nullable;
@@ -102,6 +103,8 @@ public class QueryStats
 
     private final DataSize physicalWrittenDataSize;
 
+    private final Metrics connectorMetrics;
+
     private final List<StageGcStatistics> stageGcStatistics;
 
     private final DynamicFiltersStats dynamicFiltersStats;
@@ -171,6 +174,8 @@ public class QueryStats
             @JsonProperty("outputPositions") long outputPositions,
 
             @JsonProperty("physicalWrittenDataSize") DataSize physicalWrittenDataSize,
+
+            @JsonProperty("connectorMetrics") Metrics connectorMetrics,
 
             @JsonProperty("stageGcStatistics") List<StageGcStatistics> stageGcStatistics,
 
@@ -252,6 +257,8 @@ public class QueryStats
         this.outputPositions = outputPositions;
 
         this.physicalWrittenDataSize = requireNonNull(physicalWrittenDataSize, "physicalWrittenDataSize is null");
+
+        this.connectorMetrics = requireNonNull(connectorMetrics, "connectorMetrics is null");
 
         this.stageGcStatistics = ImmutableList.copyOf(requireNonNull(stageGcStatistics, "stageGcStatistics is null"));
 
@@ -578,6 +585,12 @@ public class QueryStats
                         .filter(stats -> stats.getOperatorType().equals(TableWriterOperator.class.getSimpleName()))
                         .mapToLong(stats -> stats.getInputDataSize().toBytes())
                         .sum());
+    }
+
+    @JsonProperty
+    public Metrics getConnectorMetrics()
+    {
+        return connectorMetrics;
     }
 
     @JsonProperty

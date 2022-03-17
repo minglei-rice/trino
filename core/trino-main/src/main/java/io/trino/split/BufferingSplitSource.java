@@ -19,6 +19,7 @@ import io.trino.connector.CatalogName;
 import io.trino.execution.Lifespan;
 import io.trino.metadata.Split;
 import io.trino.spi.connector.ConnectorPartitionHandle;
+import io.trino.spi.metrics.Metrics;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -70,6 +71,12 @@ public class BufferingSplitSource
     public Optional<List<Object>> getTableExecuteSplitsInfo()
     {
         return source.getTableExecuteSplitsInfo();
+    }
+
+    @Override
+    public Optional<Metrics> getMetrics()
+    {
+        return source.getMetrics();
     }
 
     private static class GetNextBatch

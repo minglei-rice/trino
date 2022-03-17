@@ -16,6 +16,7 @@ package io.trino.spi.connector;
 import io.airlift.slice.Slice;
 import io.trino.spi.Page;
 import io.trino.spi.block.Block;
+import io.trino.spi.metrics.Metrics;
 
 import java.util.Collection;
 import java.util.Collections;
@@ -27,6 +28,18 @@ import static java.util.concurrent.CompletableFuture.completedFuture;
 public class EmptyPageSource
         implements UpdatablePageSource
 {
+    private final Metrics metrics;
+
+    public EmptyPageSource()
+    {
+        this.metrics = Metrics.EMPTY;
+    }
+
+    public EmptyPageSource(Metrics metrics)
+    {
+        this.metrics = metrics;
+    }
+
     @Override
     public void deleteRows(Block rowIds)
     {
@@ -77,4 +90,10 @@ public class EmptyPageSource
 
     @Override
     public void close() {}
+
+    @Override
+    public Metrics getMetrics()
+    {
+        return metrics;
+    }
 }

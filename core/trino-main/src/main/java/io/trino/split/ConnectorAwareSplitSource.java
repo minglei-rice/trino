@@ -23,6 +23,7 @@ import io.trino.spi.connector.ConnectorPartitionHandle;
 import io.trino.spi.connector.ConnectorSplit;
 import io.trino.spi.connector.ConnectorSplitSource;
 import io.trino.spi.connector.ConnectorSplitSource.ConnectorSplitBatch;
+import io.trino.spi.metrics.Metrics;
 
 import java.util.List;
 import java.util.Optional;
@@ -78,6 +79,12 @@ public class ConnectorAwareSplitSource
     public Optional<List<Object>> getTableExecuteSplitsInfo()
     {
         return source.getTableExecuteSplitsInfo();
+    }
+
+    @Override
+    public Optional<Metrics> getMetrics()
+    {
+        return source.getMetrics();
     }
 
     @Override

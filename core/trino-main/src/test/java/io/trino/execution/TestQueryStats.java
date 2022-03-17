@@ -233,6 +233,8 @@ public class TestQueryStats
 
             DataSize.ofBytes(30),
 
+            Metrics.EMPTY,
+
             ImmutableList.of(new StageGcStatistics(
                     101,
                     102,

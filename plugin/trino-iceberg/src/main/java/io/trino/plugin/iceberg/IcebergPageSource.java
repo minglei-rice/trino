@@ -19,6 +19,7 @@ import io.trino.spi.TrinoException;
 import io.trino.spi.block.Block;
 import io.trino.spi.block.RunLengthEncodedBlock;
 import io.trino.spi.connector.ConnectorPageSource;
+import io.trino.spi.metrics.Metrics;
 import io.trino.spi.predicate.Utils;
 import io.trino.spi.type.Type;
 
@@ -41,12 +42,23 @@ public class IcebergPageSource
     private final int[] delegateIndexes;
     private final ConnectorPageSource delegate;
     private final Optional<ReaderProjectionsAdapter> projectionsAdapter;
+    private final Metrics metrics;
 
     public IcebergPageSource(
             List<IcebergColumnHandle> columns,
             Map<Integer, Optional<String>> partitionKeys,
             ConnectorPageSource delegate,
             Optional<ReaderProjectionsAdapter> projectionsAdapter)
+    {
+        this(columns, partitionKeys, delegate, projectionsAdapter, Metrics.EMPTY);
+    }
+
+    public IcebergPageSource(
+            List<IcebergColumnHandle> columns,
+            Map<Integer, Optional<String>> partitionKeys,
+            ConnectorPageSource delegate,
+            Optional<ReaderProjectionsAdapter> projectionsAdapter,
+            Metrics metrics)
     {
         int size = requireNonNull(columns, "columns is null").size();
         requireNonNull(partitionKeys, "partitionKeys is null");
@@ -55,6 +67,7 @@ public class IcebergPageSource
         this.prefilledBlocks = new Block[size];
         this.delegateIndexes = new int[size];
         this.projectionsAdapter = requireNonNull(projectionsAdapter, "projectionsAdapter is null");
+        this.metrics = metrics;
 
         int outputIndex = 0;
         int delegateIndex = 0;
@@ -149,6 +162,12 @@ public class IcebergPageSource
     public long getSystemMemoryUsage()
     {
         return delegate.getSystemMemoryUsage();
+    }
+
+    @Override
+    public Metrics getMetrics()
+    {
+        return (delegate.getMetrics() != Metrics.EMPTY) ? metrics.mergeWith(delegate.getMetrics()) : metrics;
     }
 
     protected void closeWithSuppression(Throwable throwable)

@@ -152,7 +152,7 @@ public class TestIcebergIndex
         IndexClient client = new IndexClient(table.io());
         for (IndexField indexField : indexSpec.fields()) {
             Path indexPath = IndexUtils.getIndexPath(new Path(sourceFile.path().toString()), new Path(table.location()),
-                    indexField, indexRootPath);
+                    indexField, indexRootPath, 0);
             IndexFile indexFile = new IndexFile(indexPath.toString(), indexField.indexType(),
                     indexField.sourceId(), indexField.indexName());
             IndexMetadata indexMetadata = new IndexMetadata(indexFile, new Properties(), sourceFile.recordCount());

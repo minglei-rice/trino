@@ -20,6 +20,7 @@ import com.google.common.collect.Iterators;
 import com.google.common.collect.Streams;
 import io.airlift.log.Logger;
 import io.airlift.units.Duration;
+import io.trino.plugin.iceberg.util.MetricsUtils;
 import io.trino.spi.TrinoException;
 import io.trino.spi.connector.ColumnHandle;
 import io.trino.spi.connector.ConnectorPartitionHandle;
@@ -27,6 +28,7 @@ import io.trino.spi.connector.ConnectorSplit;
 import io.trino.spi.connector.ConnectorSplitSource;
 import io.trino.spi.connector.Constraint;
 import io.trino.spi.connector.DynamicFilter;
+import io.trino.spi.metrics.Metrics;
 import io.trino.spi.predicate.Domain;
 import io.trino.spi.predicate.NullableValue;
 import io.trino.spi.predicate.Range;
@@ -34,7 +36,9 @@ import io.trino.spi.predicate.TupleDomain;
 import io.trino.spi.predicate.ValueSet;
 import org.apache.iceberg.CombinedScanTask;
 import org.apache.iceberg.FileScanTask;
+import org.apache.iceberg.FilterMetrics;
 import org.apache.iceberg.IndexSpec;
+import org.apache.iceberg.SystemProperties;
 import org.apache.iceberg.TableScan;
 import org.apache.iceberg.expressions.Expression;
 import org.apache.iceberg.expressions.ExpressionVisitors;
@@ -55,6 +59,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Supplier;
@@ -96,6 +101,9 @@ public class IcebergSplitSource
     private CloseableIterable<CombinedScanTask> combinedScanIterable;
     private Iterator<FileScanTask> fileScanIterator;
     private TupleDomain<IcebergColumnHandle> pushedDownDynamicFilterPredicate;
+
+    private FilterMetrics filterMetrics;
+    private int skippedSplitsByDynamicFilter;
 
     public IcebergSplitSource(
             IcebergTableHandle tableHandle,
@@ -155,10 +163,12 @@ public class IcebergSplitSource
                 includeIndexInSplit = ExpressionVisitors.visit(filterExpression, iv);
             }
 
-            this.combinedScanIterable = tableScan
+            TableScan refinedScan = tableScan
                     .filter(filterExpression)
                     .includeColumnStats()
-                    .planTasks();
+                    .option(SystemProperties.SCAN_FILTER_METRICS_ENABLED, "true");
+            this.combinedScanIterable = refinedScan.planTasks();
+            this.filterMetrics = refinedScan.filterMetrics();
             this.fileScanIterator = Streams.stream(combinedScanIterable)
                     .map(CombinedScanTask::files)
                     .flatMap(Collection::stream)
@@ -200,6 +210,7 @@ public class IcebergSplitSource
                         identityPartitionColumns,
                         partitionValues,
                         dynamicFilterPredicate)) {
+                    skippedSplitsByDynamicFilter++;
                     continue;
                 }
                 if (!fileMatchesPredicate(
@@ -208,6 +219,7 @@ public class IcebergSplitSource
                         scanTask.file().lowerBounds(),
                         scanTask.file().upperBounds(),
                         scanTask.file().nullValueCounts())) {
+                    skippedSplitsByDynamicFilter++;
                     continue;
                 }
             }
@@ -230,6 +242,16 @@ public class IcebergSplitSource
     public boolean isFinished()
     {
         return fileScanIterator != null && !fileScanIterator.hasNext();
+    }
+
+    @Override
+    public Optional<Metrics> getMetrics()
+    {
+        Metrics.Accumulator metricsAccumulator = Metrics.accumulator();
+        metricsAccumulator.add(MetricsUtils.makeMetricsFromFilterMetrics(filterMetrics));
+        metricsAccumulator.add(MetricsUtils.makeLongCountMetrics(
+                MetricsUtils.SKIPPED_SPLITS_BY_DF_IN_COORDINATOR, skippedSplitsByDynamicFilter));
+        return Optional.of(metricsAccumulator.get());
     }
 
     @Override

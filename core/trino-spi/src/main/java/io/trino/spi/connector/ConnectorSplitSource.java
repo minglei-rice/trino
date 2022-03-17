@@ -13,6 +13,8 @@
  */
 package io.trino.spi.connector;
 
+import io.trino.spi.metrics.Metrics;
+
 import java.io.Closeable;
 import java.util.List;
 import java.util.Optional;
@@ -39,6 +41,11 @@ public interface ConnectorSplitSource
     boolean isFinished();
 
     default Optional<List<Object>> getTableExecuteSplitsInfo()
+    {
+        return Optional.empty();
+    }
+
+    default Optional<Metrics> getMetrics()
     {
         return Optional.empty();
     }

@@ -18,6 +18,7 @@ import io.trino.connector.CatalogName;
 import io.trino.execution.Lifespan;
 import io.trino.metadata.Split;
 import io.trino.spi.connector.ConnectorPartitionHandle;
+import io.trino.spi.metrics.Metrics;
 
 import java.io.Closeable;
 import java.util.List;
@@ -38,6 +39,11 @@ public interface SplitSource
     boolean isFinished();
 
     Optional<List<Object>> getTableExecuteSplitsInfo();
+
+    default Optional<Metrics> getMetrics()
+    {
+        return Optional.empty();
+    }
 
     class SplitBatch
     {

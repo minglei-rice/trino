@@ -25,6 +25,7 @@ import io.trino.spi.QueryId;
 import io.trino.spi.StandardErrorCode;
 import io.trino.spi.eventlistener.StageGcStatistics;
 import io.trino.spi.memory.MemoryPoolId;
+import io.trino.spi.metrics.Metrics;
 import io.trino.spi.resourcegroups.QueryType;
 import org.joda.time.DateTime;
 import org.testng.annotations.Test;
@@ -107,6 +108,7 @@ public class TestBasicQueryInfo
                                 DataSize.valueOf("31GB"),
                                 32,
                                 DataSize.valueOf("32GB"),
+                                Metrics.EMPTY,
                                 ImmutableList.of(new StageGcStatistics(
                                         101,
                                         102,

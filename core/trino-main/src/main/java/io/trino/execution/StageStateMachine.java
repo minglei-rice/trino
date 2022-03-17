@@ -25,6 +25,7 @@ import io.trino.operator.OperatorStats;
 import io.trino.operator.PipelineStats;
 import io.trino.operator.TaskStats;
 import io.trino.spi.eventlistener.StageGcStatistics;
+import io.trino.spi.metrics.Metrics;
 import io.trino.sql.planner.PlanFragment;
 import io.trino.sql.planner.plan.PlanNodeId;
 import io.trino.sql.planner.plan.TableScanNode;
@@ -88,6 +89,8 @@ public class StageStateMachine
     private final AtomicLong currentUserMemory = new AtomicLong();
     private final AtomicLong currentRevocableMemory = new AtomicLong();
     private final AtomicLong currentTotalMemory = new AtomicLong();
+
+    private final AtomicReference<Metrics> connectorMetrics = new AtomicReference<>(Metrics.EMPTY);
 
     public StageStateMachine(
             StageId stageId,
@@ -216,6 +219,11 @@ public class StageStateMachine
         currentTotalMemory.addAndGet(deltaTotalMemoryInBytes);
         peakUserMemory.updateAndGet(currentPeakValue -> max(currentUserMemory.get(), currentPeakValue));
         peakRevocableMemory.updateAndGet(currentPeakValue -> max(currentRevocableMemory.get(), currentPeakValue));
+    }
+
+    public void updateConnectorMetrics(Metrics newConnectorMetrics)
+    {
+        connectorMetrics.updateAndGet(metrics -> metrics.mergeWith(newConnectorMetrics));
     }
 
     public BasicStageStats getBasicStageStats(Supplier<Iterable<TaskInfo>> taskInfosSupplier)
@@ -394,6 +402,8 @@ public class StageStateMachine
 
         long physicalWrittenDataSize = 0;
 
+        Metrics.Accumulator connectorMetricsAccumulator = Metrics.accumulator().add(connectorMetrics.get());
+
         int fullGcCount = 0;
         int fullGcTaskCount = 0;
         int minFullGcSec = 0;
@@ -462,6 +472,8 @@ public class StageStateMachine
 
             physicalWrittenDataSize += taskStats.getPhysicalWrittenDataSize().toBytes();
 
+            connectorMetricsAccumulator.add(taskStats.getConnectorMetrics());
+
             fullGcCount += taskStats.getFullGcCount();
             fullGcTaskCount += taskStats.getFullGcCount() > 0 ? 1 : 0;
 
@@ -522,6 +534,8 @@ public class StageStateMachine
                 succinctBytes(outputDataSize),
                 outputPositions,
                 succinctBytes(physicalWrittenDataSize),
+
+                connectorMetricsAccumulator.get(),
 
                 new StageGcStatistics(
                         stageId.getId(),

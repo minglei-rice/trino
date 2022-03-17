@@ -514,3 +514,18 @@ export function formatShortDateTime(date: Date): string {
     const dayOfMonth = "" + date.getDate();
     return year + "-" + (month[1] ? month : "0" + month[0]) + "-" + (dayOfMonth[1] ? dayOfMonth: "0" + dayOfMonth[0]) + " " + formatShortTime(date);
 }
+
+export function getTotalFromLongCountMetrics(longCount: any): number {
+    if (longCount == null || longCount.total == null) {
+        return 0;
+    }
+    return longCount.total;
+}
+
+export function getCountWithPercentage(numerator: number, denominator: number): string {
+    if (denominator !== 0) {
+        const percentage = numerator / denominator * 100;
+        return numerator.toString() + ' (' + precisionRound(percentage) + '%)';
+    }
+    return numerator.toString();
+}

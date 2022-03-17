@@ -394,6 +394,7 @@ public class SourcePartitionedScheduler
                     whenFinishedOrNewLifespanAdded.set(null);
                     // fall through
                 case FINISHED:
+                    splitSource.getMetrics().ifPresent(stageExecution::updateConnectorMetrics);
                     return new ScheduleResult(
                             true,
                             overallNewTasks.build(),

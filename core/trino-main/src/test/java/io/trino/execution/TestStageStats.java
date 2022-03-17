@@ -21,6 +21,7 @@ import io.airlift.stats.Distribution.DistributionSnapshot;
 import io.airlift.units.DataSize;
 import io.airlift.units.Duration;
 import io.trino.spi.eventlistener.StageGcStatistics;
+import io.trino.spi.metrics.Metrics;
 import org.joda.time.DateTime;
 import org.testng.annotations.Test;
 
@@ -77,6 +78,8 @@ public class TestStageStats
             25,
 
             DataSize.ofBytes(26),
+
+            Metrics.EMPTY,
 
             new StageGcStatistics(
                     101,
