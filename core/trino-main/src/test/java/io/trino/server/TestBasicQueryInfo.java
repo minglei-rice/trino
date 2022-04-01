@@ -138,6 +138,7 @@ public class TestBasicQueryInfo
                         Optional.empty(),
                         ImmutableList.of(),
                         ImmutableList.of(),
+                        ImmutableSet.of(),
                         false,
                         Optional.empty(),
                         Optional.of(QueryType.SELECT)));

@@ -78,6 +78,11 @@ public class TableProperties
         return tableProperties.getDiscretePredicates();
     }
 
+    public Optional<TupleDomain<ColumnHandle>> getUnenforcedPredicates()
+    {
+        return tableProperties.getUnenforcedPredicates();
+    }
+
     public static class TablePartitioning
     {
         private final PartitioningHandle partitioningHandle;

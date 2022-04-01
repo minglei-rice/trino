@@ -72,6 +72,7 @@ public class QueryInfo
     private final Optional<StageInfo> outputStage;
     private final List<TableInfo> referencedTables;
     private final List<RoutineInfo> routines;
+    private final Set<ColumnsInPredicate> columnsInUnenforcedPredicate;
     private final ExecutionFailureInfo failureInfo;
     private final ErrorType errorType;
     private final ErrorCode errorCode;
@@ -113,6 +114,7 @@ public class QueryInfo
             @JsonProperty("output") Optional<Output> output,
             @JsonProperty("referencedTables") List<TableInfo> referencedTables,
             @JsonProperty("routines") List<RoutineInfo> routines,
+            @JsonProperty("columnsInUnenforcedPredicate") Set<ColumnsInPredicate> columnsInUnenforcedPredicate,
             @JsonProperty("completeInfo") boolean completeInfo,
             @JsonProperty("resourceGroupId") Optional<ResourceGroupId> resourceGroupId,
             @JsonProperty("queryType") Optional<QueryType> queryType)
@@ -138,6 +140,7 @@ public class QueryInfo
         requireNonNull(output, "output is null");
         requireNonNull(referencedTables, "referencedTables is null");
         requireNonNull(routines, "routines is null");
+        requireNonNull(columnsInUnenforcedPredicate, "columnsInTableScanPredicate is null");
         requireNonNull(resourceGroupId, "resourceGroupId is null");
         requireNonNull(warnings, "warnings is null");
         requireNonNull(queryType, "queryType is null");
@@ -172,6 +175,7 @@ public class QueryInfo
         this.output = output;
         this.referencedTables = ImmutableList.copyOf(referencedTables);
         this.routines = ImmutableList.copyOf(routines);
+        this.columnsInUnenforcedPredicate = ImmutableSet.copyOf(columnsInUnenforcedPredicate);
         this.completeInfo = completeInfo;
         this.resourceGroupId = resourceGroupId;
         this.queryType = queryType;
@@ -365,6 +369,12 @@ public class QueryInfo
     public List<RoutineInfo> getRoutines()
     {
         return routines;
+    }
+
+    @JsonProperty
+    public Set<ColumnsInPredicate> getColumnsInUnenforcedPredicate()
+    {
+        return columnsInUnenforcedPredicate;
     }
 
     @JsonProperty

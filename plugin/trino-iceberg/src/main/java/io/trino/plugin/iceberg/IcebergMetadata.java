@@ -320,7 +320,8 @@ public class IcebergMetadata
                 Optional.empty(),
                 Optional.empty(),
                 Optional.ofNullable(discretePredicates),
-                ImmutableList.of());
+                ImmutableList.of(),
+                Optional.of(table.getUnenforcedPredicate().transformKeys(ColumnHandle.class::cast)));
     }
 
     @Override

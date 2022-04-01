@@ -15,6 +15,7 @@ package io.trino.execution;
 
 import com.google.common.util.concurrent.ListenableFuture;
 import io.airlift.concurrent.SetThreadName;
+import io.airlift.log.Logger;
 import io.airlift.units.DataSize;
 import io.airlift.units.Duration;
 import io.trino.Session;
@@ -42,6 +43,7 @@ import io.trino.sql.PlannerContext;
 import io.trino.sql.analyzer.Analysis;
 import io.trino.sql.analyzer.Analyzer;
 import io.trino.sql.analyzer.AnalyzerFactory;
+import io.trino.sql.planner.ColumnsInUnenforcedPredicateExtractor;
 import io.trino.sql.planner.InputExtractor;
 import io.trino.sql.planner.LogicalPlanner;
 import io.trino.sql.planner.NodePartitioningManager;
@@ -67,6 +69,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.atomic.AtomicReference;
@@ -91,6 +94,8 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 public class SqlQueryExecution
         implements QueryExecution
 {
+    private static final Logger LOG = Logger.get(SqlQueryExecution.class);
+
     private final QueryStateMachine stateMachine;
     private final Slug slug;
     private final PlannerContext plannerContext;
@@ -465,6 +470,11 @@ public class SqlQueryExecution
                 stateMachine.getWarningCollector());
         Plan plan = logicalPlanner.plan(analysis);
         queryPlan.set(plan);
+
+        // extract columns in table scan predicates
+        Set<ColumnsInPredicate> columnsInUnenforcedPredicate =
+                new ColumnsInUnenforcedPredicateExtractor(plannerContext.getMetadata(), stateMachine.getSession()).extract(plan);
+        stateMachine.setColumnsInUnenforcedPredicate(columnsInUnenforcedPredicate);
 
         // fragment the plan
         SubPlan fragmentedPlan = planFragmenter.createSubPlans(stateMachine.getSession(), plan, false, stateMachine.getWarningCollector());

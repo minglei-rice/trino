@@ -251,6 +251,7 @@ public class MockManagedQueryExecution
                 Optional.empty(),
                 ImmutableList.of(),
                 ImmutableList.of(),
+                ImmutableSet.of(),
                 state.isDone(),
                 Optional.empty(),
                 Optional.empty());

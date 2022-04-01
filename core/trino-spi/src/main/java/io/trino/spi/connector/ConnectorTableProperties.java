@@ -30,10 +30,11 @@ public class ConnectorTableProperties
     private final Optional<Set<ColumnHandle>> streamPartitioningColumns;
     private final Optional<DiscretePredicates> discretePredicates;
     private final List<LocalProperty<ColumnHandle>> localProperties;
+    private final Optional<TupleDomain<ColumnHandle>> unenforcedPredicates;
 
     public ConnectorTableProperties()
     {
-        this(TupleDomain.all(), Optional.empty(), Optional.empty(), Optional.empty(), emptyList());
+        this(TupleDomain.all(), Optional.empty(), Optional.empty(), Optional.empty(), emptyList(), Optional.empty());
     }
 
     @Deprecated
@@ -43,7 +44,8 @@ public class ConnectorTableProperties
                 layout.getTablePartitioning(),
                 layout.getStreamPartitioningColumns(),
                 layout.getDiscretePredicates(),
-                layout.getLocalProperties());
+                layout.getLocalProperties(),
+                Optional.empty());
     }
 
     public ConnectorTableProperties(
@@ -53,17 +55,30 @@ public class ConnectorTableProperties
             Optional<DiscretePredicates> discretePredicates,
             List<LocalProperty<ColumnHandle>> localProperties)
     {
+        this(predicate, tablePartitioning, streamPartitioningColumns, discretePredicates, localProperties, Optional.empty());
+    }
+
+    public ConnectorTableProperties(
+            TupleDomain<ColumnHandle> predicate,
+            Optional<ConnectorTablePartitioning> tablePartitioning,
+            Optional<Set<ColumnHandle>> streamPartitioningColumns,
+            Optional<DiscretePredicates> discretePredicates,
+            List<LocalProperty<ColumnHandle>> localProperties,
+            Optional<TupleDomain<ColumnHandle>> unenforcedPredicates)
+    {
         requireNonNull(streamPartitioningColumns, "streamPartitioningColumns is null");
         requireNonNull(tablePartitioning, "tablePartitioning is null");
         requireNonNull(predicate, "predicate is null");
         requireNonNull(discretePredicates, "discretePredicates is null");
         requireNonNull(localProperties, "localProperties is null");
+        requireNonNull(unenforcedPredicates, "nonPartitionPredicates is null");
 
         this.tablePartitioning = tablePartitioning;
         this.streamPartitioningColumns = streamPartitioningColumns;
         this.predicate = predicate;
         this.discretePredicates = discretePredicates;
         this.localProperties = localProperties;
+        this.unenforcedPredicates = unenforcedPredicates;
     }
 
     /**
@@ -120,10 +135,18 @@ public class ConnectorTableProperties
         return localProperties;
     }
 
+    /**
+     * A TupleDomain that contains predicates that rows in this table are not guaranteed to satisfy.
+     */
+    public Optional<TupleDomain<ColumnHandle>> getUnenforcedPredicates()
+    {
+        return unenforcedPredicates;
+    }
+
     @Override
     public int hashCode()
     {
-        return Objects.hash(predicate, discretePredicates, streamPartitioningColumns, tablePartitioning, localProperties);
+        return Objects.hash(predicate, discretePredicates, streamPartitioningColumns, tablePartitioning, localProperties, unenforcedPredicates);
     }
 
     @Override
@@ -140,6 +163,7 @@ public class ConnectorTableProperties
                 && Objects.equals(this.discretePredicates, other.discretePredicates)
                 && Objects.equals(this.streamPartitioningColumns, other.streamPartitioningColumns)
                 && Objects.equals(this.tablePartitioning, other.tablePartitioning)
-                && Objects.equals(this.localProperties, other.localProperties);
+                && Objects.equals(this.localProperties, other.localProperties)
+                && Objects.equals(this.unenforcedPredicates, other.unenforcedPredicates);
     }
 }

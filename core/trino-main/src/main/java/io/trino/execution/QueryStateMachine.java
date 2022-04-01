@@ -158,6 +158,7 @@ public class QueryStateMachine
     private final AtomicReference<Optional<Output>> output = new AtomicReference<>(Optional.empty());
     private final AtomicReference<List<TableInfo>> referencedTables = new AtomicReference<>(ImmutableList.of());
     private final AtomicReference<List<RoutineInfo>> routines = new AtomicReference<>(ImmutableList.of());
+    private final AtomicReference<Set<ColumnsInPredicate>> columnsInUnenforcedPredicate = new AtomicReference<>(ImmutableSet.of());
     private final StateMachine<Optional<QueryInfo>> finalQueryInfo;
 
     private final WarningCollector warningCollector;
@@ -457,6 +458,7 @@ public class QueryStateMachine
                 output.get(),
                 referencedTables.get(),
                 routines.get(),
+                columnsInUnenforcedPredicate.get(),
                 completeInfo,
                 Optional.of(resourceGroup),
                 queryType);
@@ -696,6 +698,12 @@ public class QueryStateMachine
     {
         requireNonNull(routines, "routines is null");
         this.routines.set(ImmutableList.copyOf(routines));
+    }
+
+    public void setColumnsInUnenforcedPredicate(Set<ColumnsInPredicate> columnsInUnenforcedPredicate)
+    {
+        requireNonNull(columnsInUnenforcedPredicate, "columnsInUnenforcedPredicate is null");
+        this.columnsInUnenforcedPredicate.set(ImmutableSet.copyOf(columnsInUnenforcedPredicate));
     }
 
     private DynamicFiltersStats getDynamicFiltersStats()
@@ -1132,6 +1140,7 @@ public class QueryStateMachine
                 queryInfo.getOutput(),
                 queryInfo.getReferencedTables(),
                 queryInfo.getRoutines(),
+                queryInfo.getColumnsInUnenforcedPredicate(),
                 queryInfo.isCompleteInfo(),
                 queryInfo.getResourceGroupId(),
                 queryInfo.getQueryType());
