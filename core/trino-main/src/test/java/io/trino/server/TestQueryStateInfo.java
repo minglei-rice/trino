@@ -199,6 +199,7 @@ public class TestQueryStateInfo
                 ImmutableList.of(),
                 ImmutableList.of(),
                 false,
+                ImmutableSet.of(),
                 Optional.empty(),
                 Optional.of(QueryType.SELECT),
                 RetryPolicy.NONE);

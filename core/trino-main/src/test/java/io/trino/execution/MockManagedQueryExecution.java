@@ -273,6 +273,7 @@ public class MockManagedQueryExecution
                 ImmutableList.of(),
                 ImmutableList.of(),
                 state.isDone(),
+                ImmutableSet.of(),
                 Optional.empty(),
                 Optional.empty(),
                 RetryPolicy.NONE);

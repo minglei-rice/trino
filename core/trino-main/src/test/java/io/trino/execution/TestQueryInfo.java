@@ -120,6 +120,7 @@ public class TestQueryInfo
                 ImmutableList.of(),
                 ImmutableList.of(),
                 true,
+                ImmutableSet.of(),
                 Optional.of(new ResourceGroupId("groupId")),
                 Optional.of(QueryType.SELECT),
                 RetryPolicy.TASK);

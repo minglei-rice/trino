@@ -240,6 +240,7 @@ public class FailedDispatchQuery
                 ImmutableList.of(),
                 ImmutableList.of(),
                 true,
+                ImmutableSet.of(),
                 resourceGroupId,
                 Optional.empty(),
                 RetryPolicy.NONE);

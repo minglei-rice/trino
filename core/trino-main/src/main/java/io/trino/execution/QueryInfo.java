@@ -70,6 +70,7 @@ public class QueryInfo
     private final Optional<StageInfo> outputStage;
     private final List<TableInfo> referencedTables;
     private final List<RoutineInfo> routines;
+    private final Set<ColumnsInPredicate> columnsInUnenforcedPredicate;
     private final ExecutionFailureInfo failureInfo;
     private final ErrorType errorType;
     private final ErrorCode errorCode;
@@ -111,6 +112,7 @@ public class QueryInfo
             @JsonProperty("referencedTables") List<TableInfo> referencedTables,
             @JsonProperty("routines") List<RoutineInfo> routines,
             @JsonProperty("finalQueryInfo") boolean finalQueryInfo,
+            @JsonProperty("columnsInUnenforcedPredicate") Set<ColumnsInPredicate> columnsInUnenforcedPredicate,
             @JsonProperty("resourceGroupId") Optional<ResourceGroupId> resourceGroupId,
             @JsonProperty("queryType") Optional<QueryType> queryType,
             @JsonProperty("retryPolicy") RetryPolicy retryPolicy)
@@ -136,6 +138,7 @@ public class QueryInfo
         requireNonNull(output, "output is null");
         requireNonNull(referencedTables, "referencedTables is null");
         requireNonNull(routines, "routines is null");
+        requireNonNull(columnsInUnenforcedPredicate, "columnsInTableScanPredicate is null");
         requireNonNull(resourceGroupId, "resourceGroupId is null");
         requireNonNull(warnings, "warnings is null");
         requireNonNull(queryType, "queryType is null");
@@ -171,6 +174,7 @@ public class QueryInfo
         this.routines = ImmutableList.copyOf(routines);
         this.finalQueryInfo = finalQueryInfo;
         checkArgument(!finalQueryInfo || state.isDone(), "finalQueryInfo without a terminal query state");
+        this.columnsInUnenforcedPredicate = ImmutableSet.copyOf(columnsInUnenforcedPredicate);
         this.resourceGroupId = resourceGroupId;
         this.queryType = queryType;
         this.retryPolicy = retryPolicy;
@@ -358,6 +362,12 @@ public class QueryInfo
     public List<RoutineInfo> getRoutines()
     {
         return routines;
+    }
+
+    @JsonProperty
+    public Set<ColumnsInPredicate> getColumnsInUnenforcedPredicate()
+    {
+        return columnsInUnenforcedPredicate;
     }
 
     @JsonProperty
