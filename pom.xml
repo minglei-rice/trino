@@ -10,7 +10,7 @@
 
     <groupId>io.trino</groupId>
     <artifactId>trino-root</artifactId>
-    <version>367</version>
+    <version>367-bili-0.2-SNAPSHOT</version>
 
     <name>trino-root</name>
     <description>Trino</description>
