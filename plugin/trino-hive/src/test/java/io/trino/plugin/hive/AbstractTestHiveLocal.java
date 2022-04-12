@@ -267,21 +267,27 @@ public abstract class AbstractTestHiveLocal
     {
         java.nio.file.Path tempDir = java.nio.file.Files.createTempDirectory(getClass().getSimpleName()).normalize();
         log.info("Copying resource dir '%s' to %s", resourceName, tempDir);
-        ClassPath.from(getClass().getClassLoader())
-                .getResources().stream()
-                .filter(resourceInfo -> resourceInfo.getResourceName().startsWith(resourceName))
-                .forEach(resourceInfo -> {
-                    try {
-                        java.nio.file.Path target = tempDir.resolve(resourceInfo.getResourceName());
-                        java.nio.file.Files.createDirectories(target.getParent());
-                        try (InputStream inputStream = resourceInfo.asByteSource().openStream()) {
-                            copy(inputStream, target);
+        try {
+            ClassPath.from(getClass().getClassLoader())
+                    .getResources().stream()
+                    .filter(resourceInfo -> resourceInfo.getResourceName().startsWith(resourceName))
+                    .forEach(resourceInfo -> {
+                        try {
+                            java.nio.file.Path target = tempDir.resolve(resourceInfo.getResourceName());
+                            java.nio.file.Files.createDirectories(target.getParent());
+                            try (InputStream inputStream = resourceInfo.asByteSource().openStream()) {
+                                copy(inputStream, target);
+                            }
                         }
-                    }
-                    catch (IOException e) {
-                        throw new UncheckedIOException(e);
-                    }
-                });
+                        catch (IOException e) {
+                            throw new UncheckedIOException(e);
+                        }
+                    });
+        }
+        catch (Throwable t) {
+            deleteRecursively(tempDir, ALLOW_INSECURE);
+            throw t;
+        }
         return tempDir.resolve(resourceName).normalize();
     }
 }

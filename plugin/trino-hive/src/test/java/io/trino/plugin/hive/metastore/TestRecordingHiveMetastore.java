@@ -44,6 +44,7 @@ import org.testng.annotations.Test;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -126,21 +127,27 @@ public class TestRecordingHiveMetastore
     public void testRecordingHiveMetastore()
             throws IOException
     {
-        RecordingMetastoreConfig recordingConfig = new RecordingMetastoreConfig()
-                .setRecordingPath(File.createTempFile("recording_test", "json").getAbsolutePath())
-                .setRecordingDuration(new Duration(10, TimeUnit.MINUTES));
-        JsonCodec<RecordingHiveMetastore.Recording> jsonCodec = createJsonCodec();
-        RecordingHiveMetastore recordingHiveMetastore = new RecordingHiveMetastore(new TestingHiveMetastore(), recordingConfig, jsonCodec);
-        validateMetadata(recordingHiveMetastore);
-        recordingHiveMetastore.dropDatabase(HIVE_CONTEXT, "other_database", true);
-        recordingHiveMetastore.writeRecording();
+        java.io.File tempFile = File.createTempFile("recording_test", "json");
+        try {
+            RecordingMetastoreConfig recordingConfig = new RecordingMetastoreConfig()
+                    .setRecordingPath(tempFile.getAbsolutePath())
+                    .setRecordingDuration(new Duration(10, TimeUnit.MINUTES));
+            JsonCodec<RecordingHiveMetastore.Recording> jsonCodec = createJsonCodec();
+            RecordingHiveMetastore recordingHiveMetastore = new RecordingHiveMetastore(new TestingHiveMetastore(), recordingConfig, jsonCodec);
+            validateMetadata(recordingHiveMetastore);
+            recordingHiveMetastore.dropDatabase(HIVE_CONTEXT, "other_database", true);
+            recordingHiveMetastore.writeRecording();
 
-        RecordingMetastoreConfig replayingConfig = recordingConfig
-                .setReplay(true);
+            RecordingMetastoreConfig replayingConfig = recordingConfig
+                    .setReplay(true);
 
-        recordingHiveMetastore = new RecordingHiveMetastore(new UnimplementedHiveMetastore(), replayingConfig, createJsonCodec());
-        recordingHiveMetastore.loadRecording();
-        validateMetadata(recordingHiveMetastore);
+            recordingHiveMetastore = new RecordingHiveMetastore(new UnimplementedHiveMetastore(), replayingConfig, createJsonCodec());
+            recordingHiveMetastore.loadRecording();
+            validateMetadata(recordingHiveMetastore);
+        }
+        finally {
+            Files.deleteIfExists(tempFile.toPath());
+        }
     }
 
     private JsonCodec<RecordingHiveMetastore.Recording> createJsonCodec()

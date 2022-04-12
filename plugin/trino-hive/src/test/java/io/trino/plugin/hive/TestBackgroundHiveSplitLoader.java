@@ -604,47 +604,50 @@ public class TestBackgroundHiveSplitLoader
             throws Exception
     {
         java.nio.file.Path tablePath = Files.createTempDirectory("TestBackgroundHiveSplitLoader");
-        Table table = table(
-                tablePath.toString(),
-                ImmutableList.of(),
-                Optional.empty(),
-                ImmutableMap.of(
-                        "transactional", "true",
-                        "transactional_properties", "insert_only"));
+        try {
+            Table table = table(
+                    tablePath.toString(),
+                    ImmutableList.of(),
+                    Optional.empty(),
+                    ImmutableMap.of(
+                            "transactional", "true",
+                            "transactional_properties", "insert_only"));
 
-        List<String> filePaths = ImmutableList.of(
-                tablePath + "/delta_0000001_0000001_0000/_orc_acid_version",
-                tablePath + "/delta_0000001_0000001_0000/bucket_00000",
-                tablePath + "/delta_0000002_0000002_0000/_orc_acid_version",
-                tablePath + "/delta_0000002_0000002_0000/bucket_00000",
-                tablePath + "/delta_0000003_0000003_0000/_orc_acid_version",
-                tablePath + "/delta_0000003_0000003_0000/bucket_00000");
+            List<String> filePaths = ImmutableList.of(
+                    tablePath + "/delta_0000001_0000001_0000/_orc_acid_version",
+                    tablePath + "/delta_0000001_0000001_0000/bucket_00000",
+                    tablePath + "/delta_0000002_0000002_0000/_orc_acid_version",
+                    tablePath + "/delta_0000002_0000002_0000/bucket_00000",
+                    tablePath + "/delta_0000003_0000003_0000/_orc_acid_version",
+                    tablePath + "/delta_0000003_0000003_0000/bucket_00000");
 
-        for (String path : filePaths) {
-            File file = new File(path);
-            assertTrue(file.getParentFile().exists() || file.getParentFile().mkdirs(), "Failed creating directory " + file.getParentFile());
-            createOrcAcidFile(file);
+            for (String path : filePaths) {
+                File file = new File(path);
+                assertTrue(file.getParentFile().exists() || file.getParentFile().mkdirs(), "Failed creating directory " + file.getParentFile());
+                createOrcAcidFile(file);
+            }
+
+            // ValidWriteIdList is of format <currentTxn>$<schema>.<table>:<highWatermark>:<minOpenWriteId>::<AbortedTxns>
+            // This writeId list has high watermark transaction=3 and aborted transaction=2
+            String validWriteIdsList = format("4$%s.%s:3:9223372036854775807::2", table.getDatabaseName(), table.getTableName());
+
+            BackgroundHiveSplitLoader backgroundHiveSplitLoader = backgroundHiveSplitLoader(
+                    HDFS_ENVIRONMENT,
+                    TupleDomain.none(),
+                    Optional.empty(),
+                    table,
+                    Optional.empty(),
+                    Optional.of(new ValidReaderWriteIdList(validWriteIdsList)));
+
+            HiveSplitSource hiveSplitSource = hiveSplitSource(backgroundHiveSplitLoader);
+            backgroundHiveSplitLoader.start(hiveSplitSource);
+            List<String> splits = drain(hiveSplitSource);
+            assertTrue(splits.stream().anyMatch(p -> p.contains(filePaths.get(1))), format("%s not found in splits %s", filePaths.get(1), splits));
+            assertTrue(splits.stream().anyMatch(p -> p.contains(filePaths.get(5))), format("%s not found in splits %s", filePaths.get(5), splits));
         }
-
-        // ValidWriteIdList is of format <currentTxn>$<schema>.<table>:<highWatermark>:<minOpenWriteId>::<AbortedTxns>
-        // This writeId list has high watermark transaction=3 and aborted transaction=2
-        String validWriteIdsList = format("4$%s.%s:3:9223372036854775807::2", table.getDatabaseName(), table.getTableName());
-
-        BackgroundHiveSplitLoader backgroundHiveSplitLoader = backgroundHiveSplitLoader(
-                HDFS_ENVIRONMENT,
-                TupleDomain.none(),
-                Optional.empty(),
-                table,
-                Optional.empty(),
-                Optional.of(new ValidReaderWriteIdList(validWriteIdsList)));
-
-        HiveSplitSource hiveSplitSource = hiveSplitSource(backgroundHiveSplitLoader);
-        backgroundHiveSplitLoader.start(hiveSplitSource);
-        List<String> splits = drain(hiveSplitSource);
-        assertTrue(splits.stream().anyMatch(p -> p.contains(filePaths.get(1))), format("%s not found in splits %s", filePaths.get(1), splits));
-        assertTrue(splits.stream().anyMatch(p -> p.contains(filePaths.get(5))), format("%s not found in splits %s", filePaths.get(5), splits));
-
-        deleteRecursively(tablePath, ALLOW_INSECURE);
+        finally {
+            deleteRecursively(tablePath, ALLOW_INSECURE);
+        }
     }
 
     @Test
@@ -652,40 +655,45 @@ public class TestBackgroundHiveSplitLoader
             throws Exception
     {
         java.nio.file.Path tablePath = Files.createTempDirectory("TestBackgroundHiveSplitLoader");
-        Table table = table(
-                tablePath.toString(),
-                ImmutableList.of(),
-                Optional.empty(),
-                ImmutableMap.of("transactional", "true"));
+        try {
+            Table table = table(
+                    tablePath.toString(),
+                    ImmutableList.of(),
+                    Optional.empty(),
+                    ImmutableMap.of("transactional", "true"));
 
-        String originalFile = tablePath + "/000000_1";
-        List<String> filePaths = ImmutableList.of(
-                tablePath + "/delta_0000002_0000002_0000/_orc_acid_version",
-                tablePath + "/delta_0000002_0000002_0000/bucket_00000");
+            String originalFile = tablePath + "/000000_1";
+            List<String> filePaths = ImmutableList.of(
+                    tablePath + "/delta_0000002_0000002_0000/_orc_acid_version",
+                    tablePath + "/delta_0000002_0000002_0000/bucket_00000");
 
-        for (String path : filePaths) {
-            File file = new File(path);
-            assertTrue(file.getParentFile().exists() || file.getParentFile().mkdirs(), "Failed creating directory " + file.getParentFile());
-            createOrcAcidFile(file);
+            for (String path : filePaths) {
+                File file = new File(path);
+                assertTrue(file.getParentFile().exists() || file.getParentFile().mkdirs(), "Failed creating directory " + file.getParentFile());
+                createOrcAcidFile(file);
+            }
+            Files.write(Paths.get(originalFile), "test".getBytes(UTF_8));
+
+            // ValidWriteIdsList is of format <currentTxn>$<schema>.<table>:<highWatermark>:<minOpenWriteId>::<AbortedTxns>
+            // This writeId list has high watermark transaction=3
+            ValidReaderWriteIdList validWriteIdsList = new ValidReaderWriteIdList(format("4$%s.%s:3:9223372036854775807::", table.getDatabaseName(), table.getTableName()));
+
+            BackgroundHiveSplitLoader backgroundHiveSplitLoader = backgroundHiveSplitLoader(
+                    HDFS_ENVIRONMENT,
+                    TupleDomain.all(),
+                    Optional.empty(),
+                    table,
+                    Optional.empty(),
+                    Optional.of(validWriteIdsList));
+            HiveSplitSource hiveSplitSource = hiveSplitSource(backgroundHiveSplitLoader);
+            backgroundHiveSplitLoader.start(hiveSplitSource);
+            List<String> splits = drain(hiveSplitSource);
+            assertTrue(splits.stream().anyMatch(p -> p.contains(originalFile)), format("%s not found in splits %s", filePaths.get(0), splits));
+            assertTrue(splits.stream().anyMatch(p -> p.contains(filePaths.get(1))), format("%s not found in splits %s", filePaths.get(1), splits));
         }
-        Files.write(Paths.get(originalFile), "test".getBytes(UTF_8));
-
-        // ValidWriteIdsList is of format <currentTxn>$<schema>.<table>:<highWatermark>:<minOpenWriteId>::<AbortedTxns>
-        // This writeId list has high watermark transaction=3
-        ValidReaderWriteIdList validWriteIdsList = new ValidReaderWriteIdList(format("4$%s.%s:3:9223372036854775807::", table.getDatabaseName(), table.getTableName()));
-
-        BackgroundHiveSplitLoader backgroundHiveSplitLoader = backgroundHiveSplitLoader(
-                HDFS_ENVIRONMENT,
-                TupleDomain.all(),
-                Optional.empty(),
-                table,
-                Optional.empty(),
-                Optional.of(validWriteIdsList));
-        HiveSplitSource hiveSplitSource = hiveSplitSource(backgroundHiveSplitLoader);
-        backgroundHiveSplitLoader.start(hiveSplitSource);
-        List<String> splits = drain(hiveSplitSource);
-        assertTrue(splits.stream().anyMatch(p -> p.contains(originalFile)), format("%s not found in splits %s", filePaths.get(0), splits));
-        assertTrue(splits.stream().anyMatch(p -> p.contains(filePaths.get(1))), format("%s not found in splits %s", filePaths.get(1), splits));
+        finally {
+            deleteRecursively(tablePath, ALLOW_INSECURE);
+        }
     }
 
     @Test
@@ -693,45 +701,48 @@ public class TestBackgroundHiveSplitLoader
             throws Exception
     {
         java.nio.file.Path tablePath = Files.createTempDirectory("TestBackgroundHiveSplitLoader");
-        Table table = table(
-                tablePath.toString(),
-                ImmutableList.of(),
-                Optional.empty(),
-                ImmutableMap.of("transactional", "true"));
+        try {
+            Table table = table(
+                    tablePath.toString(),
+                    ImmutableList.of(),
+                    Optional.empty(),
+                    ImmutableMap.of("transactional", "true"));
 
-        List<String> filePaths = ImmutableList.of(
-                tablePath + "/000000_1",
-                // no /delta_0000002_0000002_0000/_orc_acid_version file
-                tablePath + "/delta_0000002_0000002_0000/bucket_00000");
+            List<String> filePaths = ImmutableList.of(
+                    tablePath + "/000000_1",
+                    // no /delta_0000002_0000002_0000/_orc_acid_version file
+                    tablePath + "/delta_0000002_0000002_0000/bucket_00000");
 
-        for (String path : filePaths) {
-            File file = new File(path);
-            assertTrue(file.getParentFile().exists() || file.getParentFile().mkdirs(), "Failed creating directory " + file.getParentFile());
-            createOrcAcidFile(file);
+            for (String path : filePaths) {
+                File file = new File(path);
+                assertTrue(file.getParentFile().exists() || file.getParentFile().mkdirs(), "Failed creating directory " + file.getParentFile());
+                createOrcAcidFile(file);
+            }
+
+            // ValidWriteIdsList is of format <currentTxn>$<schema>.<table>:<highWatermark>:<minOpenWriteId>::<AbortedTxns>
+            // This writeId list has high watermark transaction=3
+            ValidReaderWriteIdList validWriteIdsList = new ValidReaderWriteIdList(format("4$%s.%s:3:9223372036854775807::", table.getDatabaseName(), table.getTableName()));
+
+            BackgroundHiveSplitLoader backgroundHiveSplitLoader = backgroundHiveSplitLoader(
+                    HDFS_ENVIRONMENT,
+                    TupleDomain.all(),
+                    Optional.empty(),
+                    table,
+                    Optional.empty(),
+                    Optional.of(validWriteIdsList));
+
+            HiveSplitSource hiveSplitSource = hiveSplitSource(backgroundHiveSplitLoader);
+            backgroundHiveSplitLoader.start(hiveSplitSource);
+
+            // We should have it marked in all splits that further ORC ACID validation is required
+            assertThat(drainSplits(hiveSplitSource)).extracting(HiveSplit::getAcidInfo)
+                    .allMatch(Optional::isPresent)
+                    .extracting(Optional::get)
+                    .noneMatch(AcidInfo::isOrcAcidVersionValidated);
         }
-
-        // ValidWriteIdsList is of format <currentTxn>$<schema>.<table>:<highWatermark>:<minOpenWriteId>::<AbortedTxns>
-        // This writeId list has high watermark transaction=3
-        ValidReaderWriteIdList validWriteIdsList = new ValidReaderWriteIdList(format("4$%s.%s:3:9223372036854775807::", table.getDatabaseName(), table.getTableName()));
-
-        BackgroundHiveSplitLoader backgroundHiveSplitLoader = backgroundHiveSplitLoader(
-                HDFS_ENVIRONMENT,
-                TupleDomain.all(),
-                Optional.empty(),
-                table,
-                Optional.empty(),
-                Optional.of(validWriteIdsList));
-
-        HiveSplitSource hiveSplitSource = hiveSplitSource(backgroundHiveSplitLoader);
-        backgroundHiveSplitLoader.start(hiveSplitSource);
-
-        // We should have it marked in all splits that further ORC ACID validation is required
-        assertThat(drainSplits(hiveSplitSource)).extracting(HiveSplit::getAcidInfo)
-                .allMatch(Optional::isPresent)
-                .extracting(Optional::get)
-                .noneMatch(AcidInfo::isOrcAcidVersionValidated);
-
-        deleteRecursively(tablePath, ALLOW_INSECURE);
+        finally {
+            deleteRecursively(tablePath, ALLOW_INSECURE);
+        }
     }
 
     @Test
@@ -739,43 +750,46 @@ public class TestBackgroundHiveSplitLoader
             throws Exception
     {
         java.nio.file.Path tablePath = Files.createTempDirectory("TestBackgroundHiveSplitLoader");
-        Table table = table(
-                tablePath.toString(),
-                ImmutableList.of(),
-                Optional.empty(),
-                ImmutableMap.of("transactional", "true"));
+        try {
+            Table table = table(
+                    tablePath.toString(),
+                    ImmutableList.of(),
+                    Optional.empty(),
+                    ImmutableMap.of("transactional", "true"));
 
-        List<String> filePaths = ImmutableList.of(
-                tablePath + "/000000_1", // _orc_acid_version does not exist so it's assumed to be "ORC ACID version 0"
-                tablePath + "/delta_0000002_0000002_0000/_orc_acid_version",
-                tablePath + "/delta_0000002_0000002_0000/bucket_00000");
+            List<String> filePaths = ImmutableList.of(
+                    tablePath + "/000000_1", // _orc_acid_version does not exist so it's assumed to be "ORC ACID version 0"
+                    tablePath + "/delta_0000002_0000002_0000/_orc_acid_version",
+                    tablePath + "/delta_0000002_0000002_0000/bucket_00000");
 
-        for (String path : filePaths) {
-            File file = new File(path);
-            assertTrue(file.getParentFile().exists() || file.getParentFile().mkdirs(), "Failed creating directory " + file.getParentFile());
-            createOrcAcidFile(file, 2);
+            for (String path : filePaths) {
+                File file = new File(path);
+                assertTrue(file.getParentFile().exists() || file.getParentFile().mkdirs(), "Failed creating directory " + file.getParentFile());
+                createOrcAcidFile(file, 2);
+            }
+
+            // ValidWriteIdsList is of format <currentTxn>$<schema>.<table>:<highWatermark>:<minOpenWriteId>::<AbortedTxns>
+            // This writeId list has high watermark transaction=3
+            ValidReaderWriteIdList validWriteIdsList = new ValidReaderWriteIdList(format("4$%s.%s:3:9223372036854775807::", table.getDatabaseName(), table.getTableName()));
+
+            BackgroundHiveSplitLoader backgroundHiveSplitLoader = backgroundHiveSplitLoader(
+                    HDFS_ENVIRONMENT,
+                    TupleDomain.all(),
+                    Optional.empty(),
+                    table,
+                    Optional.empty(),
+                    Optional.of(validWriteIdsList));
+
+            HiveSplitSource hiveSplitSource = hiveSplitSource(backgroundHiveSplitLoader);
+            backgroundHiveSplitLoader.start(hiveSplitSource);
+
+            // We should have it marked in all splits that NO further ORC ACID validation is required
+            assertThat(drainSplits(hiveSplitSource)).extracting(HiveSplit::getAcidInfo)
+                    .allMatch(acidInfo -> acidInfo.isEmpty() || acidInfo.get().isOrcAcidVersionValidated());
         }
-
-        // ValidWriteIdsList is of format <currentTxn>$<schema>.<table>:<highWatermark>:<minOpenWriteId>::<AbortedTxns>
-        // This writeId list has high watermark transaction=3
-        ValidReaderWriteIdList validWriteIdsList = new ValidReaderWriteIdList(format("4$%s.%s:3:9223372036854775807::", table.getDatabaseName(), table.getTableName()));
-
-        BackgroundHiveSplitLoader backgroundHiveSplitLoader = backgroundHiveSplitLoader(
-                HDFS_ENVIRONMENT,
-                TupleDomain.all(),
-                Optional.empty(),
-                table,
-                Optional.empty(),
-                Optional.of(validWriteIdsList));
-
-        HiveSplitSource hiveSplitSource = hiveSplitSource(backgroundHiveSplitLoader);
-        backgroundHiveSplitLoader.start(hiveSplitSource);
-
-        // We should have it marked in all splits that NO further ORC ACID validation is required
-        assertThat(drainSplits(hiveSplitSource)).extracting(HiveSplit::getAcidInfo)
-                .allMatch(acidInfo -> acidInfo.isEmpty() || acidInfo.get().isOrcAcidVersionValidated());
-
-        deleteRecursively(tablePath, ALLOW_INSECURE);
+        finally {
+            deleteRecursively(tablePath, ALLOW_INSECURE);
+        }
     }
 
     @Test
@@ -783,46 +797,49 @@ public class TestBackgroundHiveSplitLoader
             throws Exception
     {
         java.nio.file.Path tablePath = Files.createTempDirectory("TestBackgroundHiveSplitLoader");
-        Table table = table(
-                tablePath.toString(),
-                ImmutableList.of(),
-                Optional.empty(),
-                ImmutableMap.of("transactional", "true"));
+        try {
+            Table table = table(
+                    tablePath.toString(),
+                    ImmutableList.of(),
+                    Optional.empty(),
+                    ImmutableMap.of("transactional", "true"));
 
-        List<String> filePaths = ImmutableList.of(
-                tablePath + "/000000_1",
-                tablePath + "/delta_0000002_0000002_0000/_orc_acid_version",
-                tablePath + "/delta_0000002_0000002_0000/bucket_00000");
+            List<String> filePaths = ImmutableList.of(
+                    tablePath + "/000000_1",
+                    tablePath + "/delta_0000002_0000002_0000/_orc_acid_version",
+                    tablePath + "/delta_0000002_0000002_0000/bucket_00000");
 
-        for (String path : filePaths) {
-            File file = new File(path);
-            assertTrue(file.getParentFile().exists() || file.getParentFile().mkdirs(), "Failed creating directory " + file.getParentFile());
-            // _orc_acid_version_exists but has version 1
-            createOrcAcidFile(file, 1);
+            for (String path : filePaths) {
+                File file = new File(path);
+                assertTrue(file.getParentFile().exists() || file.getParentFile().mkdirs(), "Failed creating directory " + file.getParentFile());
+                // _orc_acid_version_exists but has version 1
+                createOrcAcidFile(file, 1);
+            }
+
+            // ValidWriteIdsList is of format <currentTxn>$<schema>.<table>:<highWatermark>:<minOpenWriteId>::<AbortedTxns>
+            // This writeId list has high watermark transaction=3
+            ValidReaderWriteIdList validWriteIdsList = new ValidReaderWriteIdList(format("4$%s.%s:3:9223372036854775807::", table.getDatabaseName(), table.getTableName()));
+
+            BackgroundHiveSplitLoader backgroundHiveSplitLoader = backgroundHiveSplitLoader(
+                    HDFS_ENVIRONMENT,
+                    TupleDomain.all(),
+                    Optional.empty(),
+                    table,
+                    Optional.empty(),
+                    Optional.of(validWriteIdsList));
+
+            HiveSplitSource hiveSplitSource = hiveSplitSource(backgroundHiveSplitLoader);
+            backgroundHiveSplitLoader.start(hiveSplitSource);
+
+            // We should have it marked in all splits that further ORC ACID validation is required
+            assertThat(drainSplits(hiveSplitSource)).extracting(HiveSplit::getAcidInfo)
+                    .allMatch(Optional::isPresent)
+                    .extracting(Optional::get)
+                    .noneMatch(AcidInfo::isOrcAcidVersionValidated);
         }
-
-        // ValidWriteIdsList is of format <currentTxn>$<schema>.<table>:<highWatermark>:<minOpenWriteId>::<AbortedTxns>
-        // This writeId list has high watermark transaction=3
-        ValidReaderWriteIdList validWriteIdsList = new ValidReaderWriteIdList(format("4$%s.%s:3:9223372036854775807::", table.getDatabaseName(), table.getTableName()));
-
-        BackgroundHiveSplitLoader backgroundHiveSplitLoader = backgroundHiveSplitLoader(
-                HDFS_ENVIRONMENT,
-                TupleDomain.all(),
-                Optional.empty(),
-                table,
-                Optional.empty(),
-                Optional.of(validWriteIdsList));
-
-        HiveSplitSource hiveSplitSource = hiveSplitSource(backgroundHiveSplitLoader);
-        backgroundHiveSplitLoader.start(hiveSplitSource);
-
-        // We should have it marked in all splits that further ORC ACID validation is required
-        assertThat(drainSplits(hiveSplitSource)).extracting(HiveSplit::getAcidInfo)
-                .allMatch(Optional::isPresent)
-                .extracting(Optional::get)
-                .noneMatch(AcidInfo::isOrcAcidVersionValidated);
-
-        deleteRecursively(tablePath, ALLOW_INSECURE);
+        finally {
+            deleteRecursively(tablePath, ALLOW_INSECURE);
+        }
     }
 
     @Test
