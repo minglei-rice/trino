@@ -130,10 +130,13 @@ export function getHumanReadableState(query: any, forOverviewPage: boolean): str
                 if (query.errorCode.name === "USER_CANCELED") {
                     errorMsg = "USER CANCELED";
                 }
+                break;
             case "INTERNAL_ERROR":
                 errorMsg = "INTERNAL ERROR";
+                break;
             case "INSUFFICIENT_RESOURCES":
                 errorMsg = "INSUFFICIENT RESOURCES";
+                break;
             case "EXTERNAL":
                 errorMsg = "EXTERNAL ERROR";
         }
