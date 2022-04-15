@@ -217,6 +217,9 @@ public class IcebergPageSourceProvider
         TupleDomain<IcebergColumnHandle> effectivePredicate = table.getUnenforcedPredicate()
                 .intersect(dynamicFilter.getCurrentPredicate().transformKeys(IcebergColumnHandle.class::cast))
                 .simplify(ICEBERG_DOMAIN_COMPACTION_THRESHOLD);
+        if (effectivePredicate.isNone()) {
+            return new EmptyPageSource();
+        }
 
         ReaderPageSource dataPageSource = createDataPageSource(
                 session,
