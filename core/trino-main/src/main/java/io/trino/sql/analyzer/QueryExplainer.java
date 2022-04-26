@@ -150,13 +150,16 @@ public class QueryExplainer
         throw new TrinoException(NOT_SUPPORTED, format("Unsupported explain plan type %s for JSON format", planType));
     }
 
-    public Plan getLogicalPlan(Session session, Statement statement, List<Expression> parameters, WarningCollector warningCollector)
+    public Plan getLogicalPlan(Session session, Statement statement, LogicalPlanner.Stage stage, List<Expression> parameters, WarningCollector warningCollector, boolean collectPlanStatistics)
     {
         // analyze statement
         Analysis analysis = analyze(session, statement, parameters, warningCollector);
+        return getLogicalPlan(session, analysis, stage, warningCollector, collectPlanStatistics);
+    }
 
+    public Plan getLogicalPlan(Session session, Analysis analysis, LogicalPlanner.Stage stage, WarningCollector warningCollector, boolean collectPlanStatistics)
+    {
         PlanNodeIdAllocator idAllocator = new PlanNodeIdAllocator();
-
         // plan statement
         LogicalPlanner logicalPlanner = new LogicalPlanner(
                 session,
@@ -167,7 +170,12 @@ public class QueryExplainer
                 statsCalculator,
                 costCalculator,
                 warningCollector);
-        return logicalPlanner.plan(analysis, OPTIMIZED_AND_VALIDATED, true);
+        return logicalPlanner.plan(analysis, stage, collectPlanStatistics);
+    }
+
+    public Plan getLogicalPlan(Session session, Statement statement, List<Expression> parameters, WarningCollector warningCollector)
+    {
+        return getLogicalPlan(session, statement, OPTIMIZED_AND_VALIDATED, parameters, warningCollector, true);
     }
 
     private Analysis analyze(Session session, Statement statement, List<Expression> parameters, WarningCollector warningCollector)

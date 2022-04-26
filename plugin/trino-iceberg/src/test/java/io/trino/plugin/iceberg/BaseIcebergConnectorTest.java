@@ -20,6 +20,7 @@ import com.google.common.collect.ImmutableSet;
 import io.airlift.units.DataSize;
 import io.trino.FeaturesConfig;
 import io.trino.Session;
+import io.trino.execution.warnings.WarningCollector;
 import io.trino.metadata.Metadata;
 import io.trino.metadata.QualifiedObjectName;
 import io.trino.metadata.TableHandle;
@@ -35,8 +36,19 @@ import io.trino.spi.predicate.NullableValue;
 import io.trino.spi.predicate.TupleDomain;
 import io.trino.spi.statistics.ColumnStatistics;
 import io.trino.spi.statistics.TableStatistics;
+import io.trino.sql.planner.Plan;
+import io.trino.sql.planner.assertions.PlanAssert;
+import io.trino.sql.planner.assertions.PlanMatchPattern;
+import io.trino.sql.planner.plan.AggregationNode;
+import io.trino.sql.planner.plan.FilterNode;
+import io.trino.sql.planner.plan.ProjectNode;
+import io.trino.sql.planner.plan.TableScanNode;
+import io.trino.sql.planner.plan.ValuesNode;
+import io.trino.sql.tree.DoubleLiteral;
+import io.trino.sql.tree.GenericLiteral;
 import io.trino.testing.BaseConnectorTest;
 import io.trino.testing.DataProviders;
+import io.trino.testing.DistributedQueryRunner;
 import io.trino.testing.MaterializedResult;
 import io.trino.testing.MaterializedRow;
 import io.trino.testing.QueryRunner;
@@ -95,6 +107,15 @@ import static io.trino.spi.predicate.Domain.singleValue;
 import static io.trino.spi.type.BigintType.BIGINT;
 import static io.trino.spi.type.DoubleType.DOUBLE;
 import static io.trino.spi.type.VarcharType.VARCHAR;
+import static io.trino.sql.planner.assertions.PlanMatchPattern.aggregation;
+import static io.trino.sql.planner.assertions.PlanMatchPattern.anyTree;
+import static io.trino.sql.planner.assertions.PlanMatchPattern.expression;
+import static io.trino.sql.planner.assertions.PlanMatchPattern.functionCall;
+import static io.trino.sql.planner.assertions.PlanMatchPattern.node;
+import static io.trino.sql.planner.assertions.PlanMatchPattern.output;
+import static io.trino.sql.planner.assertions.PlanMatchPattern.project;
+import static io.trino.sql.planner.assertions.PlanMatchPattern.tableScan;
+import static io.trino.sql.planner.assertions.PlanMatchPattern.values;
 import static io.trino.testing.MaterializedResult.resultBuilder;
 import static io.trino.testing.QueryAssertions.assertEqualsIgnoreOrder;
 import static io.trino.testing.assertions.Assert.assertEquals;
@@ -3255,6 +3276,363 @@ public abstract class BaseIcebergConnectorTest
             assertUpdate("DROP TABLE IF EXISTS table_with_partition_at_beginning");
             assertUpdate("DROP TABLE IF EXISTS table_with_partition_at_end");
         }
+    }
+
+    @Test
+    public void testRewriteCountQueries()
+    {
+        // Create a table with a single insert
+        String tableName = "test_iceberg_count";
+        assertUpdate(format("DROP TABLE IF EXISTS %s", tableName));
+        assertUpdate(format("CREATE TABLE %s (s varchar, x BIGINT, y double) WITH (format='PARQUET')", tableName));
+        assertUpdate(format("INSERT INTO %s VALUES ('a', 3, 3.0), ('b', 2, 2.0), (null, 1, 1.0)", tableName), 3);
+
+        // these queries have the similar structure in their optimized logical plans
+        String[] countAllQueries = {
+                "SELECT COUNT(*) FROM %s",
+                "SELECT COUNT(*) FROM (SELECT x as x_alias, y as y_alias FROM %s)",
+                "SELECT * FROM (SELECT COUNT(*) FROM %s)",
+                "WITH tbl as (SELECT * FROM %s) SELECT COUNT(*) FROM tbl",
+                "WITH tbl as (SELECT COUNT(*) FROM %s) SELECT * FROM tbl"
+        };
+
+        for (String sql : countAllQueries) {
+            assertQuery(format(sql, tableName), "SELECT 3");
+            assertPlan(format(sql, tableName),
+                    output(values(ImmutableList.of("count"),
+                            ImmutableList.of(ImmutableList.of(
+                                    new GenericLiteral("BIGINT", Integer.toString(3)))))));
+        }
+
+        String[] countColumnQueries = {
+                "SELECT COUNT(s) FROM %s",
+                "SELECT COUNT(s_alias) FROM (SELECT s as s_alias, x as x_alias FROM %s)",
+                "SELECT * FROM (SELECT COUNT(s) FROM %s)",
+                "WITH tbl as (SELECT * FROM %s) SELECT COUNT(tbl.s) FROM tbl",
+                "WITH tbl as (SELECT COUNT(s) FROM %s) SELECT * FROM tbl"
+        };
+
+        for (String sql : countColumnQueries) {
+            assertQuery(format(sql, tableName), "SELECT 2");
+            assertPlan(format(sql, tableName),
+                    output(values(ImmutableList.of("count"),
+                            ImmutableList.of(ImmutableList.of(
+                                    new GenericLiteral("BIGINT", Integer.toString(2)))))));
+        }
+
+        String[] countQueries = {
+                "SELECT COUNT(*), COUNT(s) FROM %s",
+                "SELECT COUNT(*), COUNT(s_alias) FROM (SELECT s as s_alias, x as x_alias FROM %s)",
+                "SELECT * FROM (SELECT COUNT(*), COUNT(s) FROM %s)",
+                "WITH tbl as (SELECT * FROM %s) SELECT COUNT(*), COUNT(tbl.s) FROM tbl",
+                "WITH tbl as (SELECT COUNT(*), COUNT(s) FROM %s) SELECT * FROM tbl"
+        };
+
+        for (String sql : countQueries) {
+            assertQuery(format(sql, tableName), "SELECT 3, 2");
+            assertPlan(format(sql, tableName),
+                    output(values(ImmutableList.of("count", "count_1"),
+                            ImmutableList.of(ImmutableList.of(
+                                    new GenericLiteral("BIGINT", Integer.toString(3)),
+                                    new GenericLiteral("BIGINT", Integer.toString(2)))))));
+        }
+
+        dropTable(tableName);
+
+        String partitionedTableName = "test_partitioned_iceberg_count";
+        assertUpdate(format("DROP TABLE IF EXISTS %s", partitionedTableName));
+        assertUpdate(format("CREATE TABLE %s (s varchar, x BIGINT, y double) WITH (format='PARQUET', PARTITIONING = ARRAY['y'])", partitionedTableName));
+        assertUpdate(format("INSERT INTO %s VALUES ('a', 3, 3.0), ('b', 2, 2.0), (null, 1, 1.0), ('c', 2, 1.0)", partitionedTableName), 4);
+
+        String[] partitionedCountQueries = {
+                "SELECT COUNT(*), COUNT(s) FROM %s WHERE y = 1.0",
+                "SELECT COUNT(*), COUNT(s_alias) FROM (SELECT s as s_alias, x as x_alias FROM %s WHERE y = 1.0)",
+                "SELECT * FROM (SELECT COUNT(*), COUNT(s) FROM %s WHERE y = 1.0)",
+                "WITH tbl as (SELECT * FROM %s) SELECT COUNT(*), COUNT(tbl.s) FROM tbl WHERE tbl.y = 1.0",
+                "WITH tbl as (SELECT COUNT(*), COUNT(s) FROM %s WHERE y = 1.0) SELECT * FROM tbl"
+        };
+
+        for (String sql : partitionedCountQueries) {
+            assertQuery(format(sql, partitionedTableName), "SELECT 2, 1");
+            assertPlan(format(sql, partitionedTableName),
+                    output(values(ImmutableList.of("count", "count_1"),
+                            ImmutableList.of(ImmutableList.of(
+                                    new GenericLiteral("BIGINT", Integer.toString(2)),
+                                    new GenericLiteral("BIGINT", Integer.toString(1)))))));
+        }
+
+        // negative tests
+        String[] negativePartitionedCountQueries = {
+                "SELECT COUNT(*), COUNT(DISTINCT s) FROM %s WHERE x = 1",
+                "SELECT COUNT(DISTINCT x), COUNT(s) FROM %s WHERE x = 1",
+                "SELECT COUNT(*), COUNT(DISTINCT s_alias) FROM (SELECT s as s_alias, x as x_alias FROM %s WHERE x = 1)",
+                "SELECT * FROM (SELECT COUNT(*), COUNT(DISTINCT s) FROM %s WHERE x = 1)",
+                "WITH tbl as (SELECT * FROM %s) SELECT COUNT(*), COUNT(DISTINCT tbl.s) FROM tbl WHERE tbl.x = 1",
+                "WITH tbl as (SELECT COUNT(*), COUNT(DISTINCT s) FROM %s WHERE x = 1) SELECT * FROM tbl"
+        };
+
+        for (String sql : negativePartitionedCountQueries) {
+            assertQuery(format(sql, partitionedTableName), "SELECT 1, 0");
+            assertAggregationTree(format(sql, partitionedTableName), false, true, true, true);
+        }
+
+        String singleAggregateSql = "SELECT COUNT(*) FILTER (WHERE x > 1), COUNT(DISTINCT y) FILTER (WHERE y > 1.0) FROM %s WHERE y = 1.0";
+        assertQuery(format(singleAggregateSql, partitionedTableName), "SELECT 1, 0");
+        assertAggregationTree(format(singleAggregateSql, partitionedTableName), true, true, true);
+
+        dropTable(partitionedTableName);
+    }
+
+    @Test
+    public void testRewriteMinMaxQueries()
+    {
+        String partitionedTableName = "test_partitioned_iceberg_minmax";
+        assertUpdate(format("DROP TABLE IF EXISTS %s", partitionedTableName));
+        assertUpdate(format("CREATE TABLE %s (s varchar, x BIGINT, y double) WITH (format='PARQUET', PARTITIONING = ARRAY['y'])", partitionedTableName));
+        assertUpdate(format("INSERT INTO %s VALUES (null, 3, 3.0), (null, 2, 2.0), (null, 1, 2.0), ('c', 2, 1.0)", partitionedTableName), 4);
+
+        String[] minMaxQueries = {
+                "SELECT min(x), max(y) FROM %s WHERE y = 2.0",
+                "SELECT min(x_alias), max(y_alias) FROM (SELECT x as x_alias, y as y_alias FROM %s WHERE y = 2.0)",
+                "SELECT * FROM (SELECT min(x), max(y) FROM %s WHERE y = 2.0)",
+                "WITH tbl as (SELECT * FROM %s) SELECT min(tbl.x), max(tbl.y) FROM tbl WHERE tbl.y = 2.0",
+                "WITH tbl as (SELECT min(x), max(y) FROM %s WHERE y = 2.0) SELECT * FROM tbl"
+        };
+
+        for (String sql : minMaxQueries) {
+            assertQuery(format(sql, partitionedTableName), "SELECT 1, 2.0");
+            assertPlan(format(sql, partitionedTableName),
+                    output(values(ImmutableList.of("min", "max"),
+                            ImmutableList.of(ImmutableList.of(
+                                    new GenericLiteral("BIGINT", "1"),
+                                    new DoubleLiteral("2.0"))))));
+        }
+
+        // Min on string column query should not be rewritten
+        String[] negativeMinMaxOnStringQueries = {
+                "SELECT min(s), max(x) FROM %s WHERE y = 1.0",
+                "SELECT min(s_alias), max(x_alias) FROM (SELECT s as s_alias, x as x_alias FROM %s WHERE y = 1.0)",
+                "SELECT * FROM (SELECT min(s), max(x) FROM %s WHERE y = 1.0)",
+                "WITH tbl as (SELECT * FROM %s) SELECT min(tbl.s), max(tbl.x) FROM tbl WHERE tbl.y = 1.0",
+                "WITH tbl as (SELECT min(s), max(x) FROM %s WHERE y = 1.0) SELECT * FROM tbl"
+        };
+
+        for (String sql : negativeMinMaxOnStringQueries) {
+            assertQuery(format(sql, partitionedTableName), "SELECT 'c', 2");
+            assertAggregationTree(format(sql, partitionedTableName), false, false);
+        }
+
+        String[] negativeMinMaxWithFilterQueries = {
+                "SELECT min(s), max(x) FROM %s WHERE x = 2",
+                "SELECT min(s_alias), max(x_alias) FROM (SELECT s as s_alias, x as x_alias FROM %s WHERE x = 2)",
+                "SELECT * FROM (SELECT min(s), max(x) FROM %s WHERE x = 2)",
+                "WITH tbl as (SELECT * FROM %s) SELECT min(tbl.s), max(tbl.x) FROM tbl WHERE tbl.x = 2",
+                "WITH tbl as (SELECT min(s), max(x) FROM %s WHERE x = 2) SELECT * FROM tbl"
+        };
+
+        for (String sql : negativeMinMaxWithFilterQueries) {
+            assertQuery(format(sql, partitionedTableName), "SELECT 'c', 2");
+            assertAggregationTree(format(sql, partitionedTableName), false, true);
+        }
+
+        dropTable(partitionedTableName);
+    }
+
+    @Test
+    public void testMixedAggregations()
+    {
+        String partitionedTableName = "test_partitioned_iceberg_mixed";
+        assertUpdate(format("DROP TABLE IF EXISTS %s", partitionedTableName));
+        assertUpdate(format("CREATE TABLE %s (s varchar, x BIGINT, y double) WITH (format='PARQUET', PARTITIONING = ARRAY['y'])", partitionedTableName));
+        assertUpdate(format("INSERT INTO %s VALUES (null, 3, 3.0), (null, 2, 2.0), (null, 1, 1.0), ('c', 2, 1.0)", partitionedTableName), 4);
+
+        String[] positiveSqls = {
+                "SELECT count(*), min(x), max(y), count(y) FROM %s WHERE y = 1.0",
+                "SELECT count(*) all_cnt, min(x_alias), max(y), count(y) y_cnt FROM (SELECT s as s_alias, x as x_alias, y FROM %s WHERE y = 1.0)",
+                "SELECT * FROM (SELECT count(*), min(x), max(y), count(y) FROM %s WHERE y = 1.0)",
+                "WITH tbl as (SELECT * FROM %s) SELECT count(*), min(tbl.x), max(tbl.y), count(y) FROM tbl WHERE tbl.y = 1.0",
+                "WITH tbl as (SELECT count(*), min(x), max(y), count(y) FROM %s WHERE y = 1.0) SELECT * FROM tbl"
+        };
+
+        for (String positiveSql : positiveSqls) {
+            assertQuery(format(positiveSql, partitionedTableName), "SELECT 2, 1, 1.0, 2");
+            assertPlan(format(positiveSql, partitionedTableName),
+                    output(values(ImmutableList.of("count", "min", "max", "count_1"),
+                            ImmutableList.of(ImmutableList.of(
+                                    new GenericLiteral("BIGINT", Integer.toString(2)),
+                                    new GenericLiteral("BIGINT", Integer.toString(1)),
+                                    new DoubleLiteral("1.0"),
+                                    new GenericLiteral("BIGINT", Integer.toString(2)))))));
+        }
+
+        String[] negativeSqls = {
+                "SELECT count(*), min(s), max(y), count(y) FROM %s WHERE y = 1.0",
+                "SELECT count(*), min(s), max(y), count(y) FROM %s WHERE y = 1.0",
+                "SELECT count(*) all_cnt, min(s_alias), max(y), count(y) y_cnt FROM (SELECT s as s_alias, x as x_alias, y FROM %s WHERE y = 1.0)",
+                "SELECT * FROM (SELECT count(*), min(s), max(y), count(y) FROM %s WHERE y = 1.0)",
+                "WITH tbl as (SELECT * FROM %s) SELECT count(*), min(tbl.s), max(tbl.y), count(y) FROM tbl WHERE tbl.y = 1.0",
+                "WITH tbl as (SELECT count(*), min(s), max(y), count(y) FROM %s WHERE y = 1.0) SELECT * FROM tbl"
+        };
+
+        for (String negativeSql : negativeSqls) {
+            assertQuery(format(negativeSql, partitionedTableName), "SELECT 2, 'c', 1.0, 2");
+            assertAggregationTree(format(negativeSql, partitionedTableName), false, false);
+        }
+
+        dropTable(partitionedTableName);
+    }
+
+    @Test
+    public void testQueriesRewriteWithConstantExpressions()
+    {
+        String partitionedTableName = "test_partitioned_iceberg_constants";
+        assertUpdate(format("DROP TABLE IF EXISTS %s", partitionedTableName));
+        assertUpdate(format("CREATE TABLE %s (s varchar, x BIGINT, y double) WITH (format='PARQUET', PARTITIONING = ARRAY['y'])", partitionedTableName));
+        assertUpdate(format("INSERT INTO %s VALUES (null, 3, 3.0), (null, 2, 2.0), (null, 1, 1.0), ('c', 2, 1.0)", partitionedTableName), 4);
+
+        String[] positiveSqls = {
+                "SELECT 1.0, min(1.0), min(cast(1.0 as DOUBLE)), min(2.0 - pow(1.0, 1)), " +
+                        "count(*), count('test'), count(split_part('test', ',', 6)), " +
+                        "min('test'), min(split_part('test', ',', 6)), min(split_part('test,test', ',', 2)), " +
+                        "max('test'), max(split_part('test', ',', 6)), max(split_part('test,test', ',', 2)), " +
+                        "'test', split_part('test', '', 1), split_part('test', ',', 2) " +
+                        "FROM %s WHERE y = 1.0",
+        };
+
+        for (String positiveSql : positiveSqls) {
+            assertQuery(format(positiveSql, partitionedTableName), "SELECT 1.0, 1.0, 1.0, 1.0, 2, 2, 0, 'test', NULL, 'test', 'test', NULL, 'test', 'test', 't', NULL");
+            assertPlan(format(positiveSql, partitionedTableName), output(node(ValuesNode.class)));
+        }
+
+        // min(y + 0) / min(pow(y, 1)) are not supported to be rewritten
+        String[] negativeSqls = {
+                "SELECT min(y + 0), count(*), count('test'), count(split_part('test', ',', 6)), " +
+                        "min('test'), min(split_part('test', ',', 6)), min(split_part('test,test', ',', 2)), " +
+                        "max('test'), max(split_part('test', ',', 6)), max(split_part('test,test', ',', 2)), " +
+                        "'test', split_part('test', '', 1), split_part('test', ',', 2) " +
+                        "FROM %s WHERE y = 1.0",
+                "SELECT min(pow(y, 1)), count(*), count('test'), count(split_part('test', ',', 6)), " +
+                        "min('test'), min(split_part('test', ',', 6)), min(split_part('test,test', ',', 2)), " +
+                        "max('test'), max(split_part('test', ',', 6)), max(split_part('test,test', ',', 2)), " +
+                        "'test', split_part('test', '', 1), split_part('test', ',', 2) " +
+                        "FROM %s WHERE y = 1.0",
+        };
+
+        for (String negativeSql : negativeSqls) {
+            assertQuery(format(negativeSql, partitionedTableName), "SELECT 1.0, 2, 2, 0, 'test', NULL, 'test', 'test', NULL, 'test', 'test', 't', NULL");
+            assertAggregationTree(format(negativeSql, partitionedTableName), true, false);
+        }
+
+        dropTable(partitionedTableName);
+    }
+
+    @Test
+    public void testRewriteWithArithmeticExpressions()
+    {
+        String partitionedTableName = "test_partitioned_iceberg_arithmetic_exprs";
+        assertUpdate(format("DROP TABLE IF EXISTS %s", partitionedTableName));
+        assertUpdate(format("CREATE TABLE %s (s varchar, x BIGINT, y double) WITH (format='PARQUET', PARTITIONING = ARRAY['y'])", partitionedTableName));
+        assertUpdate(format("INSERT INTO %s VALUES (null, 3, 3.0), (null, 2, 2.0), (null, 1, 1.0), ('c', 2, 1.0)", partitionedTableName), 4);
+
+        String positiveSql = "SELECT min(1.0) + 1, min(cast(2.0 as DOUBLE)) - 2, min(3.0 - pow(1.0, 1)) * 3, min(x) / 4 FROM %s WHERE y = 1.0";
+        assertQuery(format(positiveSql, partitionedTableName), "SELECT 2.0, 0, 6.0, 0.25");
+        assertPlan(format(positiveSql, partitionedTableName), output(node(ValuesNode.class)));
+
+        String negativeSql = "SELECT min(1.0 + x), min(x * 4) / 4 FROM %s WHERE y = 1.0";
+        assertQuery(format(negativeSql, partitionedTableName), "SELECT 2.0, 1");
+        assertPlan(format(negativeSql, partitionedTableName),
+                anyTree(
+                        aggregation(
+                                ImmutableMap.of(
+                                        "final_min_1", functionCall("min", ImmutableList.of("partial_min_1")),
+                                        "final_min_2", functionCall("min", ImmutableList.of("partial_min_2"))),
+                                AggregationNode.Step.FINAL,
+                                anyTree(
+                                        aggregation(
+                                                ImmutableMap.of(
+                                                        "partial_min_1", functionCall("min", ImmutableList.of("expr_1")),
+                                                        "partial_min_2", functionCall("min", ImmutableList.of("expr_2"))),
+                                                AggregationNode.Step.PARTIAL,
+                                                project(
+                                                        ImmutableMap.of(
+                                                                "expr_1", expression("(CAST(x AS decimal(19, 0)) + CAST(DECIMAL '1.0' AS decimal(2, 1)))"),
+                                                                "expr_2", expression("(x * BIGINT '4')")),
+                                                        tableScan(partitionedTableName, ImmutableMap.of("x", "x"))))))));
+
+        dropTable(partitionedTableName);
+    }
+
+    @Test
+    public void testRewriteOptimizeWithSystemProperty()
+    {
+        String partitionedTableName = "test_partitioned_iceberg_sys_property";
+        assertUpdate(format("CREATE TABLE %s (x BIGINT, y double) WITH (format='PARQUET', PARTITIONING = ARRAY['y'])", partitionedTableName));
+        assertUpdate(format("INSERT INTO %s VALUES (3, 3.0), (2, 2.0), (1, 1.0), (2, 1.0)", partitionedTableName), 4);
+
+        String sql = "SELECT min(x) FROM %s";
+        assertQuery(format(sql, partitionedTableName), "SELECT 1");
+        assertPlan(format(sql, partitionedTableName), output(node(ValuesNode.class)));
+
+        Session session = Session.builder(getSession())
+                .setSystemProperty("query_optimize_with_metadata_enabled", "false")
+                .build();
+
+        assertQuery(session, format(sql, partitionedTableName), "SELECT 1");
+        assertPlan(session, format(sql, partitionedTableName),
+                anyTree(
+                        node(AggregationNode.class, anyTree(
+                                node(AggregationNode.class, node(TableScanNode.class))))));
+    }
+
+    private void assertAggregationTree(String sql, boolean hasProjectNode, boolean hasFilterNode)
+    {
+        assertAggregationTree(sql, false, hasProjectNode, hasFilterNode, false);
+    }
+
+    private void assertAggregationTree(String sql, boolean isSingle, boolean hasProjectNode, boolean hasFilterNode)
+    {
+        assertAggregationTree(sql, isSingle, hasProjectNode, hasFilterNode, false);
+    }
+
+    private void assertAggregationTree(String sql, boolean isSingle, boolean hasProjectNode, boolean hasFilterNode, boolean hasNodeBeforeProject)
+    {
+        PlanMatchPattern filterTree = hasFilterNode ? node(FilterNode.class, node(TableScanNode.class)) : node(TableScanNode.class);
+        PlanMatchPattern scanFilterProjectTree = hasProjectNode ? node(ProjectNode.class, filterTree) : filterTree;
+        PlanMatchPattern mayAnyScanFilterProjectTree = hasNodeBeforeProject ? anyTree(scanFilterProjectTree) : scanFilterProjectTree;
+        if (isSingle) {
+            assertPlan(sql, anyTree(
+                    node(AggregationNode.class, anyTree(mayAnyScanFilterProjectTree))));
+        }
+        else {
+            assertPlan(sql, anyTree(
+                    node(AggregationNode.class, anyTree(
+                            node(AggregationNode.class, mayAnyScanFilterProjectTree)))));
+        }
+    }
+
+    private void assertPlan(String sql, PlanMatchPattern pattern)
+    {
+        DistributedQueryRunner queryRunner = (DistributedQueryRunner) getQueryRunner();
+        withTransaction(session -> {
+            Plan actualPlan = queryRunner.createPlan(session, sql, WarningCollector.NOOP);
+            PlanAssert.assertPlan(session, queryRunner.getMetadata(), queryRunner.getStatsCalculator(), actualPlan, pattern);
+        });
+    }
+
+    private void assertPlan(Session session, String sql, PlanMatchPattern pattern)
+    {
+        DistributedQueryRunner queryRunner = (DistributedQueryRunner) getQueryRunner();
+        withTransaction(session, sess -> {
+            Plan actualPlan = queryRunner.createPlan(sess, sql, WarningCollector.NOOP);
+            PlanAssert.assertPlan(sess, queryRunner.getMetadata(), queryRunner.getStatsCalculator(), actualPlan, pattern);
+        });
+    }
+
+    private void withTransaction(Session session, Consumer<Session> consumer)
+    {
+        transaction(getQueryRunner().getTransactionManager(), getQueryRunner().getAccessControl())
+                .readCommitted()
+                .execute(session, consumer);
     }
 
     private OperatorStats getScanOperatorStats(QueryId queryId)

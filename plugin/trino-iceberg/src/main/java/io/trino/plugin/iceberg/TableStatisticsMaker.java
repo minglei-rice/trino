@@ -174,9 +174,13 @@ public class TableStatisticsMaker
             int fieldId = columnHandle.getId();
             Type icebergType = icebergTableSchema.findType(fieldId);
             ColumnStatistics.Builder columnBuilder = new ColumnStatistics.Builder();
-            Long nullCount = summary.getNullCounts().get(fieldId);
-            if (nullCount != null) {
-                columnBuilder.setNullsFraction(Estimate.of(nullCount / recordCount));
+            if (summary.getNullCounts() != null) {
+                Long nullCount = summary.getNullCounts().get(fieldId);
+                if (nullCount != null) {
+                    // If nulls count was collected on this field, then set column count with it.
+                    columnBuilder.setAccurateNullsCount(Estimate.of(nullCount));
+                    columnBuilder.setNullsFraction(Estimate.of(nullCount / recordCount));
+                }
             }
             if (summary.getColumnSizes() != null) {
                 Long columnSize = summary.getColumnSizes().get(fieldId);
@@ -317,6 +321,7 @@ public class TableStatisticsMaker
             // TODO (https://github.com/trinodb/trino/issues/9716) if some/many files miss statistics, we should probably invalidate statistics collection, see Partition#hasValidColumnMetrics
             return;
         }
+
         for (PartitionField field : partitionFields) {
             int id = field.sourceId();
             if (summary.getCorruptedStats().contains(id)) {

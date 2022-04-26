@@ -118,7 +118,8 @@ public class TestFeaturesConfig
                 .setDisableSetPropertiesSecurityCheckForCreateDdl(false)
                 .setIncrementalHashArrayLoadFactorEnabled(true)
                 .setHideInaccesibleColumns(false)
-                .setAllowSetViewAuthorization(false));
+                .setAllowSetViewAuthorization(false)
+                .setOptimizeQueryWithMetadata(true));
     }
 
     @Test
@@ -196,6 +197,7 @@ public class TestFeaturesConfig
                 .put("optimizer.use-table-scan-node-partitioning", "false")
                 .put("optimizer.table-scan-node-partitioning-min-bucket-to-task-ratio", "0.0")
                 .put("optimizer.merge-project-with-values", "false")
+                .put("optimizer.optimize-query-with-metadata", "false")
                 .put("deprecated.legacy-catalog-roles", "true")
                 .put("deprecated.disable-set-properties-security-check-for-create-ddl", "true")
                 .put("incremental-hash-array-load-factor.enabled", "false")
@@ -275,6 +277,7 @@ public class TestFeaturesConfig
                 .setUseTableScanNodePartitioning(false)
                 .setTableScanNodePartitioningMinBucketToTaskRatio(0.0)
                 .setMergeProjectWithValues(false)
+                .setOptimizeQueryWithMetadata(false)
                 .setLegacyCatalogRoles(true)
                 .setDisableSetPropertiesSecurityCheckForCreateDdl(true)
                 .setIncrementalHashArrayLoadFactorEnabled(false)

@@ -28,6 +28,8 @@ public final class ColumnStatistics
     private final Estimate dataSize;
     private final Optional<DoubleRange> range;
 
+    private final Estimate accurateNullsCount;
+
     public static ColumnStatistics empty()
     {
         return EMPTY;
@@ -38,6 +40,16 @@ public final class ColumnStatistics
             Estimate distinctValuesCount,
             Estimate dataSize,
             Optional<DoubleRange> range)
+    {
+        this(nullsFraction, distinctValuesCount, dataSize, range, Estimate.unknown());
+    }
+
+    public ColumnStatistics(
+            Estimate nullsFraction,
+            Estimate distinctValuesCount,
+            Estimate dataSize,
+            Optional<DoubleRange> range,
+            Estimate accurateNullsCount)
     {
         this.nullsFraction = requireNonNull(nullsFraction, "nullsFraction is null");
         if (!nullsFraction.isUnknown()) {
@@ -54,6 +66,7 @@ public final class ColumnStatistics
             throw new IllegalArgumentException(format("dataSize must be greater than or equal to 0: %s", dataSize.getValue()));
         }
         this.range = requireNonNull(range, "range is null");
+        this.accurateNullsCount = accurateNullsCount;
     }
 
     public Estimate getNullsFraction()
@@ -74,6 +87,11 @@ public final class ColumnStatistics
     public Optional<DoubleRange> getRange()
     {
         return range;
+    }
+
+    public Estimate getAccurateNullsCount()
+    {
+        return accurateNullsCount;
     }
 
     @Override
@@ -125,6 +143,7 @@ public final class ColumnStatistics
         private Estimate distinctValuesCount = Estimate.unknown();
         private Estimate dataSize = Estimate.unknown();
         private Optional<DoubleRange> range = Optional.empty();
+        private Estimate accurateNullsCount = Estimate.unknown();
 
         public Builder setNullsFraction(Estimate nullsFraction)
         {
@@ -156,9 +175,15 @@ public final class ColumnStatistics
             return this;
         }
 
+        public Builder setAccurateNullsCount(Estimate count)
+        {
+            this.accurateNullsCount = count;
+            return this;
+        }
+
         public ColumnStatistics build()
         {
-            return new ColumnStatistics(nullsFraction, distinctValuesCount, dataSize, range);
+            return new ColumnStatistics(nullsFraction, distinctValuesCount, dataSize, range, accurateNullsCount);
         }
     }
 }

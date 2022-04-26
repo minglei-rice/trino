@@ -149,6 +149,8 @@ public class FeaturesConfig
 
     private boolean hideInaccesibleColumns;
 
+    private boolean optimizeQueryWithMetadata = true;
+
     public enum JoinReorderingStrategy
     {
         NONE,
@@ -1082,6 +1084,18 @@ public class FeaturesConfig
     public FeaturesConfig setMergeProjectWithValues(boolean mergeProjectWithValues)
     {
         this.mergeProjectWithValues = mergeProjectWithValues;
+        return this;
+    }
+
+    public boolean isOptimizeQueryWithMetadata()
+    {
+        return optimizeQueryWithMetadata;
+    }
+
+    @Config("optimizer.optimize-query-with-metadata")
+    public FeaturesConfig setOptimizeQueryWithMetadata(boolean optimizeQueryWithMetadata)
+    {
+        this.optimizeQueryWithMetadata = optimizeQueryWithMetadata;
         return this;
     }
 

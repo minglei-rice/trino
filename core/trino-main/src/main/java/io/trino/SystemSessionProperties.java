@@ -151,6 +151,7 @@ public final class SystemSessionProperties
     public static final String RETRY_INITIAL_DELAY = "retry_initial_delay";
     public static final String RETRY_MAX_DELAY = "retry_max_delay";
     public static final String HIDE_INACCESSIBLE_COLUMNS = "hide_inaccessible_columns";
+    public static final String QUERY_OPTIMIZE_WITH_METADATA_ENABLED = "query_optimize_with_metadata_enabled";
 
     private final List<PropertyMetadata<?>> sessionProperties;
 
@@ -705,6 +706,11 @@ public final class SystemSessionProperties
                         "When enabled non-accessible columns are silently filtered from results from SELECT * statements",
                         featuresConfig.isHideInaccesibleColumns(),
                         value -> validateHideInaccesibleColumns(value, featuresConfig.isHideInaccesibleColumns()),
+                        false),
+                booleanProperty(
+                        QUERY_OPTIMIZE_WITH_METADATA_ENABLED,
+                        "Optimize query utilizing metadata",
+                        featuresConfig.isOptimizeQueryWithMetadata(),
                         false));
     }
 
@@ -1270,5 +1276,10 @@ public final class SystemSessionProperties
     public static boolean isHideInaccesibleColumns(Session session)
     {
         return session.getSystemProperty(HIDE_INACCESSIBLE_COLUMNS, Boolean.class);
+    }
+
+    public static boolean isQueryOptimizeWithMetadataEnabled(Session session)
+    {
+        return session.getSystemProperty(QUERY_OPTIMIZE_WITH_METADATA_ENABLED, Boolean.class);
     }
 }
