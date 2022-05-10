@@ -141,6 +141,8 @@ public class QueryStateMachine
 
     private final Map<String, String> setSessionProperties = new ConcurrentHashMap<>();
     private final Set<String> resetSessionProperties = Sets.newConcurrentHashSet();
+    private final Map<String, String> runtimeSessionProperties = new ConcurrentHashMap<>();
+    private final Set<String> resetRuntimeSessionProperties = Sets.newConcurrentHashSet();
 
     private final Map<String, SelectedRole> setRoles = new ConcurrentHashMap<>();
 
@@ -764,6 +766,26 @@ public class QueryStateMachine
     public void addResetSessionProperties(String name)
     {
         resetSessionProperties.add(requireNonNull(name, "name is null"));
+    }
+
+    public void addRuntimeSessionProperty(String key, String value)
+    {
+        runtimeSessionProperties.put(requireNonNull(key, "key is null"), requireNonNull(value, "value is null"));
+    }
+
+    public Map<String, String> getRuntimeSessionProperties()
+    {
+        return runtimeSessionProperties;
+    }
+
+    public void addResetRuntimeSessionProperty(String key)
+    {
+        resetRuntimeSessionProperties.add(requireNonNull(key, "key is null"));
+    }
+
+    public Set<String> getResetRuntimeSessionProperties()
+    {
+        return resetRuntimeSessionProperties;
     }
 
     public Map<String, String> getAddedPreparedStatements()

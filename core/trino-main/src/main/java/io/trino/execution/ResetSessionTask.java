@@ -24,6 +24,8 @@ import io.trino.sql.tree.ResetSession;
 import javax.inject.Inject;
 
 import java.util.List;
+import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 
 import static com.google.common.util.concurrent.Futures.immediateVoidFuture;
 import static io.trino.spi.StandardErrorCode.CATALOG_NOT_FOUND;
@@ -58,25 +60,50 @@ public class ResetSessionTask
             WarningCollector warningCollector)
     {
         List<String> parts = statement.getName().getParts();
-        if (parts.size() > 2) {
+
+        boolean isGlobal = "global".equals(parts.get(0));
+
+        if (isGlobal && parts.size() > 3 || !isGlobal && parts.size() > 2) {
             throw semanticException(INVALID_SESSION_PROPERTY, statement, "Invalid session property '%s'", statement.getName());
         }
 
-        // validate the property name
-        if (parts.size() == 1) {
-            if (sessionPropertyManager.getSystemSessionPropertyMetadata(parts.get(0)).isEmpty()) {
+        Consumer<String> systemPropertyVerifier = property -> {
+            if (sessionPropertyManager.getSystemSessionPropertyMetadata(property).isEmpty()) {
                 throw semanticException(INVALID_SESSION_PROPERTY, statement, "Session property '%s' does not exist", statement.getName());
             }
+        };
+
+        BiConsumer<String, String> catalogPropertyVerifier = (catalogNameStr, property) -> {
+            CatalogName catalogName = metadata.getCatalogHandle(stateMachine.getSession(), catalogNameStr)
+                    .orElseThrow(() -> semanticException(CATALOG_NOT_FOUND, statement, "Catalog '%s' does not exist", catalogNameStr));
+            if (sessionPropertyManager.getConnectorSessionPropertyMetadata(catalogName, property).isEmpty()) {
+                throw semanticException(INVALID_SESSION_PROPERTY, statement, "Session property '%s' does not exist", statement.getName());
+            }
+        };
+
+        // validate the property name
+        if (isGlobal) {
+            if (parts.size() == 2) {
+                systemPropertyVerifier.accept(parts.get(1));
+                sessionPropertyManager.removeRuntimeSystemSessionProperty(parts.get(1));
+            }
+            else {
+                catalogPropertyVerifier.accept(parts.get(1), parts.get(2));
+                sessionPropertyManager.removeRuntimeConnectorSessionProperty(metadata.getCatalogHandle(stateMachine.getSession(), parts.get(1)).get(), parts.get(2));
+            }
+
+            stateMachine.addResetRuntimeSessionProperty(String.join(".", parts.subList(1, parts.size())));
         }
         else {
-            CatalogName catalogName = metadata.getCatalogHandle(stateMachine.getSession(), parts.get(0))
-                    .orElseThrow(() -> semanticException(CATALOG_NOT_FOUND, statement, "Catalog '%s' does not exist", parts.get(0)));
-            if (sessionPropertyManager.getConnectorSessionPropertyMetadata(catalogName, parts.get(1)).isEmpty()) {
-                throw semanticException(INVALID_SESSION_PROPERTY, statement, "Session property '%s' does not exist", statement.getName());
+            if (parts.size() == 1) {
+                systemPropertyVerifier.accept(parts.get(0));
             }
-        }
+            else {
+                catalogPropertyVerifier.accept(parts.get(0), parts.get(1));
+            }
 
-        stateMachine.addResetSessionProperties(statement.getName().toString());
+            stateMachine.addResetSessionProperties(statement.getName().toString());
+        }
 
         return immediateVoidFuture();
     }

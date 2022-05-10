@@ -14,10 +14,12 @@
 package io.trino.metadata;
 
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Maps;
 import io.airlift.json.JsonCodec;
 import io.airlift.json.JsonCodecFactory;
+import io.airlift.log.Logger;
 import io.trino.Session;
 import io.trino.SystemSessionProperties;
 import io.trino.SystemSessionPropertiesProvider;
@@ -44,6 +46,7 @@ import io.trino.sql.tree.Parameter;
 import javax.annotation.Nullable;
 import javax.inject.Inject;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -64,9 +67,13 @@ import static java.util.Objects.requireNonNull;
 
 public final class SessionPropertyManager
 {
+    private static final Logger LOG = Logger.get(SessionPropertyManager.class);
+
     private static final JsonCodecFactory JSON_CODEC_FACTORY = new JsonCodecFactory();
     private final ConcurrentMap<String, PropertyMetadata<?>> systemSessionProperties = new ConcurrentHashMap<>();
     private final ConcurrentMap<CatalogName, Map<String, PropertyMetadata<?>>> connectorSessionProperties = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, String> runtimeSystemSessionProperties = new ConcurrentHashMap<>();
+    private final ConcurrentMap<CatalogName, Map<String, String>> runtimeConnectorSessionProperties = new ConcurrentHashMap<>();
 
     public SessionPropertyManager()
     {
@@ -117,6 +124,7 @@ public final class SessionPropertyManager
     public void removeConnectorSessionProperties(CatalogName catalogName)
     {
         connectorSessionProperties.remove(catalogName);
+        removeRuntimeConnectorSessionProperties(catalogName);
     }
 
     public Optional<PropertyMetadata<?>> getSystemSessionPropertyMetadata(String name)
@@ -141,6 +149,108 @@ public final class SessionPropertyManager
         return Optional.ofNullable(properties.get(propertyName));
     }
 
+    public Map<String, String> getRuntimeSystemSessionProperties()
+    {
+        ImmutableMap.Builder<String, String> propertiesBuilder = ImmutableMap.builder();
+        propertiesBuilder.putAll(runtimeSystemSessionProperties);
+        return propertiesBuilder.build();
+    }
+
+    public Optional<String> getRuntimeSystemSessionProperty(String propertyName)
+    {
+        requireNonNull(propertyName, "runtime property name is null");
+
+        return Optional.ofNullable(runtimeSystemSessionProperties.get(propertyName));
+    }
+
+    public void addRuntimeSystemSessionProperty(String property, String value)
+    {
+        runtimeSystemSessionProperties.compute(property, (key, oldValue) -> {
+            if (oldValue != null) {
+                LOG.info(String.format("The old runtime system session property %s will be changed from %s to %s.", key, oldValue, value));
+            }
+            return value;
+        });
+    }
+
+    public void removeRuntimeSystemSessionProperty(String property)
+    {
+        String value = runtimeSystemSessionProperties.remove(property);
+        if (value != null) {
+            LOG.info(String.format("The runtime system session property %s = %s has been removed.", property, value));
+        }
+    }
+
+    public void addRuntimeConnectorSessionProperty(CatalogName catalogName, String property, String value)
+    {
+        requireNonNull(catalogName, "runtime connector session catalogName is null");
+        requireNonNull(property, "runtime connector session property is null");
+        requireNonNull(value, "runtime connector session value is null");
+        runtimeConnectorSessionProperties.putIfAbsent(catalogName, new HashMap<>());
+
+        String oldValue;
+        synchronized (runtimeConnectorSessionProperties) {
+            oldValue = runtimeConnectorSessionProperties.get(catalogName).put(property, value);
+        }
+
+        if (oldValue != null) {
+            LOG.info(String.format("The runtime connector session property %s has been changed from %s to %s.", property, oldValue, value));
+        }
+    }
+
+    public Map<CatalogName, Map<String, String>> getAllRuntimeConnectorSessionProperties()
+    {
+        ImmutableMap.Builder<CatalogName, Map<String, String>> propertiesBuilder = ImmutableMap.builder();
+        synchronized (runtimeConnectorSessionProperties) {
+            runtimeConnectorSessionProperties.forEach((catalogName, propertyMap) -> propertiesBuilder.put(catalogName, new HashMap<>(propertyMap)));
+        }
+        return propertiesBuilder.build();
+    }
+
+    public Map<String, String> getRuntimeConnectorSessionProperties(CatalogName catalogName)
+    {
+        requireNonNull(catalogName, "catalogName is null");
+        ImmutableMap.Builder<String, String> propertiesBuilder = ImmutableMap.builder();
+        synchronized (runtimeConnectorSessionProperties) {
+            Map<String, String> map = runtimeConnectorSessionProperties.get(catalogName);
+            if (map != null) {
+                propertiesBuilder.putAll(map);
+            }
+        }
+
+        return propertiesBuilder.build();
+    }
+
+    public Optional<String> getRuntimeConnectorSessionProperty(CatalogName catalogName, String propertyName)
+    {
+        requireNonNull(catalogName, "catalogName is null");
+        requireNonNull(propertyName, "propertyName is null");
+        synchronized (runtimeConnectorSessionProperties) {
+            Map<String, String> properties = runtimeConnectorSessionProperties.get(catalogName);
+            if (properties == null || properties.isEmpty()) {
+                return Optional.empty();
+            }
+
+            return Optional.ofNullable(properties.get(propertyName));
+        }
+    }
+
+    public void removeRuntimeConnectorSessionProperties(CatalogName catalogName)
+    {
+        runtimeConnectorSessionProperties.remove(catalogName);
+        LOG.info(String.format("The runtime connector %s session properties has been removed.", catalogName));
+    }
+
+    public void removeRuntimeConnectorSessionProperty(CatalogName catalogName, String propertyName)
+    {
+        synchronized (runtimeConnectorSessionProperties) {
+            if (runtimeConnectorSessionProperties.containsKey(catalogName)) {
+                runtimeConnectorSessionProperties.get(catalogName).remove(propertyName);
+            }
+        }
+        LOG.info(String.format("The runtime connector %s session property %s has been removed.", catalogName, propertyName));
+    }
+
     public List<SessionPropertyValue> getAllSessionProperties(Session session, Map<String, CatalogName> catalogs)
     {
         requireNonNull(session, "session is null");
@@ -150,8 +260,10 @@ public final class SessionPropertyManager
         for (PropertyMetadata<?> property : new TreeMap<>(systemSessionProperties).values()) {
             String defaultValue = firstNonNull(property.getDefaultValue(), "").toString();
             String value = systemProperties.getOrDefault(property.getName(), defaultValue);
+            String actualValue = getRuntimeSystemSessionProperty(property.getName()).orElse(value);
+
             sessionPropertyValues.add(new SessionPropertyValue(
-                    value,
+                    actualValue,
                     defaultValue,
                     property.getName(),
                     Optional.empty(),
@@ -169,9 +281,10 @@ public final class SessionPropertyManager
             for (PropertyMetadata<?> property : new TreeMap<>(connectorSessionProperties.get(catalogName)).values()) {
                 String defaultValue = firstNonNull(property.getDefaultValue(), "").toString();
                 String value = connectorProperties.getOrDefault(property.getName(), defaultValue);
+                String actualValue = getRuntimeConnectorSessionProperty(catalogName, property.getName()).orElse(value);
 
                 sessionPropertyValues.add(new SessionPropertyValue(
-                        value,
+                        actualValue,
                         defaultValue,
                         catalog + "." + property.getName(),
                         Optional.of(catalog),

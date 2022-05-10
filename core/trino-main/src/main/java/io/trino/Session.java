@@ -129,16 +129,34 @@ public final class Session
         this.clientCapabilities = ImmutableSet.copyOf(requireNonNull(clientCapabilities, "clientCapabilities is null"));
         this.resourceEstimates = requireNonNull(resourceEstimates, "resourceEstimates is null");
         this.start = start;
-        this.systemProperties = ImmutableMap.copyOf(requireNonNull(systemProperties, "systemProperties is null"));
         this.sessionPropertyManager = requireNonNull(sessionPropertyManager, "sessionPropertyManager is null");
         this.preparedStatements = requireNonNull(preparedStatements, "preparedStatements is null");
         this.protocolHeaders = requireNonNull(protocolHeaders, "protocolHeaders is null");
 
-        ImmutableMap.Builder<CatalogName, Map<String, String>> catalogPropertiesBuilder = ImmutableMap.builder();
-        connectorProperties.entrySet().stream()
+        // Runtime properties have higher privileges. Considering these properties are from set session task,
+        // this override action would be duplicate in that session.
+        ImmutableMap.Builder<String, String> finalSystemPropertiesBuilder = ImmutableMap.builder();
+        finalSystemPropertiesBuilder.putAll(requireNonNull(systemProperties, "systemProperties is null"));
+        finalSystemPropertiesBuilder.putAll(sessionPropertyManager.getRuntimeSystemSessionProperties());
+        this.systemProperties = finalSystemPropertiesBuilder.build();
+
+        Map<CatalogName, Map<String, String>> mergedConnectorProperties = new HashMap<>();
+        connectorProperties.forEach((catalogName, properties) -> mergedConnectorProperties.put(catalogName, new HashMap<>(properties)));
+        sessionPropertyManager.getAllRuntimeConnectorSessionProperties().forEach((catalogName, propertyMap) -> {
+            if (mergedConnectorProperties.containsKey(catalogName)) {
+                mergedConnectorProperties.get(catalogName).putAll(propertyMap);
+            }
+            else {
+                mergedConnectorProperties.put(catalogName, new HashMap<>(propertyMap));
+            }
+        });
+
+        ImmutableMap.Builder<CatalogName, Map<String, String>> mergedConnectorPropertiesBuilder = ImmutableMap.builder();
+        mergedConnectorProperties.entrySet()
+                .stream()
                 .map(entry -> Maps.immutableEntry(entry.getKey(), ImmutableMap.copyOf(entry.getValue())))
-                .forEach(catalogPropertiesBuilder::put);
-        this.connectorProperties = catalogPropertiesBuilder.build();
+                .forEach(mergedConnectorPropertiesBuilder::put);
+        this.connectorProperties = mergedConnectorPropertiesBuilder.build();
 
         ImmutableMap.Builder<String, Map<String, String>> unprocessedCatalogPropertiesBuilder = ImmutableMap.builder();
         unprocessedCatalogProperties.entrySet().stream()

@@ -31,6 +31,8 @@ import io.trino.sql.tree.SetSession;
 import javax.inject.Inject;
 
 import java.util.List;
+import java.util.function.BiFunction;
+import java.util.function.Function;
 
 import static com.google.common.util.concurrent.Futures.immediateVoidFuture;
 import static io.trino.metadata.SessionPropertyManager.evaluatePropertyValue;
@@ -73,23 +75,44 @@ public class SetSessionTask
         Session session = stateMachine.getSession();
         QualifiedName propertyName = statement.getName();
         List<String> parts = propertyName.getParts();
-        if (parts.size() > 2) {
+
+        boolean isGlobal = "global".equals(parts.get(0));
+
+        if (isGlobal && parts.size() > 3 || !isGlobal && parts.size() > 2) {
             throw semanticException(INVALID_SESSION_PROPERTY, statement, "Invalid session property '%s'", propertyName);
         }
 
+        Function<String, PropertyMetadata<?>> systemPropertyChecker = property -> {
+            accessControl.checkCanSetSystemSessionProperty(session.getIdentity(), property);
+            return sessionPropertyManager.getSystemSessionPropertyMetadata(property)
+                    .orElseThrow(() -> semanticException(INVALID_SESSION_PROPERTY, statement, "Session property '%s' does not exist", statement.getName()));
+        };
+
+        BiFunction<String, String, PropertyMetadata<?>> catalogPropertyChecker = (catalogNameStr, property) -> {
+            CatalogName catalogName = plannerContext.getMetadata().getCatalogHandle(stateMachine.getSession(), catalogNameStr)
+                    .orElseThrow(() -> semanticException(CATALOG_NOT_FOUND, statement, "Catalog '%s' does not exist", catalogNameStr));
+            accessControl.checkCanSetCatalogSessionProperty(SecurityContext.of(session), catalogNameStr, property);
+            return sessionPropertyManager.getConnectorSessionPropertyMetadata(catalogName, property)
+                    .orElseThrow(() -> semanticException(INVALID_SESSION_PROPERTY, statement, "Session property '%s' does not exist", statement.getName()));
+        };
+
         // validate the property name
         PropertyMetadata<?> propertyMetadata;
-        if (parts.size() == 1) {
-            accessControl.checkCanSetSystemSessionProperty(session.getIdentity(), parts.get(0));
-            propertyMetadata = sessionPropertyManager.getSystemSessionPropertyMetadata(parts.get(0))
-                    .orElseThrow(() -> semanticException(INVALID_SESSION_PROPERTY, statement, "Session property '%s' does not exist", statement.getName()));
+        if (isGlobal) {
+            if (parts.size() == 2) {
+                propertyMetadata = systemPropertyChecker.apply(parts.get(1));
+            }
+            else {
+                propertyMetadata = catalogPropertyChecker.apply(parts.get(1), parts.get(2));
+            }
         }
         else {
-            CatalogName catalogName = plannerContext.getMetadata().getCatalogHandle(stateMachine.getSession(), parts.get(0))
-                    .orElseThrow(() -> semanticException(CATALOG_NOT_FOUND, statement, "Catalog '%s' does not exist", parts.get(0)));
-            accessControl.checkCanSetCatalogSessionProperty(SecurityContext.of(session), parts.get(0), parts.get(1));
-            propertyMetadata = sessionPropertyManager.getConnectorSessionPropertyMetadata(catalogName, parts.get(1))
-                    .orElseThrow(() -> semanticException(INVALID_SESSION_PROPERTY, statement, "Session property '%s' does not exist", statement.getName()));
+            if (parts.size() == 1) {
+                propertyMetadata = systemPropertyChecker.apply(parts.get(0));
+            }
+            else {
+                propertyMetadata = catalogPropertyChecker.apply(parts.get(0), parts.get(1));
+            }
         }
 
         Type type = propertyMetadata.getSqlType();
@@ -114,7 +137,20 @@ public class SetSessionTask
             throw semanticException(INVALID_SESSION_PROPERTY, statement, e.getMessage());
         }
 
-        stateMachine.addSetSessionProperties(propertyName.toString(), value);
+        if (isGlobal) {
+            if (parts.size() == 2) {
+                sessionPropertyManager.addRuntimeSystemSessionProperty(parts.get(1), value);
+            }
+            else {
+                CatalogName catalogName = plannerContext.getMetadata().getCatalogHandle(stateMachine.getSession(), parts.get(1)).get();
+                sessionPropertyManager.addRuntimeConnectorSessionProperty(catalogName, parts.get(2), value);
+            }
+
+            stateMachine.addRuntimeSessionProperty(String.join(".", parts.subList(1, parts.size())), value);
+        }
+        else {
+            stateMachine.addSetSessionProperties(propertyName.toString(), value);
+        }
 
         return immediateVoidFuture();
     }

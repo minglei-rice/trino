@@ -16,6 +16,8 @@ package io.trino.execution;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import io.trino.FeaturesConfig;
+import io.trino.Session;
+import io.trino.connector.CatalogName;
 import io.trino.execution.warnings.WarningCollector;
 import io.trino.metadata.Catalog;
 import io.trino.metadata.CatalogManager;
@@ -56,12 +58,15 @@ import static io.trino.spi.session.PropertyMetadata.stringProperty;
 import static io.trino.spi.type.VarcharType.VARCHAR;
 import static io.trino.sql.planner.TestingPlannerContext.plannerContextBuilder;
 import static io.trino.testing.TestingSession.createBogusTestingCatalog;
+import static io.trino.testing.TestingSession.testSessionBuilder;
 import static io.trino.transaction.InMemoryTransactionManager.createTestTransactionManager;
 import static java.lang.String.format;
 import static java.util.Collections.emptyList;
 import static java.util.concurrent.Executors.newCachedThreadPool;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertTrue;
 
 public class TestSetSessionTask
 {
@@ -96,6 +101,12 @@ public class TestSetSessionTask
                 null,
                 false));
 
+        sessionPropertyManager.addSystemSessionProperty(stringProperty(
+                "sys",
+                "test property",
+                null,
+                false));
+
         Catalog bogusTestingCatalog = createBogusTestingCatalog(CATALOG_NAME);
 
         List<PropertyMetadata<?>> sessionProperties = ImmutableList.of(
@@ -114,6 +125,11 @@ public class TestSetSessionTask
                         "size_property",
                         "size enum property",
                         Size.class,
+                        null,
+                        false),
+                stringProperty(
+                        "sess",
+                        "session property that should be override at runtime",
                         null,
                         false));
 
@@ -181,6 +197,50 @@ public class TestSetSessionTask
                 .addArgument(VARCHAR, new Parameter(0))
                 .build();
         testSetSessionWithParameters("bar", functionCall, "banana", ImmutableList.of(new StringLiteral("ana")));
+    }
+
+    @Test
+    public void testSetSessionWithGlobalProperties()
+    {
+        assertNull(TEST_SESSION.getSystemProperties().get("sys"));
+        assertNull(TEST_SESSION.getConnectorProperties().get(new CatalogName(CATALOG_NAME)));
+
+        QualifiedName qualifiedPropName = QualifiedName.of("global", "sys");
+        QueryStateMachine stateMachine = QueryStateMachine.begin(
+                format("set %s = 'old_value'", qualifiedPropName),
+                Optional.empty(),
+                TEST_SESSION,
+                URI.create("fake://uri"),
+                new ResourceGroupId("test"),
+                false,
+                transactionManager,
+                accessControl,
+                executor,
+                metadata,
+                WarningCollector.NOOP,
+                Optional.empty());
+        getFutureValue(new SetSessionTask(plannerContext, accessControl, sessionPropertyManager)
+                .execute(new SetSession(qualifiedPropName, new StringLiteral("override")), stateMachine, ImmutableList.of(), WarningCollector.NOOP));
+
+        Map<String, String> runtimeSessionProperties = stateMachine.getRuntimeSessionProperties();
+        assertEquals(runtimeSessionProperties.get("sys"), "override");
+
+        qualifiedPropName = QualifiedName.of("global", CATALOG_NAME, "sess");
+        getFutureValue(new SetSessionTask(plannerContext, accessControl, sessionPropertyManager)
+                .execute(new SetSession(qualifiedPropName, new StringLiteral("override")), stateMachine, ImmutableList.of(), WarningCollector.NOOP));
+        assertEquals(runtimeSessionProperties.get(String.join(".", CATALOG_NAME, "sess")), "override");
+
+        List<SessionPropertyManager.SessionPropertyValue> values =
+                sessionPropertyManager.getAllSessionProperties(TEST_SESSION, ImmutableMap.of(CATALOG_NAME, new CatalogName(CATALOG_NAME)));
+
+        assertTrue(values.stream().anyMatch(v -> v.getPropertyName().equals("sys")));
+        assertEquals(values.stream().filter(v -> v.getPropertyName().equals("sys")).findFirst().get().getValue(), "override");
+        assertTrue(values.stream().anyMatch(v -> v.getPropertyName().equals("sess")));
+        assertEquals(values.stream().filter(v -> v.getPropertyName().equals("sess")).findFirst().get().getValue(), "override");
+
+        Session sessionWithRuntimeProperties = testSessionBuilder(sessionPropertyManager).build();
+        assertEquals(sessionWithRuntimeProperties.getSystemProperties().get("sys"), "override");
+        assertEquals(sessionWithRuntimeProperties.getConnectorProperties().get(new CatalogName(CATALOG_NAME)).get("sess"), "override");
     }
 
     private void testSetSession(String property, Expression expression, String expectedValue)
