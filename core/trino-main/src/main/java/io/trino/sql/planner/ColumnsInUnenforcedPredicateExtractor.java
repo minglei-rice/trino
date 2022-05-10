@@ -13,11 +13,11 @@
  */
 package io.trino.sql.planner;
 
-import com.google.common.collect.ImmutableSet;
 import io.trino.Session;
 import io.trino.execution.Column;
 import io.trino.execution.ColumnsInPredicate;
 import io.trino.metadata.Metadata;
+import io.trino.metadata.QualifiedObjectName;
 import io.trino.metadata.TableHandle;
 import io.trino.metadata.TableSchema;
 import io.trino.spi.connector.ColumnMetadata;
@@ -27,8 +27,12 @@ import io.trino.sql.planner.plan.PlanNode;
 import io.trino.sql.planner.plan.PlanVisitor;
 import io.trino.sql.planner.plan.TableScanNode;
 
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
+
+import static com.google.common.collect.ImmutableSet.toImmutableSet;
 
 public class ColumnsInUnenforcedPredicateExtractor
 {
@@ -45,17 +49,17 @@ public class ColumnsInUnenforcedPredicateExtractor
     {
         Visitor visitor = new Visitor();
         plan.getRoot().accept(visitor, null);
-        return visitor.getcolumnsInPredicateSet();
+        return visitor.getColumnsInPredicateSet();
     }
 
     private class Visitor
             extends PlanVisitor<Void, Void>
     {
-        private final ImmutableSet.Builder<ColumnsInPredicate> columnsInPredicateSet = ImmutableSet.builder();
+        private final Map<QualifiedObjectName, ColumnsInPredicate> columnsInPredicateMap = new HashMap<>();
 
-        public Set<ColumnsInPredicate> getcolumnsInPredicateSet()
+        public Set<ColumnsInPredicate> getColumnsInPredicateSet()
         {
-            return columnsInPredicateSet.build();
+            return columnsInPredicateMap.values().stream().collect(toImmutableSet());
         }
 
         @Override
@@ -83,16 +87,25 @@ public class ColumnsInUnenforcedPredicateExtractor
                                 }
                             })));
 
+            // merge result from same source table
             TableSchema tableSchema = metadata.getTableSchema(session, tableHandle);
-            if (!colsInDiscretePredicate.isEmpty() || !colsInRangePredicate.isEmpty()) {
-                columnsInPredicateSet.add(
-                        new ColumnsInPredicate(
-                                tableSchema.getCatalogName().toString(),
-                                tableSchema.getTable().getSchemaName(),
-                                tableSchema.getTable().getTableName(),
-                                colsInDiscretePredicate,
-                                colsInRangePredicate));
+            QualifiedObjectName qualifiedTableName = tableSchema.getQualifiedName();
+            ColumnsInPredicate previous = columnsInPredicateMap.get(qualifiedTableName);
+            if (previous != null) {
+                colsInDiscretePredicate.addAll(previous.getColsInDiscretePredicate());
+                colsInRangePredicate.addAll(previous.getColsInRangePredicate());
             }
+
+            // put into map even if this node has no unenforced predicates
+            // so that we can obtain all source tables from the result
+            columnsInPredicateMap.put(
+                    qualifiedTableName,
+                    new ColumnsInPredicate(
+                            qualifiedTableName.getCatalogName(),
+                            qualifiedTableName.getSchemaName(),
+                            qualifiedTableName.getObjectName(),
+                            colsInDiscretePredicate,
+                            colsInRangePredicate));
             return null;
         }
 

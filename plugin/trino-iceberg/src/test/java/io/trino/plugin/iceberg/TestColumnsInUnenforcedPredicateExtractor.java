@@ -87,35 +87,41 @@ public class TestColumnsInUnenforcedPredicateExtractor
         assertResultEquals("SELECT * FROM t1 WHERE val BETWEEN 0.5 and 3",
                 createColumnsInPredicate("t1", ImmutableSet.of(), ImmutableSet.of("val")));
 
-        // out of range
-        assertEmptyResult("SELECT * FROM t1 WHERE val > 0 AND val < 0");
-
         // partition key
-        assertEmptyResult("SELECT * FROM t1 WHERE date = '20220101'");
+        assertResultEquals("SELECT * FROM t1 WHERE date = '20220101'",
+                createColumnsInPredicate("t1", ImmutableSet.of(), ImmutableSet.of()));
 
         // multiple columns
         assertResultEquals("SELECT * FROM t1 WHERE id > 100 AND name = 'Tom' AND val BETWEEN 80 and 90",
                 createColumnsInPredicate("t1", ImmutableSet.of("name"), ImmutableSet.of("id", "val")));
         assertResultEquals("SELECT * FROM t1 WHERE id > 100 AND (name = 'Tom' OR val BETWEEN 80 and 90)",
                 createColumnsInPredicate("t1", ImmutableSet.of(), ImmutableSet.of("id")));
-        assertEmptyResult("SELECT * FROM t1 WHERE id + val < 100");
+        assertResultEquals("SELECT * FROM t1 WHERE id + val < 100",
+                createColumnsInPredicate("t1", ImmutableSet.of(), ImmutableSet.of()));
     }
 
     @Test
     public void testMultipleTableScan()
     {
-        // single table
-        Set<ColumnsInPredicate> expected = ImmutableSet.of(
-                createColumnsInPredicate("t1", ImmutableSet.of(), ImmutableSet.of("id")),
-                createColumnsInPredicate("t1", ImmutableSet.of("name"), ImmutableSet.of()));
-        assertResultEquals("SELECT * FROM t1 as x, t1 as y WHERE x.id > 100 AND x.val > y.val AND y.name = 'Tom'", expected);
-        assertResultEquals("SELECT * FROM t1 as x JOIN t1 as y ON x.id > 100 AND x.val > y.val AND y.name = 'Tom'", expected);
+        // single table (merge)
+        assertResultEquals("SELECT * FROM t1 as x, t1 as y WHERE x.id > 100 AND x.val > y.val AND y.name = 'Tom'",
+                createColumnsInPredicate("t1", ImmutableSet.of("name"), ImmutableSet.of("id")));
+        assertResultEquals("SELECT * FROM t1 as x JOIN t1 as y ON x.id > 100 AND x.val > y.val AND y.val < 20",
+                createColumnsInPredicate("t1", ImmutableSet.of(), ImmutableSet.of("id", "val")));
+        assertResultEquals("SELECT * FROM t1 as x JOIN t1 as y ON x.name = y.name WHERE x.id = 1 AND y.val = 20",
+                createColumnsInPredicate("t1", ImmutableSet.of("id", "val"), ImmutableSet.of()));
+        assertResultEquals("SELECT * FROM t1 as x JOIN t1 as y ON x.name = y.name WHERE x.val > 1 AND y.val = 20",
+                createColumnsInPredicate("t1", ImmutableSet.of("val"), ImmutableSet.of("val")));
 
         // multiple tables
         assertResultEquals("SELECT * FROM t1 JOIN t2 ON t1.name = t2.name WHERE t1.val > 0 AND t2.id <= 200",
                 ImmutableSet.of(
                         createColumnsInPredicate("t1", ImmutableSet.of(), ImmutableSet.of("val")),
                         createColumnsInPredicate("t2", ImmutableSet.of(), ImmutableSet.of("id"))));
+        assertResultEquals("SELECT * FROM t1 JOIN t2 ON t1.name = t2.name WHERE t1.val > 0",
+                ImmutableSet.of(
+                        createColumnsInPredicate("t1", ImmutableSet.of(), ImmutableSet.of("val")),
+                        createColumnsInPredicate("t2", ImmutableSet.of(), ImmutableSet.of())));
     }
 
     private ColumnsInPredicate createColumnsInPredicate(
@@ -149,11 +155,6 @@ public class TestColumnsInUnenforcedPredicateExtractor
                 colsInRangePredicate.stream()
                         .map(name -> new Column(name, columnType.get(name)))
                         .collect(Collectors.toSet()));
-    }
-
-    private void assertEmptyResult(@Language("SQL") String query)
-    {
-        assertResultEquals(query, ImmutableSet.of());
     }
 
     private void assertResultEquals(@Language("SQL") String query, ColumnsInPredicate columnsInPredicate)
