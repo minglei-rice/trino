@@ -15,7 +15,7 @@
 
     <properties>
         <air.main.basedir>${project.parent.basedir}</air.main.basedir>
-        <dep.iceberg.version>0.11.1-bili-0.6-SNAPSHOT</dep.iceberg.version>
+        <dep.iceberg.version>0.11.1-bili-0.5.6</dep.iceberg.version>
         <dep.caffeine.version>3.0.3</dep.caffeine.version>
     </properties>
 
