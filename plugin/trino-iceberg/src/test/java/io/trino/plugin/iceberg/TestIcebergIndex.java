@@ -38,8 +38,8 @@ import org.apache.iceberg.IndexSpec;
 import org.apache.iceberg.IndexType;
 import org.apache.iceberg.RewriteFiles;
 import org.apache.iceberg.Table;
-import org.apache.iceberg.index.IndexClient;
-import org.apache.iceberg.index.IndexMetadata;
+import org.apache.iceberg.index.Index;
+import org.apache.iceberg.index.IndexFactory;
 import org.apache.iceberg.index.IndexWriter;
 import org.apache.iceberg.index.util.IndexUtils;
 import org.apache.iceberg.io.CloseableIterable;
@@ -53,8 +53,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
-import java.util.Properties;
-import java.util.stream.Collectors;
 
 import static com.google.common.io.MoreFiles.deleteRecursively;
 import static com.google.common.io.RecursiveDeleteOption.ALLOW_INSECURE;
@@ -62,6 +60,7 @@ import static io.trino.plugin.hive.metastore.file.FileHiveMetastore.createTestin
 import static io.trino.plugin.iceberg.IcebergQueryRunner.createIcebergQueryRunner;
 import static io.trino.testing.TestingConnectorSession.SESSION;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 
 /**
  * Test reading iceberg tables with indices.
@@ -105,8 +104,7 @@ public class TestIcebergIndex
     {
         getQueryRunner().execute("create table foo(x int,y int)");
         getQueryRunner().execute("insert into foo values (1,2),(3,4),(5,6)");
-        SchemaTableName tableName = new SchemaTableName("tpch", "foo");
-        Table table = IcebergUtil.loadIcebergTable(metastore, new FileMetastoreTableOperationsProvider(new HdfsFileIoProvider(hdfsEnvironment)), SESSION, tableName);
+        Table table = loadIcebergTable("foo");
         // define indices on both x and y
         table.updateIndexSpec().addIndex("x_bf", IndexType.BLOOMFILTER, "x", Collections.emptyMap()).commit();
         table.updateIndexSpec().addIndex("y_bf", IndexType.BLOOMFILTER, "y", Collections.emptyMap()).commit();
@@ -116,53 +114,56 @@ public class TestIcebergIndex
             taskIterable.iterator().forEachRemaining(tasks::add);
         }
         assertEquals(tasks.size(), 1, "Can only handle a single task");
-        List<DataFile> currentDataFiles = tasks.stream()
-                .map(FileScanTask::file)
-                .collect(Collectors.toList());
-        DataFile newDataFile = generateIndexFiles(
+        generateIndexFiles(
                 table,
                 tasks.get(0),
                 new Object[][] {
                         new Object[] {1, 2},
                         new Object[] {3, 4},
                         new Object[] {5, 6}
-                });
-        RewriteFiles rewriteFiles = table.newRewrite();
-        rewriteFiles.rewriteFiles(Sets.newHashSet(currentDataFiles), Sets.newHashSet(newDataFile));
-        rewriteFiles.commit();
+                },
+                table.currentSnapshot().snapshotId());
 
         // only select y from the table, to make sure we're using the correct index to filter the data
         assertEquals(getQueryRunner().execute("select y from foo where y=2").getMaterializedRows().size(), 1);
     }
 
-    private DataFile generateIndexFiles(Table table, FileScanTask task, Object[][] rows)
+    private Table loadIcebergTable(String tableName)
+    {
+        return IcebergUtil.loadIcebergTable(metastore, new FileMetastoreTableOperationsProvider(new HdfsFileIoProvider(hdfsEnvironment)),
+                SESSION, new SchemaTableName("tpch", tableName));
+    }
+
+    private void generateIndexFiles(Table table, FileScanTask task, Object[][] rows, long snapshotId)
             throws Exception
     {
         Path indexRootPath = new Path(table.location(), "index");
-        return generateIndexFiles(table, task, indexRootPath, rows);
+        DataFile newDataFile = generateIndexFiles(table, task, indexRootPath, rows, snapshotId);
+        RewriteFiles rewriteFiles = table.newRewrite();
+        rewriteFiles.rewriteFiles(Sets.newHashSet(task.file()), Sets.newHashSet(newDataFile));
+        rewriteFiles.commit();
     }
 
     // generate all required index files for a source file, and return the updated DataFile
-    private DataFile generateIndexFiles(Table table, FileScanTask task, Path indexRootPath, Object[][] rows)
+    private DataFile generateIndexFiles(Table table, FileScanTask task, Path indexRootPath, Object[][] rows, long snapshotId)
             throws Exception
     {
         DataFile sourceFile = task.file();
         IndexSpec indexSpec = table.indexSpec();
         List<IndexFile> indexFiles = new ArrayList<>();
-        IndexClient client = new IndexClient(table.io());
         for (IndexField indexField : indexSpec.fields()) {
             Path indexPath = IndexUtils.getIndexPath(new Path(sourceFile.path().toString()), new Path(table.location()),
-                    indexField, indexRootPath, 0);
-            IndexFile indexFile = new IndexFile(indexPath.toString(), indexField.indexType(),
-                    indexField.sourceId(), indexField.indexName());
-            IndexMetadata indexMetadata = new IndexMetadata(indexFile, new Properties(), sourceFile.recordCount());
-            IndexWriter indexWriter = client.createIndexWriter(indexMetadata);
+                    indexField, indexRootPath, snapshotId);
+            Index index = IndexFactory.createIndex(indexField.indexType(), indexField.properties());
+            IndexWriter indexWriter = new IndexWriter(table.io(), indexPath.toString(), index, -1);
             // just assume source id starts from 1
             final int ordinal = indexField.sourceId() - 1;
             for (Object[] row : rows) {
                 indexWriter.addData(row[ordinal]);
             }
-            indexWriter.finish();
+            assertFalse(indexWriter.finish().isInPlace());
+            IndexFile indexFile = new IndexFile(indexPath.toString(), indexField.indexType(),
+                    indexField.sourceId(), indexField.indexName(), indexField.properties());
             indexFiles.add(indexFile);
         }
         return DataFiles.builder(table.spec()).copy(sourceFile).withIndexFile(indexFiles).build();
