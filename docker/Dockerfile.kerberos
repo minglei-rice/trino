@@ -1,0 +1,23 @@
+## 基于docker hub中官方提供的java 11 镜像构建
+FROM hub.bilibili.co/compile/openjdk-11:latest
+
+## install kerberos
+RUN groupadd  -g 1200 hadoop \
+    && useradd hdfs -g 1200 -u 1200 -d /home/hdfs -s /bin/bash -m \
+    && useradd bigdata -d /home/bigdata -s /bin/bash -m \
+    && chmod -R 755 /home/bigdata \
+    && apt-get update \
+    && apt-get install -y sudo \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y -q libnss-ldapd libpam-ldapd krb5-user krb5-config libpam-krb5 libpam-ccreds --no-install-recommends \
+    && sed -i 's/passwd:[[:space:]][[:space:]]*compat/passwd:files ldap/g' /etc/nsswitch.conf \
+    && echo "session required pam_mkhomedir.so skel=/etc/skel umask=0022" >> /etc/pam.d/common-session \
+    && apt-get install wget -y \
+    && wget http://172.22.123.13/kerberos/conf_all/nslcd.conf -O /etc/nslcd.conf \
+    && chmod 644 /etc/nslcd.conf \
+    && wget http://172.22.123.13/kerberos/conf_all/nscd.conf -O /etc/nscd.conf \
+    && chmod 600 /etc/nscd.conf \
+    && wget http://172.22.123.13/kerberos/conf_all/krb5.conf -O /etc/krb5.conf \
+    && wget http://172.22.123.13/kerberos/conf_all/client.py -O /opt/client.py \
+    && wget http://172.22.123.13/kerberos/conf_all/useradmin -O /etc/sudoers.d/useradmin \
+    && chmod 600 /etc/nslcd.conf \
+    && echo 'export GROUP_NAME="bigdata"' > /etc/profile.d/hdfs-group.sh

@@ -1,0 +1,23 @@
+coordinator=true
+node.environment=production
+node-scheduler.include-coordinator=false
+http-server.http.port={SERVER_HTTP_PORT}
+discovery-server.enabled=true
+#need to change worknum*pernode
+query.max-memory={QUERY_MAX_MEMORY}
+query.max-memory-per-node={QUERY_MAX_MEMORY_PER_NODE}
+query.max-total-memory-per-node={QUERY_MAX_TOTAL_MEMORY_PER_NODE}
+#query.initial-hash-partitions=64
+#task.max-worker-threads={TASK_MAX_WORKER_THREADS}
+query.client.timeout=2m
+discovery.uri=http://{TRINO_DISCOVERY_HOST}:{TRINO_DISCOVERY_PORT}
+query.min-expire-age=10m
+query.max-history=400
+query.max-run-time=1h
+exchange.min-error-duration=2m
+task.http-timeout-threads=10
+experimental.reserved-pool-disabled=true
+#memory.heap-headroom-per-node=20GB
+query.low-memory-killer.policy=total-reservation-on-blocked-nodes
+task.concurrency={TASK_CONCURRENCY}
+task.writer-count=32

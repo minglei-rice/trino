@@ -1,0 +1,19 @@
+## Path include Trino project
+TRINO_BASE_DIR=${TRINO_BASE_DIR:-/home/trino}
+
+## Path include all the possible dependencies for installing Trino, e.g. jdk, python, etc.
+TRINO_DEPENDENCIES_DIR=${TRINO_DEPENDENCIES_DIR:-$TRINO_BASE_DIR}
+TRINO_PACKAGE_DIR=${TRINO_PACKAGE_DIR:-$TRINO_BASE_DIR}
+
+## Trino version to be installed
+TRINO_VERSION=${TRINO_VERSION:-trino-server-367}
+TRINO_ETC_DIR=${TRINO_ETC_DIR:-/data/conf/etc}
+TRINO_DATA_DIR=${TRINO_DATA_DIR:-/data/data/trino}
+TRINO_LOG_DIR=${TRINO_LOG_DIR:-/data/log/trino}
+TRINO_COORDINATOR=${TRINO_COORDINATOR:-false}
+TRINO_DISCOVERY_HOST=${TRINO_COORDINATOR_HOST:-${POD_IP}}
+TRINO_DISCOVERY_PORT=${TRINO_COORDINATOR_PORT:-${PORT}}
+
+## Alluxio
+ALLUXIO_MASTER=${ALLUXIO_MASTER:-jssz-olap-presto-01:19998}
+ALLUXIO_CACHE=${ALLUXIO_CACHE:-false}

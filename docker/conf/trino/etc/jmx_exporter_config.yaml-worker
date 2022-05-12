@@ -1,0 +1,19 @@
+lowercaseOutputName: true
+
+rules:
+  - pattern: java.lang<type=OperatingSystem><>SystemLoadAverage
+    type: GAUGE
+    name: trino_system_load_average
+  - pattern: java.lang<type=Memory><HeapMemoryUsage>max
+    type: GAUGE
+    name: trino_heap_memory_usage_max
+  - pattern: java.lang<type=Memory><HeapMemoryUsage>used
+    type: GAUGE
+    name: trino_heap_memory_usage_used
+  - pattern: java.lang<name=(.+), type=GarbageCollector><>CollectionCount
+    type: GAUGE
+    name: trino_gc_$1_collection_count
+  - pattern: java.lang<name=(.+), type=GarbageCollector><>CollectionTime
+    type: GAUGE
+    name: trino_gc_$1_collection_time
+

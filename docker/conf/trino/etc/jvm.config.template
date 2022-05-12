@@ -1,0 +1,26 @@
+-server
+-Xms{JVM_XMS}
+-Xmx{JVM_XMX}
+-XX:ReservedCodeCacheSize={JVM_RESERVED_CODE_CACHE_SIZE}
+-Xss{JVM_XSS}
+-XX:G1ReservePercent=15
+-XX:+UseG1GC
+-XX:MaxGCPauseMillis=200
+#-XX:+PrintGCApplicationStoppedTime
+-verbose:gc
+-XX:+PrintGCDetails
+-XX:+ExplicitGCInvokesConcurrent
+-XX:OnOutOfMemoryError=kill -9 %p
+-XX:NativeMemoryTracking=summary
+-XX:+ExplicitGCInvokesConcurrent
+# logging gc details into this file with time
+-Xlog:gc*:{TRINO_LOG_DIR}/garbage-collection.log:time
+-Dcom.sun.management.jmxremote.port=40010
+-Dcom.sun.management.jmxremote.authenticate=false
+-Dcom.sun.management.jmxremote.ssl=false
+-DHADOOP_USER_NAME={HADOOP_USER_NAME}
+-Dsun.security.krb5.debug=true
+-Dlog.enable-console=true
+-javaagent:{TRINO_BASE_DIR}/jmx_prometheus_javaagent.jar=9099:{TRINO_ETC_DIR}/jmx_exporter_config.yaml
+#修复递归解析漏洞，建议后续升级版本
+-Dlog4j2.formatMsgNoLookups=true

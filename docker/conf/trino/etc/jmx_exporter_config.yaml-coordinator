@@ -1,0 +1,50 @@
+lowercaseOutputName: true
+
+rules:
+  - pattern: java.lang<type=OperatingSystem><>SystemLoadAverage
+    type: GAUGE
+    name: trino_system_load_average
+  - pattern: java.lang<type=Memory><HeapMemoryUsage>max
+    type: GAUGE
+    name: trino_heap_memory_usage_max
+  - pattern: java.lang<type=Memory><HeapMemoryUsage>used
+    type: GAUGE
+    name: trino_heap_memory_usage_used
+  - pattern: java.lang<name=(.+), type=GarbageCollector><>CollectionCount
+    type: GAUGE
+    name: trino_gc_$1_collection_count
+  - pattern: java.lang<name=(.+), type=GarbageCollector><>CollectionTime
+    type: GAUGE
+    name: trino_gc_$1_collection_time
+  - pattern: trino.metadata<name=DiscoveryNodeManager><>ActiveNodeCount
+    type: GAUGE
+    name: trino_active_nodes
+  - pattern: trino.metadata<name=DiscoveryNodeManager><>InactiveNodeCount
+    type: GAUGE
+    name: trino_inactive_nodes
+  - pattern: trino.execution<name=QueryManager><>ConsumedInputBytes.TotalCount
+    type: COUNTER
+    name: trino_read_bytes_total_count
+  - pattern: trino.execution<name=QueryManager><>FailedQueries.TotalCount
+    type: COUNTER
+    name: trino_failed_queries_total_count
+  - pattern: trino.execution<name=QueryManager><>ExternalFailures.TotalCount
+    type: COUNTER
+    name: trino_external_failures_total_count
+  - pattern: trino.execution<name=QueryManager><>InsufficientResourcesFailures.TotalCount
+    type: COUNTER
+    name: trino_insufficient_resources_failures_total_count
+  - pattern: trino.execution<name=QueryManager><>InternalFailures.TotalCount
+    type: COUNTER
+    name: trino_internal_failures_total_count
+  - pattern: trino.execution<name=QueryManager><>SubmittedQueries.TotalCount
+    type: COUNTER
+    name: trino_submitted_queries_total_count
+  - pattern: trino.execution<name=QueryManager><>(\w+)Time.OneMinute.Avg
+    type: GAUGE
+    name: trino_$1_time_one_minute_avg
+  - pattern: trino.execution<name=QueryManager><>(\w+)Time.OneMinute.P(\d+)
+    type: GAUGE
+    name: trino_$1_time_one_minute
+    labels:
+      quantile: "0.$2"

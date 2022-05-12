@@ -1,6 +1,21 @@
 stages:
   - test
   - package
+  - build
+  - build_docker
+  - build_artifactory
+
+variables:
+  # 默认镜像仓库
+  DOCKER_REPOSITORY: hub.bilibili.co/gitlab
+  # rider项目名（服务树路径）
+  RIDER_PROJECT_NAME: datacenter.olap.trino
+  # push到其他镜像仓库（有多个仓库可继续添加DOCKER_REPOSITORY_2，DOCKER_REPOSITORY_3...）
+  # DOCKER_REPOSITORY_1: ccr.ccs.tencentyun.com/caster
+  # 构建产物保存（如构建产物在根目录下面的./dist/目录，则此处paths填写 - ./dist/）
+  DOCKER_ARTIFACTS_PATH : ./release
+  SERVER_ARTIFACTS_PATH: ./core/trino-server/target
+  CLIENT_ARTIFACTS_PATH: ./client/trino-cli/target
 
 test:
   stage: test
@@ -19,13 +34,44 @@ package:
   script:
     - export PATH=$PATH:$JAVA_HOME/bin:/opt/maven/apache-maven-3.8.1/bin
     - ./mvnw -pl -docs clean package -DskipTests -Djava.io.tmpdir=/data
-    - mv ./core/trino-server/target/trino-server-*.tar.gz ./core/trino-server/target/trino-server.tar.gz
-    - mv ./client/trino-cli/target/trino-cli-*-executable.jar ./client/trino-cli/target/trino-cli-executable.jar
+    - mv ./core/trino-server/target/trino-server-*.tar.gz $SERVER_ARTIFACTS_PATH/trino-server.tar.gz
+    - mv ./client/trino-cli/target/trino-cli-*-executable.jar $CLIENT_ARTIFACTS_PATH/trino-cli-executable.jar
   only:
     - tags
     - branches
   artifacts:
     paths:
-      - ./core/trino-server/target/trino-server.tar.gz
-      - ./client/trino-cli/target/trino-cli-executable.jar
+      - $SERVER_ARTIFACTS_PATH/trino-server.tar.gz
+      - $CLIENT_ARTIFACTS_PATH/trino-cli-executable.jar
     expire_in: 2 week
+
+build:
+  stage: build
+  tags:
+    - rider-shared
+  # 构建需要用到的docker镜像，默认是通过Dockerfile.kerberos构建的基础镜像
+  image: hub.bilibili.co/compile/java11-compile:latest
+  script:
+  # 自定义构建命令
+    - echo "Building docker..."
+    - mkdir release && touch release/built_time.txt && echo `date +%Y-%m-%d%T` >> release/built_time.txt
+    - tar -zcf docker.tar.gz docker/
+    - cp -r $SERVER_ARTIFACTS_PATH/* $CLIENT_ARTIFACTS_PATH/* docker.tar.gz release/
+  only:
+    - branches
+    - tags
+#   when: manual
+#   after_script:
+#     - git tag -l | xargs git tag -d
+  artifacts:
+    paths:
+      - $DOCKER_ARTIFACTS_PATH
+    expire_in: 2 week
+
+include:
+  - project: 'devops/gitlab-cicd'
+    ref: master
+    file: 'gitlab-ci-template/build_docker_tags.yml'
+  - project: 'devops/gitlab-cicd'
+    ref: master
+    file: 'gitlab-ci-template/build_artifactory.yml'
