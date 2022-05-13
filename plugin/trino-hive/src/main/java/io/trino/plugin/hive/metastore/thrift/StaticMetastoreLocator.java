@@ -15,6 +15,7 @@ package io.trino.plugin.hive.metastore.thrift;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Ticker;
+import com.google.common.collect.ImmutableList;
 import com.google.common.net.HostAndPort;
 import io.airlift.units.Duration;
 import io.trino.plugin.hive.metastore.thrift.FailureAwareThriftMetastoreClient.Callback;
@@ -29,6 +30,9 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.OptionalLong;
+import java.util.Random;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.function.BiFunction;
 
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Strings.isNullOrEmpty;
@@ -104,7 +108,7 @@ public class StaticMetastoreLocator
                 .collect(toImmutableList());
 
         TException lastException = null;
-        for (Backoff backoff : backoffsSorted) {
+        for (Backoff backoff : groupShuffle(backoffsSorted, (left, right) -> comparator.compare(left, right) == 0)) {
             try {
                 return getClient(backoff.getAddress(), backoff, delegationToken);
             }
@@ -112,9 +116,37 @@ public class StaticMetastoreLocator
                 lastException = e;
             }
         }
-
         List<HostAndPort> addresses = backoffsSorted.stream().map(Backoff::getAddress).collect(toImmutableList());
         throw new TException("Failed connecting to Hive metastore: " + addresses, lastException);
+    }
+
+    static List<Backoff> groupShuffle(List<Backoff> backoffs, BiFunction<Backoff, Backoff, Boolean> groupFunc)
+    {
+        ThreadLocalRandom random = ThreadLocalRandom.current();
+        Backoff[] elements = backoffs.toArray(new Backoff[0]);
+        int groupFirst = 0;
+        for (int i = 1; i < elements.length; i++) {
+            if (!groupFunc.apply(elements[i - 1], elements[i])) {
+                // shuffle in group
+                shuffle(elements, groupFirst, i - groupFirst, random);
+                // begin a new group
+                groupFirst = i;
+            }
+        }
+        if (elements.length - groupFirst > 1) {
+            shuffle(elements, groupFirst, elements.length - groupFirst, random);
+        }
+        return ImmutableList.copyOf(elements);
+    }
+
+    static void shuffle(Backoff[] elements, int start, int length, Random random)
+    {
+        for (int i = length; i > 1; i--) {
+            int pos = start + random.nextInt(i);
+            Backoff tmp = elements[pos];
+            elements[pos] = elements[start + i - 1];
+            elements[start + i - 1] = tmp;
+        }
     }
 
     private ThriftMetastoreClient getClient(HostAndPort address, Backoff backoff, Optional<String> delegationToken)

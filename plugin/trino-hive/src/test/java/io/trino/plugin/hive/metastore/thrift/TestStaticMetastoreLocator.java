@@ -24,10 +24,13 @@ import org.testng.annotations.Test;
 import java.net.SocketTimeoutException;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import static java.util.concurrent.TimeUnit.NANOSECONDS;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertTrue;
 
 public class TestStaticMetastoreLocator
 {
@@ -103,15 +106,18 @@ public class TestStaticMetastoreLocator
     public void testFallbackHiveMetastoreOnTimeOut()
             throws TException
     {
-        MetastoreLocator cluster = createMetastoreLocator(CONFIG_WITH_FALLBACK, CLIENTS);
+        Set<ThriftMetastoreClient> clients = CLIENTS.values().stream().map(Optional::get).collect(Collectors.toSet());
+        StaticMetastoreLocator cluster = (StaticMetastoreLocator) createMetastoreLocator(CONFIG_WITH_FALLBACK, CLIENTS);
 
         ThriftMetastoreClient metastoreClient1 = cluster.createMetastoreClient(Optional.empty());
-        assertEqualHiveClient(metastoreClient1, DEFAULT_CLIENT);
+
+        assertContainsHiveClient(clients, metastoreClient1);
 
         assertGetTableException(metastoreClient1);
+        clients.remove(((FailureAwareThriftMetastoreClient) metastoreClient1).getDelegate());
 
         ThriftMetastoreClient metastoreClient2 = cluster.createMetastoreClient(Optional.empty());
-        assertEqualHiveClient(metastoreClient2, FALLBACK_CLIENT);
+        assertContainsHiveClient(clients, metastoreClient2);
 
         assertGetTableException(metastoreClient2);
     }
@@ -120,67 +126,99 @@ public class TestStaticMetastoreLocator
     public void testFallbackHiveMetastoreOnAllTimeOut()
             throws TException
     {
-        MetastoreLocator cluster = createMetastoreLocator(CONFIG_WITH_FALLBACK, CLIENTS);
+        Set<ThriftMetastoreClient> clients = CLIENTS.values().stream().map(Optional::get).collect(Collectors.toSet());
+        StaticMetastoreLocator cluster = (StaticMetastoreLocator) createMetastoreLocator(CONFIG_WITH_FALLBACK, CLIENTS);
 
         ThriftMetastoreClient metastoreClient1 = cluster.createMetastoreClient(Optional.empty());
-        assertEqualHiveClient(metastoreClient1, DEFAULT_CLIENT);
+        assertContainsHiveClient(clients, metastoreClient1);
 
         for (int i = 0; i < 20; ++i) {
             assertGetTableException(metastoreClient1);
         }
+        clients.remove(((FailureAwareThriftMetastoreClient) metastoreClient1).getDelegate());
 
         ThriftMetastoreClient metastoreClient2 = cluster.createMetastoreClient(Optional.empty());
-        assertEqualHiveClient(metastoreClient2, FALLBACK_CLIENT);
+        assertContainsHiveClient(clients, metastoreClient2);
 
         assertGetTableException(metastoreClient2);
 
         // Still get FALLBACK_CLIENT because DEFAULT_CLIENT failed more times before and therefore longer backoff
         ThriftMetastoreClient metastoreClient3 = cluster.createMetastoreClient(Optional.empty());
-        assertEqualHiveClient(metastoreClient3, FALLBACK_CLIENT);
+        assertContainsHiveClient(clients, metastoreClient3);
     }
 
     @Test
     public void testStickToFallbackAfterBackoff()
             throws TException
     {
+        Set<ThriftMetastoreClient> clients = CLIENTS.values().stream().map(Optional::get).collect(Collectors.toSet());
+
         TestingTicker ticker = new TestingTicker();
-        MetastoreLocator cluster = createMetastoreLocator(CONFIG_WITH_FALLBACK, CLIENTS, ticker);
+        StaticMetastoreLocator cluster = (StaticMetastoreLocator) createMetastoreLocator(CONFIG_WITH_FALLBACK, CLIENTS, ticker);
 
         ticker.increment(10, NANOSECONDS);
         ThriftMetastoreClient metastoreClient1 = cluster.createMetastoreClient(Optional.empty());
-        assertEqualHiveClient(metastoreClient1, DEFAULT_CLIENT);
+        assertContainsHiveClient(clients, metastoreClient1);
+
         assertGetTableException(metastoreClient1);
+        clients.remove(((FailureAwareThriftMetastoreClient) metastoreClient1).getDelegate());
 
         ticker.increment(10, NANOSECONDS);
         ThriftMetastoreClient metastoreClient2 = cluster.createMetastoreClient(Optional.empty());
-        assertEqualHiveClient(metastoreClient2, FALLBACK_CLIENT);
+        assertContainsHiveClient(clients, metastoreClient2);
 
         // even after backoff for DEFAULT_CLIENT passes we should stick to client which we saw working correctly most recently
         ticker.increment(StaticMetastoreLocator.Backoff.MAX_BACKOFF, NANOSECONDS);
         ThriftMetastoreClient metastoreClient3 = cluster.createMetastoreClient(Optional.empty());
-        assertEqualHiveClient(metastoreClient3, FALLBACK_CLIENT);
+        assertContainsHiveClient(clients, metastoreClient3);
     }
 
     @Test
     public void testReturnsToDefaultClientAfterErrorOnFallback()
             throws TException
     {
+        Set<ThriftMetastoreClient> clients = CLIENTS.values().stream().map(Optional::get).collect(Collectors.toSet());
+
         TestingTicker ticker = new TestingTicker();
-        MetastoreLocator cluster = createMetastoreLocator(CONFIG_WITH_FALLBACK, CLIENTS, ticker);
+        StaticMetastoreLocator cluster = (StaticMetastoreLocator) createMetastoreLocator(CONFIG_WITH_FALLBACK, CLIENTS, ticker);
 
         ticker.increment(10, NANOSECONDS);
         ThriftMetastoreClient metastoreClient1 = cluster.createMetastoreClient(Optional.empty());
-        assertEqualHiveClient(metastoreClient1, DEFAULT_CLIENT);
+        assertContainsHiveClient(clients, metastoreClient1);
         assertGetTableException(metastoreClient1);
+        clients.remove(((FailureAwareThriftMetastoreClient) metastoreClient1).getDelegate());
 
         ticker.increment(10, NANOSECONDS);
         ThriftMetastoreClient metastoreClient2 = cluster.createMetastoreClient(Optional.empty());
-        assertEqualHiveClient(metastoreClient2, FALLBACK_CLIENT);
+        assertContainsHiveClient(clients, metastoreClient2);
         assertGetTableException(metastoreClient2);
 
         ticker.increment(10, NANOSECONDS);
         ThriftMetastoreClient metastoreClient3 = cluster.createMetastoreClient(Optional.empty());
-        assertEqualHiveClient(metastoreClient3, DEFAULT_CLIENT);
+        assertEqualHiveClient(metastoreClient3, metastoreClient1);
+    }
+
+    @Test
+    public void testReturnRandomClient()
+    {
+        ImmutableMap.Builder<String, Optional<ThriftMetastoreClient>> testClientMapBuilder = ImmutableMap.builder();
+        testClientMapBuilder.put(FALLBACK2_URI, Optional.of(createFakeMetastoreClient()));
+        testClientMapBuilder.putAll(CLIENTS);
+        ImmutableMap<String, Optional<ThriftMetastoreClient>> testClientMap = testClientMapBuilder.build();
+        TestingTicker ticker = new TestingTicker();
+        StaticMetastoreLocator cluster = (StaticMetastoreLocator) createMetastoreLocator(CONFIG_WITH_FALLBACK, testClientMap, ticker);
+        Set<ThriftMetastoreClient> testClients = testClientMap.values().stream().map(Optional::get).collect(Collectors.toSet());
+        for (int i = 0; i < Byte.MAX_VALUE && !testClients.isEmpty(); i++) {
+            testClients.removeIf(expectedClient -> {
+                try {
+                    return expectedClient == ((FailureAwareThriftMetastoreClient) cluster.createMetastoreClient(Optional.empty())).getDelegate();
+                }
+                catch (TException e) {
+                    return false;
+                }
+            });
+        }
+        assertTrue(testClients.isEmpty(), "Should fetch all clients!");
     }
 
     private static void assertGetTableException(ThriftMetastoreClient client)
@@ -229,5 +267,11 @@ public class TestStaticMetastoreLocator
             expected = ((FailureAwareThriftMetastoreClient) expected).getDelegate();
         }
         assertEquals(actual, expected);
+    }
+
+    private void assertContainsHiveClient(Set<ThriftMetastoreClient> clients, ThriftMetastoreClient expected)
+    {
+        ThriftMetastoreClient actual = ((FailureAwareThriftMetastoreClient) expected).getDelegate();
+        assertTrue(clients.contains(actual));
     }
 }
