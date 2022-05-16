@@ -6,12 +6,11 @@ stages:
   - build_artifactory
 
 variables:
-  # 默认镜像仓库
-  DOCKER_REPOSITORY: hub.bilibili.co/gitlab
+  # 默认镜像仓库hub.bilibili.co/gitlab, 如果有多个其它的仓库，请以分号分隔符号分隔，
+  # 且字符中不能包含空白符，如"repo1;repo2"
+  DOCKER_REPOSITORIES: "hub.bilibili.co/gitlab"
   # rider项目名（服务树路径）
   RIDER_PROJECT_NAME: datacenter.olap.trino
-  # push到其他镜像仓库（有多个仓库可继续添加DOCKER_REPOSITORY_2，DOCKER_REPOSITORY_3...）
-  # DOCKER_REPOSITORY_1: ccr.ccs.tencentyun.com/caster
   # 构建产物保存（如构建产物在根目录下面的./dist/目录，则此处paths填写 - ./dist/）
   DOCKER_ARTIFACTS_PATH : ./release
   SERVER_ARTIFACTS_PATH: ./core/trino-server/target
@@ -68,10 +67,38 @@ build:
       - $DOCKER_ARTIFACTS_PATH
     expire_in: 2 week
 
-include:
-  - project: 'devops/gitlab-cicd'
-    ref: master
-    file: 'gitlab-ci-template/build_docker_tags.yml'
-  - project: 'devops/gitlab-cicd'
-    ref: master
-    file: 'gitlab-ci-template/build_artifactory.yml'
+build_docker:
+  stage: build_docker
+  tags:
+    - rider-shared-shell
+  script:
+    - export DOCKER_BUILD_TAG=$CI_COMMIT_SHA
+    - export DOCKER_BUILD_NAME=$RIDER_PROJECT_NAME:$DOCKER_BUILD_TAG
+    - docker build --pull -t $DOCKER_BUILD_NAME .
+    - if [ "$CI_COMMIT_BRANCH" != "" ]; then export DOCKER_TAG=$CI_COMMIT_BRANCH; fi
+    - if [ "$CI_COMMIT_TAG" != "" ]; then export DOCKER_TAG=$CI_COMMIT_TAG; fi
+    # rename and push
+    - for repo in ${DOCKER_REPOSITORIES//;/ }; do export DOCKER_FULL_NAME=$repo/$RIDER_PROJECT_NAME:$DOCKER_TAG; docker tag $DOCKER_BUILD_NAME $DOCKER_FULL_NAME; echo "Renamed docker image from $DOCKER_BUILD_NAME to $DOCKER_FULL_NAME"; docker push $DOCKER_FULL_NAME; python /home/gitlab-runner/rider.py $CI_JOB_ID $CI_COMMIT_REF_NAME $CI_COMMIT_SHA "$CI_COMMIT_MESSAGE" $GITLAB_USER_EMAIL $RIDER_PROJECT_NAME $DOCKER_FULL_NAME $DOCKER_TAG; done
+  dependencies:
+    - build
+  only:
+    - tags
+    - branches
+
+build_artifactory:
+  stage: build_artifactory
+  tags:
+    - rider-shared-shell
+  script:
+    - "echo build-artifactory"
+    # After packaging, the .git directory file is too large
+    - mkdir -p ../$CI_PROJECT_ID && mv .git ../$CI_PROJECT_ID/
+    - artifactory_path="`pwd`/$ARTIFACTS_PATH"
+    - python /home/gitlab-runner/artifactory.py $CI_COMMIT_SHA $CI_COMMIT_REF_NAME $CI_PROJECT_URL "$CI_COMMIT_MESSAGE" "$GITLAB_USER_EMAIL" $artifactory_path $RIDER_PROJECT_NAME >> /home/gitlab-runner/artifactory.log
+    - cat /home/gitlab-runner/artifactory.log
+    - mv ../$CI_PROJECT_ID/.git .
+  dependencies:
+    - build
+  only:
+    - tags
+    - branches
