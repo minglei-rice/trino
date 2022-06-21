@@ -105,11 +105,11 @@ public class SystemPageSourceProvider
             return new MappedPageSource(systemTable.pageSource(systemTransaction.getConnectorTransactionHandle(), session, newConstraint), userToSystemFieldIndex.build());
         }
         catch (UnsupportedOperationException e) {
-            return new RecordPageSource(new MappedRecordSet(toRecordSet(systemTransaction.getConnectorTransactionHandle(), systemTable, session, newConstraint), userToSystemFieldIndex.build()));
+            return new RecordPageSource(new MappedRecordSet(toRecordSet(systemTransaction.getConnectorTransactionHandle(), systemTable, session, newConstraint, userToSystemFieldIndex.build()), userToSystemFieldIndex.build()));
         }
     }
 
-    private static RecordSet toRecordSet(ConnectorTransactionHandle sourceTransaction, SystemTable table, ConnectorSession session, TupleDomain<Integer> constraint)
+    private static RecordSet toRecordSet(ConnectorTransactionHandle sourceTransaction, SystemTable table, ConnectorSession session, TupleDomain<Integer> constraint, List<Integer> userToSystemFieldIndex)
     {
         return new RecordSet()
         {
@@ -126,7 +126,7 @@ public class SystemPageSourceProvider
             @Override
             public RecordCursor cursor()
             {
-                return table.cursor(sourceTransaction, session, constraint);
+                return table.cursorForSpecificColumns(sourceTransaction, session, constraint, userToSystemFieldIndex);
             }
         };
     }

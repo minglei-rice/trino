@@ -15,6 +15,8 @@ package io.trino.spi.connector;
 
 import io.trino.spi.predicate.TupleDomain;
 
+import java.util.List;
+
 /**
  * Exactly one of {@link #cursor} or {@link #pageSource} must be implemented.
  */
@@ -38,6 +40,22 @@ public interface SystemTable
     default RecordCursor cursor(ConnectorTransactionHandle transactionHandle, ConnectorSession session, TupleDomain<Integer> constraint)
     {
         throw new UnsupportedOperationException();
+    }
+
+    /**
+     * Create a cursor for the data in this table.
+     *
+     * @param session the session to use for creating the data
+     * @param constraint the constraints for the table columns (indexed from 0)
+     * @param userToSystemFieldIndex the projection columns
+     */
+    default RecordCursor cursorForSpecificColumns(
+            ConnectorTransactionHandle transactionHandle,
+            ConnectorSession session,
+            TupleDomain<Integer> constraint,
+            List<Integer> userToSystemFieldIndex)
+    {
+        return cursor(transactionHandle, session, constraint);
     }
 
     /**

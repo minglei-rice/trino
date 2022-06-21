@@ -182,6 +182,34 @@ public class PartitionTable
         return buildRecordCursor(getPartitions(tableScan), icebergTable.spec().fields());
     }
 
+    @Override
+    public RecordCursor cursorForSpecificColumns(
+            ConnectorTransactionHandle transactionHandle,
+            ConnectorSession session,
+            TupleDomain<Integer> constraint,
+            List<Integer> userToSystemFieldIndex)
+    {
+        if (snapshotId.isEmpty()) {
+            return new InMemoryRecordSet(resultTypes, ImmutableList.of()).cursor();
+        }
+        TableScan tableScan;
+
+        boolean hasData = userToSystemFieldIndex.stream().anyMatch(i -> connectorTableMetadata.getColumns().get(i).getName().equals("data"));
+
+        if (hasData) {
+            tableScan = icebergTable.newScan()
+                    .useSnapshot(snapshotId.get())
+                    .includeColumnStats();
+        }
+        else {
+            tableScan = icebergTable.newScan()
+                    .useSnapshot(snapshotId.get());
+        }
+
+        // TODO make the cursor lazy
+        return buildRecordCursor(getPartitions(tableScan), icebergTable.spec().fields());
+    }
+
     private Map<StructLikeWrapper, Partition> getPartitions(TableScan tableScan)
     {
         try (CloseableIterable<FileScanTask> fileScanTasks = tableScan.planFiles()) {
