@@ -125,7 +125,7 @@ public class TestIcebergV2
         }
 
         icebergTable.newRowDelta().addDeletes(writer.toDeleteFile()).commit();
-        assertQueryFails("SELECT * FROM " + tableName, "Iceberg tables with delete files are not supported: tpch." + tableName);
+        assertQueryFails("SELECT * FROM " + tableName, ".*Iceberg tables with delete files are not supported: tpch." + tableName);
     }
 
     @Test
@@ -136,7 +136,7 @@ public class TestIcebergV2
         assertUpdate("CREATE TABLE " + tableName + " AS SELECT * FROM tpch.tiny.nation", 25);
         Table icebergTable = updateTableToV2(tableName);
         writeEqualityDeleteToNationTable(icebergTable);
-        assertQueryFails("SELECT * FROM " + tableName, "Iceberg tables with delete files are not supported: tpch." + tableName);
+        assertQueryFails("SELECT * FROM " + tableName, ".*Iceberg tables with delete files are not supported: tpch." + tableName);
     }
 
     @Test

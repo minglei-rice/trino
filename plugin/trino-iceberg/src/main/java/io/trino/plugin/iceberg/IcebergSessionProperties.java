@@ -70,6 +70,7 @@ public final class IcebergSessionProperties
     private static final String STATISTICS_ENABLED = "statistics_enabled";
     private static final String PROJECTION_PUSHDOWN_ENABLED = "projection_pushdown_enabled";
     private static final String READ_INDICES_SWITCH_ON = "read_indices_switch_on";
+    private static final String GENERATE_SPLITS_ASYNC = "generate_splits_async";
     private final List<PropertyMetadata<?>> sessionProperties;
 
     @Inject
@@ -216,6 +217,11 @@ public final class IcebergSessionProperties
                         "Switch to read iceberg indices, default false",
                         icebergConfig.isReadIndicesSwitchOn(),
                         false))
+                .add(booleanProperty(
+                        GENERATE_SPLITS_ASYNC,
+                        "Whether source splits should be generated asynchronously",
+                        icebergConfig.isGenerateSplitsAsync(),
+                        false))
                 .build();
     }
 
@@ -355,5 +361,10 @@ public final class IcebergSessionProperties
     public static boolean isReadIndicesSwitchOn(ConnectorSession session)
     {
         return session.getProperty(READ_INDICES_SWITCH_ON, Boolean.class);
+    }
+
+    public static boolean isGenerateSplitsAsync(ConnectorSession session)
+    {
+        return session.getProperty(GENERATE_SPLITS_ASYNC, Boolean.class);
     }
 }

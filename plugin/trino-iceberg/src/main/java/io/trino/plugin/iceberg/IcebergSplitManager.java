@@ -38,6 +38,7 @@ import java.util.Set;
 
 import static com.google.common.collect.ImmutableSet.toImmutableSet;
 import static io.trino.plugin.iceberg.IcebergSessionProperties.getDynamicFilteringWaitTimeout;
+import static io.trino.plugin.iceberg.IcebergSessionProperties.isGenerateSplitsAsync;
 import static io.trino.plugin.iceberg.IcebergSessionProperties.isReadIndicesSwitchOn;
 import static io.trino.plugin.iceberg.IcebergUtil.getColumns;
 import static io.trino.plugin.iceberg.IcebergUtil.getIdentityPartitions;
@@ -97,7 +98,8 @@ public class IcebergSplitManager
                 dynamicFilter,
                 dynamicFilteringWaitTimeout,
                 constraint,
-                indicesEnabled);
+                indicesEnabled,
+                isGenerateSplitsAsync(session));
 
         return new ClassLoaderSafeConnectorSplitSource(splitSource, Thread.currentThread().getContextClassLoader());
     }

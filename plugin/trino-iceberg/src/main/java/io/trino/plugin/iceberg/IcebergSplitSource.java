@@ -18,6 +18,7 @@ import com.google.common.base.Stopwatch;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Iterators;
 import com.google.common.collect.Streams;
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import io.airlift.log.Logger;
 import io.airlift.units.Duration;
 import io.trino.plugin.iceberg.util.MetricsUtils;
@@ -62,6 +63,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.function.Supplier;
 
 import static com.google.common.base.Suppliers.memoize;
@@ -97,6 +100,7 @@ public class IcebergSplitSource
     private final Stopwatch dynamicFilterWaitStopwatch;
     private final Constraint constraint;
     private final boolean indicesEnable;
+    private final ExecutorService splitEnumeratorPool;
 
     private CloseableIterable<CombinedScanTask> combinedScanIterable;
     private Iterator<FileScanTask> fileScanIterator;
@@ -104,6 +108,7 @@ public class IcebergSplitSource
 
     private FilterMetrics filterMetrics;
     private int skippedSplitsByDynamicFilter;
+    private boolean includeIndex;
 
     public IcebergSplitSource(
             IcebergTableHandle tableHandle,
@@ -112,7 +117,8 @@ public class IcebergSplitSource
             DynamicFilter dynamicFilter,
             Duration dynamicFilteringWaitTimeout,
             Constraint constraint,
-            boolean indicesEnabled)
+            boolean indicesEnabled,
+            boolean generateSplitsAsync)
     {
         this.tableHandle = requireNonNull(tableHandle, "tableHandle is null");
         this.identityPartitionColumns = requireNonNull(identityPartitionColumns, "identityPartitionColumns is null");
@@ -123,6 +129,12 @@ public class IcebergSplitSource
         this.dynamicFilterWaitStopwatch = Stopwatch.createStarted();
         this.constraint = requireNonNull(constraint, "constraint is null");
         this.indicesEnable = indicesEnabled;
+        // use a single thread pool so that file scan iterator won't be accessed concurrently
+        this.splitEnumeratorPool = !generateSplitsAsync ? null : Executors.newSingleThreadExecutor(
+                new ThreadFactoryBuilder()
+                        .setDaemon(true)
+                        .setNameFormat("IcebergSplitSource-" + tableHandle.getSchemaName() + "-" + tableHandle.getTableName())
+                        .build());
     }
 
     @Override
@@ -135,7 +147,6 @@ public class IcebergSplitSource
                     .completeOnTimeout(EMPTY_BATCH, timeLeft, MILLISECONDS);
         }
 
-        boolean includeIndexInSplit = false;
         if (combinedScanIterable == null) {
             // Used to avoid duplicating work if the Dynamic Filter was already pushed down to the Iceberg API
             this.pushedDownDynamicFilterPredicate = dynamicFilter.getCurrentPredicate().transformKeys(IcebergColumnHandle.class::cast);
@@ -160,7 +171,7 @@ public class IcebergSplitSource
             if (indicesEnable) {
                 IndexSpec indexSpec = tableScan.table().indexSpec();
                 IndexVerifyVisitor iv = new IndexVerifyVisitor(tableScan.table().schema().asStruct(), indexSpec);
-                includeIndexInSplit = ExpressionVisitors.visit(filterExpression, iv);
+                includeIndex = ExpressionVisitors.visit(filterExpression, iv);
             }
 
             TableScan refinedScan = tableScan
@@ -182,6 +193,13 @@ public class IcebergSplitSource
             return completedFuture(NO_MORE_SPLITS_BATCH);
         }
 
+        return splitEnumeratorPool != null ?
+                new CompletableFuture<ConnectorSplitBatch>().completeAsync(() -> doGetNextBatch(maxSize, dynamicFilterPredicate), splitEnumeratorPool) :
+                completedFuture(doGetNextBatch(maxSize, dynamicFilterPredicate));
+    }
+
+    private ConnectorSplitBatch doGetNextBatch(int maxSize, TupleDomain<IcebergColumnHandle> dynamicFilterPredicate)
+    {
         Iterator<FileScanTask> fileScanTasks = Iterators.limit(fileScanIterator, maxSize);
         ImmutableList.Builder<ConnectorSplit> splits = ImmutableList.builder();
         while (fileScanTasks.hasNext()) {
@@ -190,7 +208,7 @@ public class IcebergSplitSource
                 throw new TrinoException(NOT_SUPPORTED, "Iceberg tables with delete files are not supported: " + tableHandle.getSchemaTableName());
             }
 
-            IcebergSplit icebergSplit = toIcebergSplit(scanTask, includeIndexInSplit);
+            IcebergSplit icebergSplit = toIcebergSplit(scanTask, includeIndex);
 
             Supplier<Map<ColumnHandle, NullableValue>> partitionValues = memoize(() -> {
                 Map<ColumnHandle, NullableValue> bindings = new HashMap<>();
@@ -228,7 +246,7 @@ public class IcebergSplitSource
             }
             splits.add(icebergSplit);
         }
-        return completedFuture(new ConnectorSplitBatch(splits.build(), isFinished()));
+        return new ConnectorSplitBatch(splits.build(), isFinished());
     }
 
     private void finish()
@@ -257,6 +275,9 @@ public class IcebergSplitSource
     @Override
     public void close()
     {
+        if (splitEnumeratorPool != null) {
+            splitEnumeratorPool.shutdownNow();
+        }
         if (combinedScanIterable != null) {
             try {
                 combinedScanIterable.close();

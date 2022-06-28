@@ -39,6 +39,7 @@ public class IcebergConfig
     private boolean tableStatisticsEnabled = true;
     private boolean projectionPushdownEnabled = true;
     private boolean readIndicesSwitchOn = true;
+    private boolean generateSplitsAsync = true;
 
     public CatalogType getCatalogType()
     {
@@ -179,5 +180,17 @@ public class IcebergConfig
     {
         this.readIndicesSwitchOn = readIndicesSwitchOn;
         return this;
+    }
+
+    @Config("iceberg.generate-splits-async")
+    public IcebergConfig setGenerateSplitsAsync(boolean generateSplitsAsync)
+    {
+        this.generateSplitsAsync = generateSplitsAsync;
+        return this;
+    }
+
+    public boolean isGenerateSplitsAsync()
+    {
+        return generateSplitsAsync;
     }
 }
