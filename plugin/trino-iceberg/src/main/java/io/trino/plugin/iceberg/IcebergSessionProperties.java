@@ -79,6 +79,7 @@ public final class IcebergSessionProperties
     public static final String EXPIRE_SNAPSHOTS_MIN_RETENTION = "expire_snapshots_min_retention";
     public static final String REMOVE_ORPHAN_FILES_MIN_RETENTION = "remove_orphan_files_min_retention";
     private static final String READ_INDICES_SWITCH_ON = "read_indices_switch_on";
+    private static final String GENERATE_SPLITS_ASYNC = "generate_splits_async";
 
     private final List<PropertyMetadata<?>> sessionProperties;
 
@@ -258,6 +259,11 @@ public final class IcebergSessionProperties
                         "Switch to read iceberg indices, default false",
                         icebergConfig.isReadIndicesSwitchOn(),
                         false))
+                .add(booleanProperty(
+                        GENERATE_SPLITS_ASYNC,
+                        "Whether source splits should be generated asynchronously",
+                        icebergConfig.isGenerateSplitsAsync(),
+                        false))
                 .build();
     }
 
@@ -427,5 +433,10 @@ public final class IcebergSessionProperties
     public static boolean isReadIndicesSwitchOn(ConnectorSession session)
     {
         return session.getProperty(READ_INDICES_SWITCH_ON, Boolean.class);
+    }
+
+    public static boolean isGenerateSplitsAsync(ConnectorSession session)
+    {
+        return session.getProperty(GENERATE_SPLITS_ASYNC, Boolean.class);
     }
 }

@@ -19,6 +19,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterators;
 import com.google.common.io.Closer;
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import io.airlift.log.Logger;
 import io.airlift.units.DataSize;
 import io.airlift.units.Duration;
@@ -66,6 +67,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.function.Supplier;
 
 import static com.google.common.base.Preconditions.checkState;
@@ -119,6 +122,7 @@ public class IcebergSplitSource
     private final TupleDomain<IcebergColumnHandle> dataColumnPredicate;
     private final Domain pathDomain;
     private final Domain fileModifiedTimeDomain;
+    private final ExecutorService splitEnumeratorPool;
 
     private CloseableIterable<FileScanTask> fileScanTaskIterable;
     private CloseableIterator<FileScanTask> fileScanTaskIterator;
@@ -139,7 +143,8 @@ public class IcebergSplitSource
             TypeManager typeManager,
             boolean recordScannedFiles,
             double minimumAssignedSplitWeight,
-            boolean indicesEnabled)
+            boolean indicesEnabled,
+            boolean generateSplitsAsync)
     {
         this.hdfsEnvironment = requireNonNull(hdfsEnvironment, "hdfsEnvironment is null");
         this.hdfsContext = requireNonNull(hdfsContext, "hdfsContext is null");
@@ -158,6 +163,12 @@ public class IcebergSplitSource
         this.pathDomain = getPathDomain(tableHandle.getEnforcedPredicate());
         this.fileModifiedTimeDomain = getFileModifiedTimePathDomain(tableHandle.getEnforcedPredicate());
         this.indicesEnable = indicesEnabled;
+        // use a single thread pool so that file scan iterator won't be accessed concurrently
+        this.splitEnumeratorPool = !generateSplitsAsync ? null : Executors.newSingleThreadExecutor(
+                new ThreadFactoryBuilder()
+                        .setDaemon(true)
+                        .setNameFormat("IcebergSplitSource-" + tableHandle.getSchemaName() + "-" + tableHandle.getTableName())
+                        .build());
     }
 
     @Override
@@ -212,6 +223,13 @@ public class IcebergSplitSource
             return completedFuture(NO_MORE_SPLITS_BATCH);
         }
 
+        return splitEnumeratorPool != null ?
+                new CompletableFuture<ConnectorSplitBatch>().completeAsync(() -> doGetNextBatch(maxSize, dynamicFilterPredicate), splitEnumeratorPool) :
+                completedFuture(doGetNextBatch(maxSize, dynamicFilterPredicate));
+    }
+
+    private ConnectorSplitBatch doGetNextBatch(int maxSize, TupleDomain<IcebergColumnHandle> dynamicFilterPredicate)
+    {
         Iterator<FileScanTask> fileScanTasks = Iterators.limit(fileScanTaskIterator, maxSize);
         ImmutableList.Builder<ConnectorSplit> splits = ImmutableList.builder();
         while (fileScanTasks.hasNext()) {
@@ -280,7 +298,7 @@ public class IcebergSplitSource
             }
             splits.add(icebergSplit);
         }
-        return completedFuture(new ConnectorSplitBatch(splits.build(), isFinished()));
+        return new ConnectorSplitBatch(splits.build(), isFinished());
     }
 
     private long getModificationTime(Path path)
@@ -320,6 +338,9 @@ public class IcebergSplitSource
     @Override
     public void close()
     {
+        if (splitEnumeratorPool != null) {
+            splitEnumeratorPool.shutdownNow();
+        }
         try {
             closer.close();
         }

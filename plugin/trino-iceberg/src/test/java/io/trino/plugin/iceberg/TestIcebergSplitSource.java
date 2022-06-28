@@ -184,7 +184,8 @@ public class TestIcebergSplitSource
                 new TestingTypeManager(),
                 false,
                 new IcebergConfig().getMinimumAssignedSplitWeight(),
-                false)) {
+                false,
+                true)) {
             ImmutableList.Builder<IcebergSplit> splits = ImmutableList.builder();
             while (!splitSource.isFinished()) {
                 splitSource.getNextBatch(100).get()

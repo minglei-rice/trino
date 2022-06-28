@@ -69,6 +69,7 @@ public class IcebergConfig
     private double minimumAssignedSplitWeight = 0.05;
     private Optional<String> materializedViewsStorageSchema = Optional.empty();
     private boolean readIndicesSwitchOn;
+    private boolean generateSplitsAsync = true;
 
     public CatalogType getCatalogType()
     {
@@ -335,5 +336,17 @@ public class IcebergConfig
     {
         this.readIndicesSwitchOn = readIndicesSwitchOn;
         return this;
+    }
+
+    @Config("iceberg.generate-splits-async")
+    public IcebergConfig setGenerateSplitsAsync(boolean generateSplitsAsync)
+    {
+        this.generateSplitsAsync = generateSplitsAsync;
+        return this;
+    }
+
+    public boolean isGenerateSplitsAsync()
+    {
+        return generateSplitsAsync;
     }
 }
