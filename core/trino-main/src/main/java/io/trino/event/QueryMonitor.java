@@ -233,7 +233,7 @@ public class QueryMonitor
                 ofEpochMilli(queryInfo.getQueryStats().getEndTime().getMillis()),
                 ofEpochMilli(queryInfo.getQueryStats().getEndTime().getMillis())));
 
-        logQueryTimeline(queryInfo);
+        logQueryTimeline(queryInfo, failure);
     }
 
     public void queryCompletedEvent(QueryInfo queryInfo)
@@ -591,6 +591,7 @@ public class QueryMonitor
                     queryInfo.getQueryId(),
                     queryInfo.getState(),
                     Optional.ofNullable(queryInfo.getErrorCode()),
+                    queryInfo.getFailureInfo(),
                     elapsed,
                     planning,
                     waiting,
@@ -605,7 +606,7 @@ public class QueryMonitor
         }
     }
 
-    private static void logQueryTimeline(BasicQueryInfo queryInfo)
+    private static void logQueryTimeline(BasicQueryInfo queryInfo, ExecutionFailureInfo failureInfo)
     {
         DateTime queryStartTime = queryInfo.getQueryStats().getCreateTime();
         DateTime queryEndTime = queryInfo.getQueryStats().getEndTime();
@@ -621,6 +622,7 @@ public class QueryMonitor
                 queryInfo.getQueryId(),
                 queryInfo.getState(),
                 Optional.ofNullable(queryInfo.getErrorCode()),
+                failureInfo,
                 elapsed,
                 elapsed,
                 0,
@@ -635,6 +637,7 @@ public class QueryMonitor
             QueryId queryId,
             QueryState queryState,
             Optional<ErrorCode> errorCode,
+            ExecutionFailureInfo failureInfo,
             long elapsedMillis,
             long planningMillis,
             long waitingMillis,
@@ -644,7 +647,7 @@ public class QueryMonitor
             DateTime queryStartTime,
             DateTime queryEndTime)
     {
-        log.info("TIMELINE: Query %s :: %s%s :: elapsed %sms :: planning %sms :: waiting %sms :: scheduling %sms :: running %sms :: finishing %sms :: begin %s :: end %s",
+        log.info("TIMELINE: Query %s :: %s%s :: elapsed %sms :: planning %sms :: waiting %sms :: scheduling %sms :: running %sms :: finishing %sms :: begin %s :: end %s :: FailureInfo %s",
                 queryId,
                 queryState,
                 errorCode.map(code -> " (%s)".formatted(code.getName())).orElse(""),
@@ -655,7 +658,8 @@ public class QueryMonitor
                 runningMillis,
                 finishingMillis,
                 queryStartTime,
-                queryEndTime);
+                queryEndTime,
+                failureInfo == null ? "None" : failureInfo.getMessage());
     }
 
     private static List<StageCpuDistribution> getCpuDistributions(QueryInfo queryInfo)
