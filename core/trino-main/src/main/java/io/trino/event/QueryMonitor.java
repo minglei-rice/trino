@@ -33,6 +33,7 @@ import io.trino.execution.Column;
 import io.trino.execution.ExecutionFailureInfo;
 import io.trino.execution.Input;
 import io.trino.execution.QueryInfo;
+import io.trino.execution.QueryState;
 import io.trino.execution.QueryStats;
 import io.trino.execution.StageInfo;
 import io.trino.execution.TaskInfo;
@@ -205,7 +206,7 @@ public class QueryMonitor
                 ofEpochMilli(queryInfo.getQueryStats().getEndTime().getMillis()),
                 ofEpochMilli(queryInfo.getQueryStats().getEndTime().getMillis())));
 
-        logQueryTimeline(queryInfo);
+        logQueryTimeline(queryInfo, failure);
     }
 
     public void queryCompletedEvent(QueryInfo queryInfo)
@@ -536,6 +537,8 @@ public class QueryMonitor
             logQueryTimeline(
                     queryInfo.getQueryId(),
                     queryInfo.getSession().getTransactionId().map(TransactionId::toString).orElse(""),
+                    queryInfo.getState(),
+                    queryInfo.getFailureInfo(),
                     elapsed,
                     planning,
                     waiting,
@@ -550,7 +553,7 @@ public class QueryMonitor
         }
     }
 
-    private static void logQueryTimeline(BasicQueryInfo queryInfo)
+    private static void logQueryTimeline(BasicQueryInfo queryInfo, ExecutionFailureInfo failureInfo)
     {
         DateTime queryStartTime = queryInfo.getQueryStats().getCreateTime();
         DateTime queryEndTime = queryInfo.getQueryStats().getEndTime();
@@ -565,6 +568,8 @@ public class QueryMonitor
         logQueryTimeline(
                 queryInfo.getQueryId(),
                 queryInfo.getSession().getTransactionId().map(TransactionId::toString).orElse(""),
+                queryInfo.getState(),
+                failureInfo,
                 elapsed,
                 elapsed,
                 0,
@@ -578,6 +583,8 @@ public class QueryMonitor
     private static void logQueryTimeline(
             QueryId queryId,
             String transactionId,
+            QueryState state,
+            ExecutionFailureInfo failureInfo,
             long elapsedMillis,
             long planningMillis,
             long waitingMillis,
@@ -587,8 +594,9 @@ public class QueryMonitor
             DateTime queryStartTime,
             DateTime queryEndTime)
     {
-        log.info("TIMELINE: Query %s :: Transaction:[%s] :: elapsed %sms :: planning %sms :: waiting %sms :: scheduling %sms :: running %sms :: finishing %sms :: begin %s :: end %s",
+        log.info("TIMELINE: Query %s :: State:[%s] :: Transaction:[%s] :: elapsed %sms :: planning %sms :: waiting %sms :: scheduling %sms :: running %sms :: finishing %sms :: begin %s :: end %s :: FailureInfo [%s] %s",
                 queryId,
+                state,
                 transactionId,
                 elapsedMillis,
                 planningMillis,
@@ -597,7 +605,10 @@ public class QueryMonitor
                 runningMillis,
                 finishingMillis,
                 queryStartTime,
-                queryEndTime);
+                queryEndTime,
+                (failureInfo == null || failureInfo.getErrorCode() == null) ? "" :
+                        failureInfo.getErrorCode().getType() + ":" + failureInfo.getErrorCode(),
+                failureInfo == null ? "None" : failureInfo.getMessage());
     }
 
     private static List<StageCpuDistribution> getCpuDistributions(QueryInfo queryInfo)
