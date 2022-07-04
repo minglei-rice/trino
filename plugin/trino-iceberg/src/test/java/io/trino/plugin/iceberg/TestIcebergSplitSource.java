@@ -37,6 +37,7 @@ import io.trino.spi.predicate.ValueSet;
 import io.trino.testing.AbstractTestQueryFramework;
 import io.trino.testing.QueryRunner;
 import org.apache.iceberg.Table;
+import org.apache.iceberg.TableProperties;
 import org.apache.iceberg.types.Conversions;
 import org.apache.iceberg.types.Type;
 import org.apache.iceberg.types.Types;
@@ -51,6 +52,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 
 import static com.google.common.io.MoreFiles.deleteRecursively;
@@ -354,5 +356,77 @@ public class TestIcebergSplitSource
                 ImmutableMap.of(),
                 ImmutableMap.of(),
                 ImmutableMap.of()));
+    }
+
+    @Test
+    public void testCloseIncompleteSplitSource()
+            throws ExecutionException, InterruptedException
+    {
+        SchemaTableName schemaTableName = new SchemaTableName("tpch", "nation");
+        IcebergTableHandle tableHandle = new IcebergTableHandle(
+                schemaTableName.getSchemaName(),
+                schemaTableName.getTableName(),
+                TableType.DATA,
+                Optional.empty(),
+                TupleDomain.all(),
+                TupleDomain.all(),
+                ImmutableSet.of(),
+                Optional.empty());
+        Table nationTable = loadIcebergTable(metastore, operationsProvider, SESSION, schemaTableName);
+
+        IcebergSplitSource splitSource = new IcebergSplitSource(
+                tableHandle,
+                ImmutableSet.of(),
+                nationTable.newScan().option(TableProperties.SPLIT_SIZE, "1024"),
+                new DynamicFilter()
+                {
+                    @Override
+                    public Set<ColumnHandle> getColumnsCovered()
+                    {
+                        return ImmutableSet.of();
+                    }
+
+                    @Override
+                    public CompletableFuture<?> isBlocked()
+                    {
+                        return CompletableFuture.completedFuture(null);
+                    }
+
+                    @Override
+                    public boolean isComplete()
+                    {
+                        return false;
+                    }
+
+                    @Override
+                    public boolean isAwaitable()
+                    {
+                        return false;
+                    }
+
+                    @Override
+                    public TupleDomain<ColumnHandle> getCurrentPredicate()
+                    {
+                        return TupleDomain.all();
+                    }
+                },
+                new Duration(2, SECONDS),
+                alwaysTrue(),
+                false,
+                false);
+
+        new Thread(splitSource::close, "close-iceberg-split-source-thread").start();
+
+        ImmutableList.Builder<IcebergSplit> splits = ImmutableList.builder();
+        while (!splitSource.isFinished()) {
+            splitSource.getNextBatch(null, 1).get()
+                    .getSplits()
+                    .stream()
+                    .map(IcebergSplit.class::cast)
+                    .forEach(splits::add);
+            Thread.sleep(1000);
+        }
+
+        assertTrue(splits.build().size() < 2 && splitSource.isFinished(), "Iceberg split source should be finished ahead of getting all splits.");
     }
 }

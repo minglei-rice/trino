@@ -48,6 +48,7 @@ import org.apache.iceberg.io.CloseableIterable;
 import org.apache.iceberg.types.Type;
 
 import javax.annotation.Nullable;
+import javax.annotation.concurrent.GuardedBy;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -65,6 +66,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Supplier;
 
 import static com.google.common.base.Suppliers.memoize;
@@ -102,11 +104,19 @@ public class IcebergSplitSource
     private final boolean indicesEnable;
     private final ExecutorService splitEnumeratorPool;
 
-    private CloseableIterable<CombinedScanTask> combinedScanIterable;
-    private Iterator<FileScanTask> fileScanIterator;
-    private TupleDomain<IcebergColumnHandle> pushedDownDynamicFilterPredicate;
+    private volatile boolean closed;
+    private final ReentrantReadWriteLock scanLock = new ReentrantReadWriteLock();
 
+    @GuardedBy("scanLock")
+    private CloseableIterable<CombinedScanTask> combinedScanIterable;
+
+    @GuardedBy("scanLock")
     private FilterMetrics filterMetrics;
+
+    @GuardedBy("scanLock")
+    private Iterator<FileScanTask> fileScanIterator;
+
+    private TupleDomain<IcebergColumnHandle> pushedDownDynamicFilterPredicate;
     private int skippedSplitsByDynamicFilter;
     private boolean includeIndex;
 
@@ -178,12 +188,19 @@ public class IcebergSplitSource
                     .filter(filterExpression)
                     .includeColumnStats()
                     .option(SystemProperties.SCAN_FILTER_METRICS_ENABLED, "true");
-            this.combinedScanIterable = refinedScan.planTasks();
-            this.filterMetrics = refinedScan.filterMetrics();
-            this.fileScanIterator = Streams.stream(combinedScanIterable)
-                    .map(CombinedScanTask::files)
-                    .flatMap(Collection::stream)
-                    .iterator();
+
+            scanLock.writeLock().lock();
+            try {
+                this.combinedScanIterable = refinedScan.planTasks();
+                this.filterMetrics = refinedScan.filterMetrics();
+                this.fileScanIterator = Streams.stream(combinedScanIterable)
+                        .map(CombinedScanTask::files)
+                        .flatMap(Collection::stream)
+                        .iterator();
+            }
+            finally {
+                scanLock.writeLock().unlock();
+            }
         }
 
         TupleDomain<IcebergColumnHandle> dynamicFilterPredicate = dynamicFilter.getCurrentPredicate()
@@ -203,7 +220,15 @@ public class IcebergSplitSource
         Iterator<FileScanTask> fileScanTasks = Iterators.limit(fileScanIterator, maxSize);
         ImmutableList.Builder<ConnectorSplit> splits = ImmutableList.builder();
         while (fileScanTasks.hasNext()) {
+            if (closed) {
+                // close() may be called by other threads before fileScanIterator is bond to an iterator,
+                // so this iteration should be broken by checking closed state.
+                finish();
+                return NO_MORE_SPLITS_BATCH;
+            }
+
             FileScanTask scanTask = fileScanTasks.next();
+
             if (!scanTask.deletes().isEmpty()) {
                 throw new TrinoException(NOT_SUPPORTED, "Iceberg tables with delete files are not supported: " + tableHandle.getSchemaTableName());
             }
@@ -252,21 +277,43 @@ public class IcebergSplitSource
     private void finish()
     {
         close();
-        this.combinedScanIterable = CloseableIterable.empty();
-        this.fileScanIterator = Collections.emptyIterator();
+
+        // combinedScanIterable and filScanIterator should be reset automatically and semantic consistency.
+        scanLock.writeLock().lock();
+        try {
+            this.combinedScanIterable = CloseableIterable.empty();
+            this.fileScanIterator = Collections.emptyIterator();
+        }
+        finally {
+            scanLock.writeLock().unlock();
+        }
     }
 
     @Override
     public boolean isFinished()
     {
-        return fileScanIterator != null && !fileScanIterator.hasNext();
+        scanLock.readLock().lock();
+        try {
+            return fileScanIterator != null && !fileScanIterator.hasNext();
+        }
+        finally {
+            scanLock.readLock().unlock();
+        }
     }
 
     @Override
     public Optional<Metrics> getMetrics()
     {
         Metrics.Accumulator metricsAccumulator = Metrics.accumulator();
-        metricsAccumulator.add(MetricsUtils.makeMetricsFromFilterMetrics(filterMetrics));
+
+        scanLock.readLock().lock();
+        try {
+            metricsAccumulator.add(MetricsUtils.makeMetricsFromFilterMetrics(filterMetrics));
+        }
+        finally {
+            scanLock.readLock().unlock();
+        }
+
         metricsAccumulator.add(MetricsUtils.makeLongCountMetrics(
                 MetricsUtils.SKIPPED_SPLITS_BY_DF_IN_COORDINATOR, skippedSplitsByDynamicFilter));
         return Optional.of(metricsAccumulator.get());
@@ -275,16 +322,26 @@ public class IcebergSplitSource
     @Override
     public void close()
     {
+        closed = true;
+
         if (splitEnumeratorPool != null) {
             splitEnumeratorPool.shutdownNow();
         }
-        if (combinedScanIterable != null) {
-            try {
-                combinedScanIterable.close();
+
+        // close may be invoked before combinedScanIterable is initialized
+        scanLock.readLock().lock();
+        try {
+            if (combinedScanIterable != null) {
+                try {
+                    combinedScanIterable.close();
+                }
+                catch (IOException e) {
+                    throw new UncheckedIOException(e);
+                }
             }
-            catch (IOException e) {
-                throw new UncheckedIOException(e);
-            }
+        }
+        finally {
+            scanLock.readLock().unlock();
         }
     }
 
