@@ -70,6 +70,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Supplier;
 
 import static com.google.common.base.Preconditions.checkState;
@@ -125,10 +126,12 @@ public class IcebergSplitSource
     private final Domain fileModifiedTimeDomain;
     private final ExecutorService splitEnumeratorPool;
     private final String threadNamePrefix;
+    private final ReentrantReadWriteLock scanLock = new ReentrantReadWriteLock();
 
     private CloseableIterable<FileScanTask> fileScanTaskIterable;
     private CloseableIterator<FileScanTask> fileScanTaskIterator;
     private TupleDomain<IcebergColumnHandle> pushedDownDynamicFilterPredicate;
+    private volatile boolean closed;
 
     private final boolean recordScannedFiles;
     private final ImmutableSet.Builder<DataFileWithDeleteFiles> scannedFiles = ImmutableSet.builder();
@@ -215,10 +218,16 @@ public class IcebergSplitSource
             if (requiresColumnStats) {
                 scan = scan.includeColumnStats();
             }
-            this.fileScanTaskIterable = TableScanUtil.splitFiles(scan.planFiles(), tableScan.targetSplitSize());
-            closer.register(fileScanTaskIterable);
-            this.fileScanTaskIterator = fileScanTaskIterable.iterator();
-            closer.register(fileScanTaskIterator);
+            scanLock.writeLock().lock();
+            try {
+                this.fileScanTaskIterable = TableScanUtil.splitFiles(scan.planFiles(), tableScan.targetSplitSize());
+                closer.register(fileScanTaskIterable);
+                this.fileScanTaskIterator = fileScanTaskIterable.iterator();
+                closer.register(fileScanTaskIterator);
+            }
+            finally {
+                scanLock.writeLock().unlock();
+            }
         }
 
         TupleDomain<IcebergColumnHandle> dynamicFilterPredicate = dynamicFilter.getCurrentPredicate()
@@ -238,6 +247,12 @@ public class IcebergSplitSource
         Iterator<FileScanTask> fileScanTasks = Iterators.limit(fileScanTaskIterator, maxSize);
         ImmutableList.Builder<ConnectorSplit> splits = ImmutableList.builder();
         while (fileScanTasks.hasNext()) {
+            if (closed) {
+                // close() may be called by other threads before fileScanIterator is bond to an iterator,
+                // so this iteration should be broken by checking closed state.
+                finish();
+                return NO_MORE_SPLITS_BATCH;
+            }
             FileScanTask scanTask = fileScanTasks.next();
             if (scanTask.deletes().isEmpty() &&
                     maxScannedFileSizeInBytes.isPresent() &&
@@ -320,14 +335,26 @@ public class IcebergSplitSource
     private void finish()
     {
         close();
-        this.fileScanTaskIterable = CloseableIterable.empty();
-        this.fileScanTaskIterator = CloseableIterator.empty();
+        scanLock.writeLock().lock();
+        try {
+            this.fileScanTaskIterable = CloseableIterable.empty();
+            this.fileScanTaskIterator = CloseableIterator.empty();
+        }
+        finally {
+            scanLock.writeLock().unlock();
+        }
     }
 
     @Override
     public boolean isFinished()
     {
-        return fileScanTaskIterator != null && !fileScanTaskIterator.hasNext();
+        scanLock.readLock().lock();
+        try {
+            return fileScanTaskIterator != null && !fileScanTaskIterator.hasNext();
+        }
+        finally {
+            scanLock.readLock().unlock();
+        }
     }
 
     @Override
@@ -343,14 +370,20 @@ public class IcebergSplitSource
     @Override
     public void close()
     {
+        closed = true;
         if (splitEnumeratorPool != null) {
             splitEnumeratorPool.shutdownNow();
         }
+        // close may be invoked before combinedScanIterable is initialized
+        scanLock.readLock().lock();
         try {
             closer.close();
         }
         catch (IOException e) {
             throw new UncheckedIOException(e);
+        }
+        finally {
+            scanLock.readLock().unlock();
         }
     }
 
