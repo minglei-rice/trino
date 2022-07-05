@@ -49,6 +49,7 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -418,13 +419,18 @@ public class TestIcebergSplitSource
         new Thread(splitSource::close, "close-iceberg-split-source-thread").start();
 
         ImmutableList.Builder<IcebergSplit> splits = ImmutableList.builder();
-        while (!splitSource.isFinished()) {
-            splitSource.getNextBatch(null, 1).get()
-                    .getSplits()
-                    .stream()
-                    .map(IcebergSplit.class::cast)
-                    .forEach(splits::add);
-            Thread.sleep(1000);
+        try {
+            while (!splitSource.isFinished()) {
+                splitSource.getNextBatch(null, 1).get()
+                        .getSplits()
+                        .stream()
+                        .map(IcebergSplit.class::cast)
+                        .forEach(splits::add);
+                Thread.sleep(1000);
+            }
+        }
+        catch (NoSuchElementException expectedException) {
+            // Ignored, because it's a known exception threw by closing the split source during getNextBatch.
         }
 
         assertTrue(splits.build().size() < 2 && splitSource.isFinished(), "Iceberg split source should be finished ahead of getting all splits.");
