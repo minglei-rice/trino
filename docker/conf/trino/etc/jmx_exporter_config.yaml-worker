@@ -4,16 +4,83 @@ rules:
   - pattern: java.lang<type=OperatingSystem><>SystemLoadAverage
     type: GAUGE
     name: trino_system_load_average
-  - pattern: java.lang<type=Memory><HeapMemoryUsage>max
+  - pattern: java.lang<type=Memory><HeapMemoryUsage>(used|max)
     type: GAUGE
-    name: trino_heap_memory_usage_max
-  - pattern: java.lang<type=Memory><HeapMemoryUsage>used
+    name: trino_heap_memory_usage_$1
+  - pattern: java.lang<type=Memory><NonHeapMemoryUsage>used
     type: GAUGE
-    name: trino_heap_memory_usage_used
-  - pattern: java.lang<name=(.+), type=GarbageCollector><>CollectionCount
+    name: trino_non_heap_memory_usage_used
+  - pattern: java.lang<type=Threading><>ThreadCount
     type: GAUGE
-    name: trino_gc_$1_collection_count
-  - pattern: java.lang<name=(.+), type=GarbageCollector><>CollectionTime
+    name: trino_thread_count
+  - pattern: java.lang<type=Threading><>PeakThreadCount
     type: GAUGE
-    name: trino_gc_$1_collection_time
-
+    name: trino_peak_thread_count
+  - pattern: java.lang<name=(.+), type=GarbageCollector><>Collection(Time|Count)
+    type: GAUGE
+    name: trino_gc_$1_collection_$2
+  - pattern: io.airlift.stats<name=PauseMeter><>(\w+)Pauses
+    type: COUNTER
+    name: trino_jvm_pause_total_count
+    labels:
+      period: $1
+  - pattern: io.airlift.stats<name=PauseMeter><>TotalPauseSeconds
+    type: COUNTER
+    name: trino_jvm_pause_total_seconds
+  - pattern: io.airlift.http.client<type=HttpClient, name=(\w+)><>ConnectionStats.OpenConnectionCount
+    type: GAUGE
+    name: trino_http_client_open_connection_count
+    labels:
+      client_type: $1
+  - pattern: io.airlift.http.client<type=HttpClient, name=(\w+)><>ConnectionStats.MaxOpenConnections
+    type: GAUGE
+    name: trino_http_client_max_open_connection_count
+    labels:
+      client_type: $1
+  - pattern: io.airlift.http.client<type=HttpClient, name=(\w+)><>RequestFailed.TotalCount
+    type: COUNTER
+    name: trino_http_client_request_failed_total_count
+    labels:
+      client_type: $1
+  - pattern: io.airlift.http.client<type=HttpClient, name=(\w+)><>(Request|Response)Time.OneMinute.Avg
+    type: GAUGE
+    name: trino_http_client_$2_time_one_minute_avg
+    labels:
+      client_type: $1
+  - pattern: io.airlift.http.client<type=HttpClient, name=(\w+)><>(Request|Response)Time.OneMinute.P(\d+)
+    type: GAUGE
+    name: trino_http_client_$2_time_one_minute
+    labels:
+      client_type: $1
+      quantile: "0.$3"
+  - pattern: io.airlift.http.client<type=HttpClient, name=(\w+)><>ThreadPool.(Busy|Idle)Threads
+    type: GAUGE
+    name: trino_http_client_$2_thread_count
+    labels:
+      client_type: $1
+  - pattern: io.airlift.http.server<name=HttpServer><>HttpConnectionStats.OpenConnectionCount
+    type: GAUGE
+    name: trino_http_server_open_connection_count
+  - pattern: io.airlift.http.server<name=HttpServer><>HttpConnectionStats.MaxOpenConnections
+    type: GAUGE
+    name: trino_http_server_max_open_connection_count
+  - pattern: io.airlift.http.server<name=RequestStats><>TotalCount
+    type: COUNTER
+    name: trino_http_server_request_total_count
+  - pattern: io.airlift.http.server<name=RequestStats><>RequestTime.OneMinute.Avg
+    type: GAUGE
+    name: trino_http_server_request_time_one_minute_avg
+  - pattern: io.airlift.http.server<name=RequestStats><>RequestTime.OneMinute.P(\d+)
+    type: GAUGE
+    name: trino_http_server_request_time_one_minute
+    labels:
+      quantile: "0.$1"
+  - pattern: trino.memory<type=MemoryPool, name=general><>(Max|Free)Bytes
+    type: GAUGE
+    name: trino_memory_pool_$1_bytes
+  - pattern: trino.execution<name=TaskManager><>(Input|Output)DataSize.TotalCount
+    type: COUNTER
+    name: trino_task_$1_data_size_total_count
+  - pattern: trino.execution<name=TaskManager><>FailedTasks.TotalCount
+    type: COUNTER
+    name: trino_failed_tasks_total_count
