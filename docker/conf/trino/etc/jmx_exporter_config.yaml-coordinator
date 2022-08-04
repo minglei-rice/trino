@@ -90,6 +90,9 @@ rules:
   - pattern: trino.execution<name=QueryManager><>(\w+)Queries.TotalCount
     type: COUNTER
     name: trino_$1_queries_total_count
+  - pattern: trino.execution<name=QueryManager><>(Queued|Running)Queries
+    type: GAUGE
+    name: trino_$1_queries
   - pattern: trino.execution<name=QueryManager><>(\w+)Time.OneMinute.Avg
     type: GAUGE
     name: trino_$1_time_one_minute_avg
@@ -98,3 +101,18 @@ rules:
     name: trino_$1_time_one_minute
     labels:
       quantile: "0.$2"
+  - pattern: trino.execution.resourcegroups<type=InternalResourceGroup, name=(.+)><>(Queued|Running)Queries
+    type: GAUGE
+    name: trino_resource_group_$2_queries
+    labels:
+      group_name: $1
+  - pattern: trino.execution.resourcegroups<type=InternalResourceGroup, name=(.+)><>MaxQueuedQueries
+    type: GAUGE
+    name: trino_resource_group_max_queued_queries
+    labels:
+      group_name: $1
+  - pattern: trino.execution.resourcegroups<type=InternalResourceGroup, name=(.+)><>HardConcurrencyLimit
+    type: GAUGE
+    name: trino_resource_group_hard_concurrency_limit
+    labels:
+      group_name: $1

@@ -84,3 +84,32 @@ rules:
   - pattern: trino.execution<name=TaskManager><>FailedTasks.TotalCount
     type: COUNTER
     name: trino_failed_tasks_total_count
+  - pattern: trino.execution.executor<name=MultilevelSplitQueue><>Level(\d+)Time
+    type: COUNTER
+    name: trino_multilevel_split_queue_scheduled_time
+    labels:
+      level: $1
+  - pattern: trino.execution.executor<name=TaskExecutor><>Completed(Splits|Tasks)Level(\d+)
+    type: COUNTER
+    name: trino_completed_$1
+    labels:
+      level: $2
+  - pattern: trino.execution.executor<name=TaskExecutor><>(Intermediate|Leaf)Split(Cpu|Scheduled)Time.Avg
+    type: GAUGE
+    name: trino_$1_split_$2_time_avg
+  - pattern: trino.execution.executor<name=TaskExecutor><>(Intermediate|Leaf)Split(Cpu|Scheduled)Time.P(\d+)
+    type: GAUGE
+    name: trino_$1_split_$2_time
+    labels:
+      quantile: "0.$3"
+  - pattern: trino.execution.executor<name=TaskExecutor><>(Running|Blocked)Splits
+    type: GAUGE
+    name: trino_$1_splits
+  - pattern: trino.execution.executor<name=TaskExecutor><>SplitQueuedTime.OneMinute.Avg
+    type: GAUGE
+    name: trino_split_queued_time_one_minute_avg
+  - pattern: trino.execution.executor<name=TaskExecutor><>SplitQueuedTime.OneMinute.P(\d+)
+    type: GAUGE
+    name: trino_split_queued_time_one_minute
+    labels:
+      quantile: "0.$1"
