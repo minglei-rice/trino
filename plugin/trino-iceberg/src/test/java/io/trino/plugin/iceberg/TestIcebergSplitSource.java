@@ -132,7 +132,8 @@ public class TestIcebergSplitSource
                 NO_RETRIES,
                 ImmutableList.of(),
                 false,
-                Optional.empty());
+                Optional.empty(),
+                TupleDomain.all());
 
         try (IcebergSplitSource splitSource = new IcebergSplitSource(
                 SESSION,

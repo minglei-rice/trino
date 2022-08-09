@@ -61,6 +61,7 @@ import io.trino.spi.connector.ConnectorTransactionHandle;
 import io.trino.spi.connector.ConnectorViewDefinition;
 import io.trino.spi.connector.Constraint;
 import io.trino.spi.connector.ConstraintApplicationResult;
+import io.trino.spi.connector.CorrColFilterApplicationResult;
 import io.trino.spi.connector.JoinApplicationResult;
 import io.trino.spi.connector.JoinStatistics;
 import io.trino.spi.connector.JoinType;
@@ -1744,6 +1745,34 @@ public final class MetadataManager
         ConnectorSession connectorSession = session.toConnectorSession(catalogHandle);
         return metadata.applyFilter(connectorSession, table.getConnectorHandle(), constraint)
                 .map(result -> result.transform(handle -> new TableHandle(catalogHandle, handle, table.getTransaction())));
+    }
+
+    @Override
+    public Optional<CorrColFilterApplicationResult<TableHandle>> applyCorrColFilter(
+            Session session,
+            TableHandle table,
+            TableHandle corrTable,
+            JoinType joinType,
+            ConnectorExpression joinCondition,
+            Map<String, ColumnHandle> tableAssignments,
+            Map<String, ColumnHandle> corrTableAssignments,
+            boolean tableIsLeft,
+            Constraint corrColConstraint)
+    {
+        CatalogHandle catalogHandle = table.getCatalogHandle();
+        ConnectorMetadata connectorMetadata = getMetadata(session, catalogHandle);
+        ConnectorSession connectorSession = session.toConnectorSession(catalogHandle);
+        return connectorMetadata.applyCorrColFilter(
+                        connectorSession,
+                        table.getConnectorHandle(),
+                        corrTable.getConnectorHandle(),
+                        joinType,
+                        joinCondition,
+                        tableAssignments,
+                        corrTableAssignments,
+                        tableIsLeft,
+                        corrColConstraint)
+                .map(r -> new CorrColFilterApplicationResult<>(new TableHandle(catalogHandle, r.getHandle(), table.getTransaction())));
     }
 
     @Override

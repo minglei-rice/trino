@@ -185,7 +185,8 @@ public class TestIcebergNodeLocalDynamicSplitPruning
                         RetryMode.NO_RETRIES,
                         ImmutableList.of(),
                         false,
-                        Optional.empty()),
+                        Optional.empty(),
+                        TupleDomain.all()),
                 transaction);
 
         FileFormatDataSourceStats stats = new FileFormatDataSourceStats();

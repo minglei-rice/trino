@@ -30,6 +30,7 @@ import io.trino.spi.connector.ConnectorOutputMetadata;
 import io.trino.spi.connector.ConnectorTableMetadata;
 import io.trino.spi.connector.Constraint;
 import io.trino.spi.connector.ConstraintApplicationResult;
+import io.trino.spi.connector.CorrColFilterApplicationResult;
 import io.trino.spi.connector.JoinApplicationResult;
 import io.trino.spi.connector.JoinStatistics;
 import io.trino.spi.connector.JoinType;
@@ -476,6 +477,17 @@ public interface Metadata
     Optional<LimitApplicationResult<TableHandle>> applyLimit(Session session, TableHandle table, long limit);
 
     Optional<ConstraintApplicationResult<TableHandle>> applyFilter(Session session, TableHandle table, Constraint constraint);
+
+    Optional<CorrColFilterApplicationResult<TableHandle>> applyCorrColFilter(
+            Session session,
+            TableHandle table,
+            TableHandle corrTable,
+            JoinType joinType,
+            ConnectorExpression joinCondition,
+            Map<String, ColumnHandle> tableAssignments,
+            Map<String, ColumnHandle> corrTableAssignments,
+            boolean tableIsLeft,
+            Constraint corrColConstraint);
 
     Optional<ProjectionApplicationResult<TableHandle>> applyProjection(Session session, TableHandle table, List<ConnectorExpression> projections, Map<String, ColumnHandle> assignments);
 

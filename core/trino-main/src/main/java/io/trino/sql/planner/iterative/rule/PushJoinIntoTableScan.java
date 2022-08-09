@@ -109,13 +109,7 @@ public class PushJoinIntoTableScan
 
         verify(!left.isUpdateTarget() && !right.isUpdateTarget(), "Unexpected Join over for-update table scan");
 
-        Expression effectiveFilter = getEffectiveFilter(joinNode);
-        ConnectorExpressionTranslation translation = ConnectorExpressionTranslator.translateConjuncts(
-                context.getSession(),
-                effectiveFilter,
-                context.getSymbolAllocator().getTypes(),
-                plannerContext,
-                typeAnalyzer);
+        ConnectorExpressionTranslation translation = extractJoinCondition(joinNode, context, plannerContext, typeAnalyzer);
 
         if (!translation.remainingExpression().equals(BooleanLiteral.TRUE_LITERAL)) {
             // TODO add extra filter node above join
@@ -128,11 +122,9 @@ public class PushJoinIntoTableScan
             return Result.empty();
         }
 
-        Map<String, ColumnHandle> leftAssignments = left.getAssignments().entrySet().stream()
-                .collect(toImmutableMap(entry -> entry.getKey().getName(), Map.Entry::getValue));
+        Map<String, ColumnHandle> leftAssignments = toAssignments(left);
 
-        Map<String, ColumnHandle> rightAssignments = right.getAssignments().entrySet().stream()
-                .collect(toImmutableMap(entry -> entry.getKey().getName(), Map.Entry::getValue));
+        Map<String, ColumnHandle> rightAssignments = toAssignments(right);
 
         /*
          * We are (lazily) computing estimated statistics for join node and left and right table
@@ -202,6 +194,12 @@ public class PushJoinIntoTableScan
                         Assignments.identity(joinNode.getOutputSymbols())));
     }
 
+    public static Map<String, ColumnHandle> toAssignments(TableScanNode tableScanNode)
+    {
+        return tableScanNode.getAssignments().entrySet().stream()
+                .collect(toImmutableMap(entry -> entry.getKey().getName(), Map.Entry::getValue));
+    }
+
     private JoinStatistics getJoinStatistics(JoinNode join, TableScanNode left, TableScanNode right, Context context)
     {
         return new JoinStatistics()
@@ -247,7 +245,7 @@ public class PushJoinIntoTableScan
         return constraint.transformKeys(columnMapping::get);
     }
 
-    public Expression getEffectiveFilter(JoinNode node)
+    public static Expression getEffectiveFilter(JoinNode node)
     {
         Expression effectiveFilter = and(node.getCriteria().stream().map(JoinNode.EquiJoinClause::toExpression).collect(toImmutableList()));
         if (node.getFilter().isPresent()) {
@@ -256,7 +254,7 @@ public class PushJoinIntoTableScan
         return effectiveFilter;
     }
 
-    private JoinType getJoinType(JoinNode joinNode)
+    public static JoinType getJoinType(JoinNode joinNode)
     {
         return switch (joinNode.getType()) {
             case INNER -> JoinType.INNER;
@@ -264,5 +262,16 @@ public class PushJoinIntoTableScan
             case RIGHT -> JoinType.RIGHT_OUTER;
             case FULL -> JoinType.FULL_OUTER;
         };
+    }
+
+    public static ConnectorExpressionTranslation extractJoinCondition(JoinNode joinNode, Context context, PlannerContext plannerContext, TypeAnalyzer typeAnalyzer)
+    {
+        Expression effectiveFilter = getEffectiveFilter(joinNode);
+        return ConnectorExpressionTranslator.translateConjuncts(
+                context.getSession(),
+                effectiveFilter,
+                context.getSymbolAllocator().getTypes(),
+                plannerContext,
+                typeAnalyzer);
     }
 }

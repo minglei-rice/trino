@@ -177,6 +177,7 @@ public final class SystemSessionProperties
     public static final String QUERY_OPTIMIZE_WITH_METADATA_ENABLED = "query_optimize_with_metadata_enabled";
     public static final String FORBID_CROSS_JOIN = "forbid_cross_join";
     public static final String ORDER_BY_FULL_TABLE = "order_by_full_table";
+    public static final String PUSHDOWN_CORR_COL_FILTERS = "pushdown_corr_col_filters";
     private final List<PropertyMetadata<?>> sessionProperties;
 
     public SystemSessionProperties()
@@ -871,6 +872,11 @@ public final class SystemSessionProperties
                         ORDER_BY_FULL_TABLE,
                         "whether forbid order by full table.",
                         false,
+                        false),
+                booleanProperty(
+                        PUSHDOWN_CORR_COL_FILTERS,
+                        "Whether to pushdown filters on correlated columns",
+                        true,
                         false));
     }
 

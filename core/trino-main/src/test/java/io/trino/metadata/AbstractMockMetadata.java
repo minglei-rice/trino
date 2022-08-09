@@ -36,6 +36,7 @@ import io.trino.spi.connector.ConnectorOutputMetadata;
 import io.trino.spi.connector.ConnectorTableMetadata;
 import io.trino.spi.connector.Constraint;
 import io.trino.spi.connector.ConstraintApplicationResult;
+import io.trino.spi.connector.CorrColFilterApplicationResult;
 import io.trino.spi.connector.JoinApplicationResult;
 import io.trino.spi.connector.JoinStatistics;
 import io.trino.spi.connector.JoinType;
@@ -583,6 +584,21 @@ public abstract class AbstractMockMetadata
 
     @Override
     public Optional<ConstraintApplicationResult<TableHandle>> applyFilter(Session session, TableHandle table, Constraint constraint)
+    {
+        return Optional.empty();
+    }
+
+    @Override
+    public Optional<CorrColFilterApplicationResult<TableHandle>> applyCorrColFilter(
+            Session session,
+            TableHandle table,
+            TableHandle corrTable,
+            JoinType joinType,
+            ConnectorExpression joinCondition,
+            Map<String, ColumnHandle> tableAssignments,
+            Map<String, ColumnHandle> corrTableAssignments,
+            boolean tableIsLeft,
+            Constraint corrColConstraint)
     {
         return Optional.empty();
     }

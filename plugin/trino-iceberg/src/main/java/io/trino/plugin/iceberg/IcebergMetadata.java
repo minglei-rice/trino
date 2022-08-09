@@ -71,7 +71,10 @@ import io.trino.spi.connector.ConnectorTableVersion;
 import io.trino.spi.connector.ConnectorViewDefinition;
 import io.trino.spi.connector.Constraint;
 import io.trino.spi.connector.ConstraintApplicationResult;
+import io.trino.spi.connector.CorrColFilterApplicationResult;
 import io.trino.spi.connector.DiscretePredicates;
+import io.trino.spi.connector.JoinCondition;
+import io.trino.spi.connector.JoinType;
 import io.trino.spi.connector.MaterializedViewFreshness;
 import io.trino.spi.connector.MaterializedViewNotFoundException;
 import io.trino.spi.connector.ProjectionApplicationResult;
@@ -99,6 +102,10 @@ import io.trino.spi.type.TypeManager;
 import org.apache.datasketches.theta.CompactSketch;
 import org.apache.iceberg.AppendFiles;
 import org.apache.iceberg.BaseTable;
+import org.apache.iceberg.CorrelatedColumns;
+import org.apache.iceberg.CorrelatedColumns.CorrelatedColumn;
+import org.apache.iceberg.CorrelatedColumns.Correlation;
+import org.apache.iceberg.CorrelatedColumnsSpec;
 import org.apache.iceberg.DataFile;
 import org.apache.iceberg.DataFiles;
 import org.apache.iceberg.DeleteFile;
@@ -106,6 +113,7 @@ import org.apache.iceberg.DeleteFiles;
 import org.apache.iceberg.FileContent;
 import org.apache.iceberg.FileMetadata;
 import org.apache.iceberg.FileScanTask;
+import org.apache.iceberg.IndexField;
 import org.apache.iceberg.IsolationLevel;
 import org.apache.iceberg.ManifestFile;
 import org.apache.iceberg.MetadataColumns;
@@ -124,6 +132,7 @@ import org.apache.iceberg.TableScan;
 import org.apache.iceberg.Transaction;
 import org.apache.iceberg.UpdatePartitionSpec;
 import org.apache.iceberg.UpdateProperties;
+import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.exceptions.ValidationException;
 import org.apache.iceberg.expressions.Expressions;
 import org.apache.iceberg.expressions.Term;
@@ -380,7 +389,8 @@ public class IcebergMetadata
                 NO_RETRIES,
                 ImmutableList.of(),
                 false,
-                Optional.empty());
+                Optional.empty(),
+                TupleDomain.all());
     }
 
     private static long getSnapshotIdFromVersion(Table table, ConnectorTableVersion version)
@@ -2011,10 +2021,153 @@ public class IcebergMetadata
                         table.getRetryMode(),
                         table.getUpdatedColumns(),
                         table.isRecordScannedFiles(),
-                        table.getMaxScannedFileSize()),
+                        table.getMaxScannedFileSize(),
+                        table.getCorrColPredicate()),
                 remainingConstraint.transformKeys(ColumnHandle.class::cast),
                 extractionResult.remainingExpression(),
                 false));
+    }
+
+    @Override
+    public Optional<CorrColFilterApplicationResult<ConnectorTableHandle>> applyCorrColFilter(
+            ConnectorSession session,
+            ConnectorTableHandle table,
+            ConnectorTableHandle corrTable,
+            JoinType joinType,
+            ConnectorExpression joinCondition,
+            Map<String, ColumnHandle> tableAssignments,
+            Map<String, ColumnHandle> corrTableAssignments,
+            boolean tableIsLeft,
+            Constraint corrColConstraint)
+    {
+        log.info("Trying to push down corr col filter %s", corrColConstraint.getSummary());
+        // TODO: support non-iceberg correlated table
+        if (!(corrTable instanceof IcebergTableHandle)) {
+            log.info("Skip push down corr col filter because correlated table is not an iceberg table");
+            return Optional.empty();
+        }
+        IcebergTableHandle icebergTableHandle = (IcebergTableHandle) table;
+        Table icebergTable = catalog.loadTable(session, icebergTableHandle.getSchemaTableName());
+        CorrelatedColumnsSpec corrColSpec = icebergTable.correlatedColumnsSpec();
+        if (corrColSpec.isEmptySpec()) {
+            log.info("Skip push down corr col filter because no correlated column is defined");
+            return Optional.empty();
+        }
+        // it's not correct to push filters on the right table to the left table in a LEFT join
+        if (joinType != JoinType.INNER) {
+            log.info("Skip push down corr col filter because join type (%s) not supported", joinType);
+            return Optional.empty();
+        }
+        Optional<List<JoinCondition>> conditions = joinExprToConditions(
+                joinCondition,
+                tableIsLeft ? tableAssignments : corrTableAssignments,
+                tableIsLeft ? corrTableAssignments : tableAssignments);
+        if (conditions.isEmpty()) {
+            log.info("Skip push down corr col filter because join condition (%s) not supported", joinCondition);
+            return Optional.empty();
+        }
+        TableIdentifier corrTableId = TableIdentifier.of(((IcebergTableHandle) corrTable).getSchemaName(), ((IcebergTableHandle) corrTable).getTableName());
+        TupleDomain<IcebergColumnHandle> corrColDomain = corrColConstraint.getSummary().transformKeys(IcebergColumnHandle.class::cast);
+        TupleDomain<IcebergColumnHandle> pushableDomain = icebergTableHandle.getCorrColPredicate();
+        Set<Integer> colsWithIndex = icebergTable.indexSpec().fields().stream().map(IndexField::sourceId).collect(Collectors.toSet());
+        for (CorrelatedColumns corrCols : corrColSpec.getCorrelatedColumns()) {
+            Correlation correlation = corrCols.getCorrelation();
+            // TODO: filter on dimension table may cause the join type being changed from LEFT to INNER, need take that into consideration
+            if ((joinType != toTrinoJoinType(correlation.getJoinType()) && correlation.getJoinConstraint() != CorrelatedColumns.JoinConstraint.PK_FK) ||
+                    !corrTableId.equals(correlation.getCorrTable().getId()) ||
+                    !sameJoinCondition(conditions.get(), correlation, icebergTable, tableAssignments, corrTableAssignments, tableIsLeft)) {
+                log.info("CorrelatedColumns %s doesn't match because join is not same", corrCols);
+                continue;
+            }
+            Map<String, CorrelatedColumn> nameToCorrCol = corrCols.getColumns().stream().collect(Collectors.toMap(CorrelatedColumn::getName, c -> c));
+            TupleDomain<IcebergColumnHandle> matchedDomain = corrColDomain.filter((handle, domain) -> nameToCorrCol.containsKey(handle.getName()));
+            if (matchedDomain.isAll()) {
+                log.info("CorrelatedColumns %s doesn't match because filter doesn't contain its columns", corrCols);
+                continue;
+            }
+            matchedDomain = matchedDomain
+                    .transformKeys(srcHandle -> toCorrColHandle(srcHandle, nameToCorrCol.get(srcHandle.getName())))
+                    .filter((handle, domain) -> colsWithIndex.contains(handle.getId()));
+            if (matchedDomain.isAll()) {
+                log.info("CorrelatedColumns %s doesn't match because no index is defined on the columns", corrCols);
+                continue;
+            }
+            pushableDomain = pushableDomain.intersect(matchedDomain);
+        }
+        if (pushableDomain.equals(icebergTableHandle.getCorrColPredicate())) {
+            log.info("Skip push down corr col filter because new filter is same as current one");
+            return Optional.empty();
+        }
+        log.info("Pushed corr col filter %s into table scan", corrColConstraint.getSummary());
+        return Optional.of(new CorrColFilterApplicationResult<>(
+                new IcebergTableHandle(
+                        icebergTableHandle.getSchemaName(),
+                        icebergTableHandle.getTableName(),
+                        icebergTableHandle.getTableType(),
+                        icebergTableHandle.getSnapshotId(),
+                        icebergTableHandle.getTableSchemaJson(),
+                        icebergTableHandle.getPartitionSpecJson(),
+                        icebergTableHandle.getFormatVersion(),
+                        icebergTableHandle.getUnenforcedPredicate(),
+                        icebergTableHandle.getEnforcedPredicate(),
+                        icebergTableHandle.getProjectedColumns(),
+                        icebergTableHandle.getNameMappingJson(),
+                        icebergTableHandle.getTableLocation(),
+                        icebergTableHandle.getStorageProperties(),
+                        icebergTableHandle.getRetryMode(),
+                        icebergTableHandle.getUpdatedColumns(),
+                        icebergTableHandle.isRecordScannedFiles(),
+                        icebergTableHandle.getMaxScannedFileSize(),
+                        pushableDomain)));
+    }
+
+    // converts column handle in correlated table to correlated column in left table
+    public static IcebergColumnHandle toCorrColHandle(IcebergColumnHandle srcHandle, CorrelatedColumn corrCol)
+    {
+        ColumnIdentity newIdentity = new ColumnIdentity(corrCol.getId(), corrCol.getAlias(), srcHandle.getBaseColumnIdentity().getTypeCategory(),
+                srcHandle.getBaseColumnIdentity().getChildren());
+        return new IcebergColumnHandle(newIdentity, srcHandle.getBaseType(), srcHandle.getPath(), srcHandle.getType(), srcHandle.getComment());
+    }
+
+    private static boolean sameJoinCondition(List<JoinCondition> joinConditions, Correlation correlation, Table icebergTable, Map<String, ColumnHandle> tableAssignments,
+            Map<String, ColumnHandle> corrTableAssignments, boolean isLeft)
+    {
+        if (correlation.getLeftKeys().size() != joinConditions.size()) {
+            return false;
+        }
+        List<String> leftKeys = correlation.getLeftKeys().stream().map(id -> icebergTable.schema().findColumnName(id)).collect(Collectors.toList());
+        List<String> rightKeys = correlation.getRightKeys();
+        for (JoinCondition condition : joinConditions) {
+            if (condition.getOperator() != JoinCondition.Operator.EQUAL || !(condition.getLeftExpression() instanceof Variable) ||
+                    !(condition.getRightExpression() instanceof Variable)) {
+                return false;
+            }
+            // swap the keys if iceberg table is not left (can happen in case of inner join)
+            Variable leftVar = (Variable) (isLeft ? condition.getLeftExpression() : condition.getRightExpression());
+            Variable rightVar = (Variable) (isLeft ? condition.getRightExpression() : condition.getLeftExpression());
+            IcebergColumnHandle leftHandle = (IcebergColumnHandle) tableAssignments.get(leftVar.getName());
+            IcebergColumnHandle rightHandle = (IcebergColumnHandle) corrTableAssignments.get(rightVar.getName());
+            if (leftHandle == null || rightHandle == null) {
+                return false;
+            }
+            int index = leftKeys.indexOf(leftHandle.getName());
+            if (index == -1 || !rightKeys.get(index).equals(rightHandle.getName())) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static JoinType toTrinoJoinType(CorrelatedColumns.JoinType icebergJoinType)
+    {
+        switch (icebergJoinType) {
+            case LEFT:
+                return JoinType.LEFT_OUTER;
+            case INNER:
+                return JoinType.INNER;
+            default:
+                throw new TrinoException(NOT_SUPPORTED, "Unknown correlation join type " + icebergJoinType.name());
+        }
     }
 
     private static Set<Integer> identityPartitionColumnsInAllSpecs(Table table)
@@ -2186,7 +2339,8 @@ public class IcebergMetadata
                         NO_RETRIES, // retry mode doesn't affect stats
                         originalHandle.getUpdatedColumns(),
                         originalHandle.isRecordScannedFiles(),
-                        originalHandle.getMaxScannedFileSize()),
+                        originalHandle.getMaxScannedFileSize(),
+                        originalHandle.getCorrColPredicate()),
                 handle -> {
                     Table icebergTable = catalog.loadTable(session, handle.getSchemaTableName());
                     return TableStatisticsMaker.getTableStatistics(typeManager, session, handle, icebergTable);

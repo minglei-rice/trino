@@ -1073,6 +1073,20 @@ public interface ConnectorMetadata
         return Optional.empty();
     }
 
+    default Optional<CorrColFilterApplicationResult<ConnectorTableHandle>> applyCorrColFilter(
+            ConnectorSession session,
+            ConnectorTableHandle table,
+            ConnectorTableHandle corrTable,
+            JoinType joinType,
+            ConnectorExpression joinCondition,
+            Map<String, ColumnHandle> tableAssignments,
+            Map<String, ColumnHandle> corrTableAssignments,
+            boolean tableIsLeft,
+            Constraint corrColConstraint)
+    {
+        return Optional.empty();
+    }
+
     /**
      * Attempt to push down the provided projections into the table.
      * <p>
@@ -1276,6 +1290,19 @@ public interface ConnectorMetadata
             Map<String, ColumnHandle> rightAssignments,
             JoinStatistics statistics)
     {
+        return joinExprToConditions(joinCondition, leftAssignments, rightAssignments).flatMap(conditions -> applyJoin(
+                session,
+                joinType,
+                left,
+                right,
+                conditions,
+                leftAssignments,
+                rightAssignments,
+                statistics));
+    }
+
+    default Optional<List<JoinCondition>> joinExprToConditions(ConnectorExpression joinCondition, Map<String, ColumnHandle> leftAssignments, Map<String, ColumnHandle> rightAssignments)
+    {
         List<JoinCondition> conditions;
         if (joinCondition instanceof Call call && AND_FUNCTION_NAME.equals(call.getFunctionName())) {
             conditions = new ArrayList<>(call.getArguments().size());
@@ -1298,15 +1325,7 @@ public interface ConnectorMetadata
             }
             conditions = List.of(condition.get());
         }
-        return applyJoin(
-                session,
-                joinType,
-                left,
-                right,
-                conditions,
-                leftAssignments,
-                rightAssignments,
-                statistics);
+        return Optional.of(conditions);
     }
 
     @Deprecated

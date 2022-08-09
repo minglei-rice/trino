@@ -66,6 +66,8 @@ public class IcebergTableHandle
     private final boolean recordScannedFiles;
     private final Optional<DataSize> maxScannedFileSize;
 
+    private final TupleDomain<IcebergColumnHandle> corrColPredicate;
+
     @JsonCreator
     public static IcebergTableHandle fromJsonForDeserializationOnly(
             @JsonProperty("schemaName") String schemaName,
@@ -82,7 +84,8 @@ public class IcebergTableHandle
             @JsonProperty("tableLocation") String tableLocation,
             @JsonProperty("storageProperties") Map<String, String> storageProperties,
             @JsonProperty("retryMode") RetryMode retryMode,
-            @JsonProperty("updatedColumns") List<IcebergColumnHandle> updatedColumns)
+            @JsonProperty("updatedColumns") List<IcebergColumnHandle> updatedColumns,
+            @JsonProperty("corrColPredicate") TupleDomain<IcebergColumnHandle> corrColPredicate)
     {
         return new IcebergTableHandle(
                 schemaName,
@@ -101,7 +104,8 @@ public class IcebergTableHandle
                 retryMode,
                 updatedColumns,
                 false,
-                Optional.empty());
+                Optional.empty(),
+                corrColPredicate);
     }
 
     public IcebergTableHandle(
@@ -121,7 +125,8 @@ public class IcebergTableHandle
             RetryMode retryMode,
             List<IcebergColumnHandle> updatedColumns,
             boolean recordScannedFiles,
-            Optional<DataSize> maxScannedFileSize)
+            Optional<DataSize> maxScannedFileSize,
+            TupleDomain<IcebergColumnHandle> corrColPredicate)
     {
         this.schemaName = requireNonNull(schemaName, "schemaName is null");
         this.tableName = requireNonNull(tableName, "tableName is null");
@@ -140,6 +145,7 @@ public class IcebergTableHandle
         this.updatedColumns = ImmutableList.copyOf(requireNonNull(updatedColumns, "updatedColumns is null"));
         this.recordScannedFiles = recordScannedFiles;
         this.maxScannedFileSize = requireNonNull(maxScannedFileSize, "maxScannedFileSize is null");
+        this.corrColPredicate = requireNonNull(corrColPredicate, "corrColPredicate is null");
     }
 
     @JsonProperty
@@ -244,6 +250,12 @@ public class IcebergTableHandle
         return maxScannedFileSize;
     }
 
+    @JsonProperty
+    public TupleDomain<IcebergColumnHandle> getCorrColPredicate()
+    {
+        return corrColPredicate;
+    }
+
     public SchemaTableName getSchemaTableName()
     {
         return new SchemaTableName(schemaName, tableName);
@@ -273,7 +285,8 @@ public class IcebergTableHandle
                 retryMode,
                 updatedColumns,
                 recordScannedFiles,
-                maxScannedFileSize);
+                maxScannedFileSize,
+                corrColPredicate);
     }
 
     public IcebergTableHandle withRetryMode(RetryMode retryMode)
@@ -295,7 +308,8 @@ public class IcebergTableHandle
                 retryMode,
                 updatedColumns,
                 recordScannedFiles,
-                maxScannedFileSize);
+                maxScannedFileSize,
+                corrColPredicate);
     }
 
     public IcebergTableHandle withUpdatedColumns(List<IcebergColumnHandle> updatedColumns)
@@ -317,7 +331,8 @@ public class IcebergTableHandle
                 retryMode,
                 updatedColumns,
                 recordScannedFiles,
-                maxScannedFileSize);
+                maxScannedFileSize,
+                corrColPredicate);
     }
 
     public IcebergTableHandle forOptimize(boolean recordScannedFiles, DataSize maxScannedFileSize)
@@ -339,7 +354,8 @@ public class IcebergTableHandle
                 retryMode,
                 updatedColumns,
                 recordScannedFiles,
-                Optional.of(maxScannedFileSize));
+                Optional.of(maxScannedFileSize),
+                corrColPredicate);
     }
 
     @Override
@@ -369,14 +385,15 @@ public class IcebergTableHandle
                 Objects.equals(retryMode, that.retryMode) &&
                 Objects.equals(updatedColumns, that.updatedColumns) &&
                 Objects.equals(storageProperties, that.storageProperties) &&
-                Objects.equals(maxScannedFileSize, that.maxScannedFileSize);
+                Objects.equals(maxScannedFileSize, that.maxScannedFileSize) &&
+                Objects.equals(corrColPredicate, that.corrColPredicate);
     }
 
     @Override
     public int hashCode()
     {
         return Objects.hash(schemaName, tableName, tableType, snapshotId, tableSchemaJson, partitionSpecJson, formatVersion, unenforcedPredicate, enforcedPredicate,
-                projectedColumns, nameMappingJson, tableLocation, storageProperties, retryMode, updatedColumns, recordScannedFiles, maxScannedFileSize);
+                projectedColumns, nameMappingJson, tableLocation, storageProperties, retryMode, updatedColumns, recordScannedFiles, maxScannedFileSize, corrColPredicate);
     }
 
     @Override

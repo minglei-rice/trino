@@ -183,7 +183,8 @@ public class TestConnectorPushdownRulesWithIceberg
                 NO_RETRIES,
                 ImmutableList.of(),
                 false,
-                Optional.empty());
+                Optional.empty(),
+                TupleDomain.all());
         TableHandle table = new TableHandle(TEST_CATALOG_HANDLE, icebergTable, new HiveTransactionHandle(false));
 
         IcebergColumnHandle fullColumn = partialColumn.getBaseColumn();
@@ -265,7 +266,8 @@ public class TestConnectorPushdownRulesWithIceberg
                 NO_RETRIES,
                 ImmutableList.of(),
                 false,
-                Optional.empty());
+                Optional.empty(),
+                TupleDomain.all());
         TableHandle table = new TableHandle(TEST_CATALOG_HANDLE, icebergTable, new HiveTransactionHandle(false));
 
         IcebergColumnHandle column = new IcebergColumnHandle(primitiveColumnIdentity(1, "a"), INTEGER, ImmutableList.of(), INTEGER, Optional.empty());
@@ -314,7 +316,8 @@ public class TestConnectorPushdownRulesWithIceberg
                 NO_RETRIES,
                 ImmutableList.of(),
                 false,
-                Optional.empty());
+                Optional.empty(),
+                TupleDomain.all());
         TableHandle table = new TableHandle(TEST_CATALOG_HANDLE, icebergTable, new HiveTransactionHandle(false));
 
         IcebergColumnHandle columnA = new IcebergColumnHandle(primitiveColumnIdentity(0, "a"), INTEGER, ImmutableList.of(), INTEGER, Optional.empty());
@@ -374,7 +377,8 @@ public class TestConnectorPushdownRulesWithIceberg
                 NO_RETRIES,
                 ImmutableList.of(),
                 false,
-                Optional.empty());
+                Optional.empty(),
+                TupleDomain.all());
         TableHandle table = new TableHandle(TEST_CATALOG_HANDLE, icebergTable, new HiveTransactionHandle(false));
 
         IcebergColumnHandle bigintColumn = new IcebergColumnHandle(primitiveColumnIdentity(1, "just_bigint"), BIGINT, ImmutableList.of(), BIGINT, Optional.empty());
