@@ -85,6 +85,7 @@ public class IcebergSplitManager
             tableScan = tableScan.includeIndexStats();
         }
         IcebergSplitSource splitSource = new IcebergSplitSource(
+                session,
                 hdfsEnvironment,
                 new HdfsContext(session),
                 table,

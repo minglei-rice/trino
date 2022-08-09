@@ -124,7 +124,7 @@ public final class SessionPropertyManager
     {
         ImmutableMap.Builder<String, String> propertiesBuilder = ImmutableMap.builder();
         propertiesBuilder.putAll(runtimeSystemSessionProperties);
-        return propertiesBuilder.build();
+        return propertiesBuilder.buildOrThrow();
     }
 
     public Optional<String> getRuntimeSystemSessionProperty(String propertyName)
@@ -175,7 +175,7 @@ public final class SessionPropertyManager
         synchronized (runtimeConnectorSessionProperties) {
             runtimeConnectorSessionProperties.forEach((catalogName, propertyMap) -> propertiesBuilder.put(catalogName, new HashMap<>(propertyMap)));
         }
-        return propertiesBuilder.build();
+        return propertiesBuilder.buildOrThrow();
     }
 
     public Map<String, String> getRuntimeConnectorSessionProperties(CatalogName catalogName)
@@ -189,7 +189,7 @@ public final class SessionPropertyManager
             }
         }
 
-        return propertiesBuilder.build();
+        return propertiesBuilder.buildOrThrow();
     }
 
     public Optional<String> getRuntimeConnectorSessionProperty(CatalogName catalogName, String propertyName)

@@ -153,7 +153,7 @@ public final class Session
                 .stream()
                 .map(entry -> Maps.immutableEntry(entry.getKey().getCatalogName(), ImmutableMap.copyOf(entry.getValue())))
                 .forEach(mergedConnectorPropertiesBuilder::put);
-        this.catalogProperties = mergedConnectorPropertiesBuilder.build();
+        this.catalogProperties = mergedConnectorPropertiesBuilder.buildOrThrow();
         checkArgument(catalog.isPresent() || schema.isEmpty(), "schema is set but catalog is not");
     }
 

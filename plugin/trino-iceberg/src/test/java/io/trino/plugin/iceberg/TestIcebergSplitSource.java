@@ -135,6 +135,7 @@ public class TestIcebergSplitSource
                 Optional.empty());
 
         try (IcebergSplitSource splitSource = new IcebergSplitSource(
+                SESSION,
                 HDFS_ENVIRONMENT,
                 new HdfsContext(SESSION),
                 tableHandle,

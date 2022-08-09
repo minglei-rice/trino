@@ -30,6 +30,7 @@ import io.trino.plugin.iceberg.util.DataFileWithDeleteFiles;
 import io.trino.spi.SplitWeight;
 import io.trino.spi.TrinoException;
 import io.trino.spi.connector.ColumnHandle;
+import io.trino.spi.connector.ConnectorSession;
 import io.trino.spi.connector.ConnectorSplit;
 import io.trino.spi.connector.ConnectorSplitSource;
 import io.trino.spi.connector.Constraint;
@@ -123,6 +124,7 @@ public class IcebergSplitSource
     private final Domain pathDomain;
     private final Domain fileModifiedTimeDomain;
     private final ExecutorService splitEnumeratorPool;
+    private final String threadNamePrefix;
 
     private CloseableIterable<FileScanTask> fileScanTaskIterable;
     private CloseableIterator<FileScanTask> fileScanTaskIterator;
@@ -132,6 +134,7 @@ public class IcebergSplitSource
     private final ImmutableSet.Builder<DataFileWithDeleteFiles> scannedFiles = ImmutableSet.builder();
 
     public IcebergSplitSource(
+            ConnectorSession session,
             HdfsEnvironment hdfsEnvironment,
             HdfsContext hdfsContext,
             IcebergTableHandle tableHandle,
@@ -163,11 +166,12 @@ public class IcebergSplitSource
         this.pathDomain = getPathDomain(tableHandle.getEnforcedPredicate());
         this.fileModifiedTimeDomain = getFileModifiedTimePathDomain(tableHandle.getEnforcedPredicate());
         this.indicesEnable = indicesEnabled;
+        threadNamePrefix = String.format("Query-%s-%s-", session.getQueryId(), IcebergSplitSource.class.getSimpleName());
         // use a single thread pool so that file scan iterator won't be accessed concurrently
         this.splitEnumeratorPool = !generateSplitsAsync ? null : Executors.newSingleThreadExecutor(
                 new ThreadFactoryBuilder()
                         .setDaemon(true)
-                        .setNameFormat("IcebergSplitSource-" + tableHandle.getSchemaName() + "-" + tableHandle.getTableName())
+                        .setNameFormat(threadNamePrefix + "consumer")
                         .build());
     }
 
@@ -206,7 +210,7 @@ public class IcebergSplitSource
             Expression filterExpression = toIcebergExpression(effectivePredicate);
             // If the Dynamic Filter will be evaluated against each file, stats are required. Otherwise, skip them.
             boolean requiresColumnStats = usedSimplifiedPredicate || !dynamicFilterIsComplete;
-            TableScan scan = tableScan.filter(filterExpression);
+            TableScan scan = tableScan.filter(filterExpression).withThreadName(threadNamePrefix + "producer");
             if (requiresColumnStats) {
                 scan = scan.includeColumnStats();
             }

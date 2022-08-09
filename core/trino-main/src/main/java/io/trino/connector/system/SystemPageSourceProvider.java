@@ -109,7 +109,7 @@ public class SystemPageSourceProvider
         }
     }
 
-    private static RecordSet toRecordSet(ConnectorTransactionHandle sourceTransaction, SystemTable table, ConnectorSession session, TupleDomain<Integer> constraint,  List<Integer> userToSystemFieldIndex)
+    private static RecordSet toRecordSet(ConnectorTransactionHandle sourceTransaction, SystemTable table, ConnectorSession session, TupleDomain<Integer> constraint, List<Integer> userToSystemFieldIndex)
     {
         return new RecordSet()
         {

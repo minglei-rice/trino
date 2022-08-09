@@ -59,4 +59,3 @@ public class TestIcebergSystemTable
         assertEquals(getQueryRunner().execute("select record_count from \"foo$partitions\"").getMaterializedRows().size(), 2);
     }
 }
-
