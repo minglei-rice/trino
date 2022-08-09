@@ -27,8 +27,10 @@ import io.trino.plugin.hive.metastore.HiveMetastore;
 import io.trino.plugin.iceberg.catalog.file.FileMetastoreTableOperationsProvider;
 import io.trino.spi.connector.SchemaTableName;
 import io.trino.testing.AbstractTestQueryFramework;
+import io.trino.testing.MaterializedRow;
 import io.trino.testing.QueryRunner;
 import org.apache.hadoop.fs.Path;
+import org.apache.iceberg.CorrelatedColumns;
 import org.apache.iceberg.DataFile;
 import org.apache.iceberg.DataFiles;
 import org.apache.iceberg.FileScanTask;
@@ -38,11 +40,13 @@ import org.apache.iceberg.IndexSpec;
 import org.apache.iceberg.IndexType;
 import org.apache.iceberg.RewriteFiles;
 import org.apache.iceberg.Table;
+import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.index.Index;
 import org.apache.iceberg.index.IndexFactory;
 import org.apache.iceberg.index.IndexWriter;
 import org.apache.iceberg.index.util.IndexUtils;
 import org.apache.iceberg.io.CloseableIterable;
+import org.apache.iceberg.types.Types;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.Test;
 
@@ -126,6 +130,46 @@ public class TestIcebergIndex
 
         // only select y from the table, to make sure we're using the correct index to filter the data
         assertEquals(getQueryRunner().execute("select y from foo where y=2").getMaterializedRows().size(), 1);
+    }
+
+    @Test
+    public void testCorrColFilter()
+            throws Exception
+    {
+        getQueryRunner().execute("create table fact(f_k int,v int)");
+        getQueryRunner().execute("create table dim(d_k int,v double)");
+        getQueryRunner().execute("insert into fact values (1,1),(1,2),(3,3)");
+        getQueryRunner().execute("insert into dim values (1,1.0),(2,2.0),(3,3.0)");
+        Table fact = loadIcebergTable("fact");
+        // alter table fact add correlated column (v as dim_v) from inner join dim on f_k=d_k with pk_fk
+        CorrelatedColumns.Builder corrColBuilder = new CorrelatedColumns.Builder(fact.schema(), false)
+                .corrTableId(TableIdentifier.of("tpch", "dim"))
+                .joinType(CorrelatedColumns.JoinType.INNER)
+                .leftKeyNames(Collections.singletonList("f_k"))
+                .rightKeys(Collections.singletonList("d_k"))
+                .joinConstraint(CorrelatedColumns.JoinConstraint.PK_FK)
+                .addColumn(1, "v", Types.DoubleType.get(), "dim_v");
+        fact.updateCorrelatedColumnsSpec().addCorrelatedColumns(corrColBuilder.build()).commit();
+        fact.refresh();
+        fact.updateIndexSpec().addIndex("dim_v_mm", IndexType.MINMAX, "dim_v", Collections.emptyMap()).commit();
+        fact.refresh();
+        List<FileScanTask> fileScanTasks = new ArrayList<>();
+        fact.newScan().planFiles().forEach(fileScanTasks::add);
+        assertEquals(fileScanTasks.size(), 1);
+        generateIndexFiles(
+                fact,
+                fileScanTasks.get(0),
+                new Object[][] {
+                        new Object[] {1, 1, 1.0},
+                        new Object[] {1, 2, 1.0},
+                        new Object[] {3, 3, 3.0}
+                },
+                fact.currentSnapshot().snapshotId());
+        fact.refresh();
+
+        List<MaterializedRow> results = getQueryRunner().execute("select sum(fact.v) from fact join dim on f_k=d_k where dim.v=5.0 group by f_k").getMaterializedRows();
+        // TODO: verify split is skipped by index
+        assertEquals(results.size(), 0);
     }
 
     private Table loadIcebergTable(String tableName)

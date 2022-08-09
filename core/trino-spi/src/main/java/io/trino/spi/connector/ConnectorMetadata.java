@@ -1092,6 +1092,20 @@ public interface ConnectorMetadata
         return Optional.empty();
     }
 
+    default Optional<CorrColFilterApplicationResult<ConnectorTableHandle>> applyCorrColFilter(
+            ConnectorSession session,
+            ConnectorTableHandle table,
+            ConnectorTableHandle corrTable,
+            JoinType joinType,
+            List<JoinCondition> joinConditions,
+            Map<String, ColumnHandle> tableAssignments,
+            Map<String, ColumnHandle> corrTableAssignments,
+            boolean tableIsLeft,
+            Constraint corrColConstraint)
+    {
+        return Optional.empty();
+    }
+
     /**
      * Attempt to push down the provided projections into the table.
      * <p>

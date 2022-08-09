@@ -66,6 +66,7 @@ import io.trino.spi.connector.ConnectorTransactionHandle;
 import io.trino.spi.connector.ConnectorViewDefinition;
 import io.trino.spi.connector.Constraint;
 import io.trino.spi.connector.ConstraintApplicationResult;
+import io.trino.spi.connector.CorrColFilterApplicationResult;
 import io.trino.spi.connector.JoinApplicationResult;
 import io.trino.spi.connector.JoinCondition;
 import io.trino.spi.connector.JoinStatistics;
@@ -1839,6 +1840,34 @@ public final class MetadataManager
                         new TableHandle(catalogName, result.getHandle(), table.getTransaction(), Optional.empty()),
                         result.getRemainingFilter(),
                         result.isPrecalculateStatistics()));
+    }
+
+    @Override
+    public Optional<CorrColFilterApplicationResult<TableHandle>> applyCorrColFilter(
+            Session session,
+            TableHandle table,
+            TableHandle corrTable,
+            JoinType joinType,
+            List<JoinCondition> joinConditions,
+            Map<String, ColumnHandle> tableAssignments,
+            Map<String, ColumnHandle> corrTableAssignments,
+            boolean tableIsLeft,
+            Constraint corrColConstraint)
+    {
+        CatalogName catalogName = table.getCatalogName();
+        ConnectorMetadata connectorMetadata = getMetadata(session, catalogName);
+        ConnectorSession connectorSession = session.toConnectorSession(catalogName);
+        return connectorMetadata.applyCorrColFilter(
+                        connectorSession,
+                        table.getConnectorHandle(),
+                        corrTable.getConnectorHandle(),
+                        joinType,
+                        joinConditions,
+                        tableAssignments,
+                        corrTableAssignments,
+                        tableIsLeft,
+                        corrColConstraint)
+                .map(r -> new CorrColFilterApplicationResult<>(new TableHandle(catalogName, r.getHandle(), table.getTransaction(), Optional.empty())));
     }
 
     @Override

@@ -43,6 +43,7 @@ import io.trino.spi.connector.ConnectorTableVersion;
 import io.trino.spi.connector.ConnectorViewDefinition;
 import io.trino.spi.connector.Constraint;
 import io.trino.spi.connector.ConstraintApplicationResult;
+import io.trino.spi.connector.CorrColFilterApplicationResult;
 import io.trino.spi.connector.JoinApplicationResult;
 import io.trino.spi.connector.JoinCondition;
 import io.trino.spi.connector.JoinStatistics;
@@ -913,6 +914,15 @@ public class ClassLoaderSafeConnectorMetadata
     {
         try (ThreadContextClassLoader ignored = new ThreadContextClassLoader(classLoader)) {
             return delegate.applyFilter(session, table, constraint);
+        }
+    }
+
+    @Override
+    public Optional<CorrColFilterApplicationResult<ConnectorTableHandle>> applyCorrColFilter(ConnectorSession session, ConnectorTableHandle table, ConnectorTableHandle corrTable,
+            JoinType joinType, List<JoinCondition> joinConditions, Map<String, ColumnHandle> tableAssignments, Map<String, ColumnHandle> corrTableAssignments, boolean tableIsLeft, Constraint corrColConstraint)
+    {
+        try (ThreadContextClassLoader ignored = new ThreadContextClassLoader(classLoader)) {
+            return delegate.applyCorrColFilter(session, table, corrTable, joinType, joinConditions, tableAssignments, corrTableAssignments, tableIsLeft, corrColConstraint);
         }
     }
 

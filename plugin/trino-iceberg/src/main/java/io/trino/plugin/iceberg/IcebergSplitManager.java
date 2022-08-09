@@ -14,6 +14,7 @@
 package io.trino.plugin.iceberg;
 
 import com.google.common.collect.ImmutableList;
+import io.airlift.log.Logger;
 import io.airlift.units.Duration;
 import io.trino.plugin.base.classloader.ClassLoaderSafeConnectorSplitSource;
 import io.trino.spi.connector.ConnectorSession;
@@ -47,6 +48,7 @@ import static java.util.Objects.requireNonNull;
 public class IcebergSplitManager
         implements ConnectorSplitManager
 {
+    private static final Logger log = Logger.get(IcebergSplitManager.class);
     public static final int ICEBERG_DOMAIN_COMPACTION_THRESHOLD = 1000;
 
     private final IcebergTransactionManager transactionManager;
@@ -88,6 +90,7 @@ public class IcebergSplitManager
                 .useSnapshot(table.getSnapshotId().get());
         boolean indicesEnabled = isIndicesEnabled(tableScan, session);
         if (indicesEnabled) {
+            log.info("Index enabled, including index stats");
             tableScan = tableScan.includeIndexStats();
         }
 

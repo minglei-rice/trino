@@ -44,6 +44,8 @@ public class IcebergTableHandle
     private final Set<IcebergColumnHandle> projectedColumns;
     private final Optional<String> nameMappingJson;
 
+    private final TupleDomain<IcebergColumnHandle> corrColPredicate;
+
     @JsonCreator
     public IcebergTableHandle(
             @JsonProperty("schemaName") String schemaName,
@@ -53,7 +55,8 @@ public class IcebergTableHandle
             @JsonProperty("unenforcedPredicate") TupleDomain<IcebergColumnHandle> unenforcedPredicate,
             @JsonProperty("enforcedPredicate") TupleDomain<IcebergColumnHandle> enforcedPredicate,
             @JsonProperty("projectedColumns") Set<IcebergColumnHandle> projectedColumns,
-            @JsonProperty("nameMappingJson") Optional<String> nameMappingJson)
+            @JsonProperty("nameMappingJson") Optional<String> nameMappingJson,
+            @JsonProperty("corrColPredicate") TupleDomain<IcebergColumnHandle> corrColPredicate)
     {
         this.schemaName = requireNonNull(schemaName, "schemaName is null");
         this.tableName = requireNonNull(tableName, "tableName is null");
@@ -63,6 +66,7 @@ public class IcebergTableHandle
         this.enforcedPredicate = requireNonNull(enforcedPredicate, "enforcedPredicate is null");
         this.projectedColumns = ImmutableSet.copyOf(requireNonNull(projectedColumns, "projectedColumns is null"));
         this.nameMappingJson = requireNonNull(nameMappingJson, "nameMappingJson is null");
+        this.corrColPredicate = requireNonNull(corrColPredicate, "corrColPredicate is null");
     }
 
     @JsonProperty
@@ -113,6 +117,12 @@ public class IcebergTableHandle
         return nameMappingJson;
     }
 
+    @JsonProperty
+    public TupleDomain<IcebergColumnHandle> getCorrColPredicate()
+    {
+        return corrColPredicate;
+    }
+
     public SchemaTableName getSchemaTableName()
     {
         return new SchemaTableName(schemaName, tableName);
@@ -133,7 +143,8 @@ public class IcebergTableHandle
                 unenforcedPredicate,
                 enforcedPredicate,
                 projectedColumns,
-                nameMappingJson);
+                nameMappingJson,
+                corrColPredicate);
     }
 
     @Override

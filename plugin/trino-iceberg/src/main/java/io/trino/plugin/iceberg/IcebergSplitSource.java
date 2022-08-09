@@ -38,14 +38,16 @@ import io.trino.spi.predicate.ValueSet;
 import org.apache.iceberg.CombinedScanTask;
 import org.apache.iceberg.FileScanTask;
 import org.apache.iceberg.FilterMetrics;
+import org.apache.iceberg.IndexField;
 import org.apache.iceberg.IndexSpec;
 import org.apache.iceberg.SystemProperties;
 import org.apache.iceberg.TableScan;
 import org.apache.iceberg.expressions.Expression;
 import org.apache.iceberg.expressions.ExpressionVisitors;
-import org.apache.iceberg.index.util.IndexVerifyVisitor;
+import org.apache.iceberg.index.util.UsableIndicesVisitor;
 import org.apache.iceberg.io.CloseableIterable;
 import org.apache.iceberg.types.Type;
+import org.apache.iceberg.util.CorrelationUtils;
 
 import javax.annotation.Nullable;
 import javax.annotation.concurrent.GuardedBy;
@@ -161,6 +163,7 @@ public class IcebergSplitSource
             // Used to avoid duplicating work if the Dynamic Filter was already pushed down to the Iceberg API
             this.pushedDownDynamicFilterPredicate = dynamicFilter.getCurrentPredicate().transformKeys(IcebergColumnHandle.class::cast);
             TupleDomain<IcebergColumnHandle> fullPredicate = tableHandle.getUnenforcedPredicate()
+                    .intersect(tableHandle.getCorrColPredicate())
                     .intersect(pushedDownDynamicFilterPredicate);
             // TODO: (https://github.com/trinodb/trino/issues/9743): Consider removing TupleDomain#simplify
             TupleDomain<IcebergColumnHandle> simplifiedPredicate = fullPredicate.simplify(ICEBERG_DOMAIN_COMPACTION_THRESHOLD);
@@ -180,8 +183,14 @@ public class IcebergSplitSource
             Expression filterExpression = toIcebergExpression(effectivePredicate);
             if (indicesEnable) {
                 IndexSpec indexSpec = tableScan.table().indexSpec();
-                IndexVerifyVisitor iv = new IndexVerifyVisitor(tableScan.table().schema().asStruct(), indexSpec);
-                includeIndex = ExpressionVisitors.visit(filterExpression, iv);
+                UsableIndicesVisitor visitor = new UsableIndicesVisitor(
+                        CorrelationUtils.schemaWithCorrCols(tableScan.table().schema(), tableScan.table().correlatedColumnsSpec()).asStruct(),
+                        indexSpec.fields());
+                Set<IndexField> usableIndices = ExpressionVisitors.visit(filterExpression, visitor);
+                includeIndex = usableIndices != null && !usableIndices.isEmpty();
+                if (includeIndex) {
+                    log.info("Found usable indices %s", usableIndices);
+                }
             }
 
             TableScan refinedScan = tableScan

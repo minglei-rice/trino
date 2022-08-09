@@ -34,6 +34,7 @@ import io.trino.spi.predicate.Domain;
 import io.trino.spi.predicate.TupleDomain;
 import io.trino.sql.ExpressionUtils;
 import io.trino.sql.planner.Symbol;
+import io.trino.sql.planner.SymbolAllocator;
 import io.trino.sql.planner.TypeProvider;
 import io.trino.sql.planner.iterative.Rule;
 import io.trino.sql.planner.plan.Assignments;
@@ -126,11 +127,9 @@ public class PushJoinIntoTableScan
             return Result.empty();
         }
 
-        Map<String, ColumnHandle> leftAssignments = left.getAssignments().entrySet().stream()
-                .collect(toImmutableMap(entry -> entry.getKey().getName(), Map.Entry::getValue));
+        Map<String, ColumnHandle> leftAssignments = toAssignments(left);
 
-        Map<String, ColumnHandle> rightAssignments = right.getAssignments().entrySet().stream()
-                .collect(toImmutableMap(entry -> entry.getKey().getName(), Map.Entry::getValue));
+        Map<String, ColumnHandle> rightAssignments = toAssignments(right);
 
         /*
          * We are (lazily) computing estimated statistics for join node and left and right table
@@ -200,6 +199,12 @@ public class PushJoinIntoTableScan
                         Assignments.identity(joinNode.getOutputSymbols())));
     }
 
+    public static Map<String, ColumnHandle> toAssignments(TableScanNode tableScanNode)
+    {
+        return tableScanNode.getAssignments().entrySet().stream()
+                .collect(toImmutableMap(entry -> entry.getKey().getName(), Map.Entry::getValue));
+    }
+
     private JoinStatistics getJoinStatistics(JoinNode join, TableScanNode left, TableScanNode right, Context context)
     {
         return new JoinStatistics()
@@ -263,14 +268,14 @@ public class PushJoinIntoTableScan
         ImmutableList.Builder<Expression> remainingConjuncts = ImmutableList.builder();
 
         for (Expression conjunct : extractConjuncts(filter)) {
-            getPushableJoinCondition(conjunct, leftSymbols, rightSymbols, context)
+            getPushableJoinCondition(conjunct, leftSymbols, rightSymbols, context.getSymbolAllocator())
                     .ifPresentOrElse(comparisonConditions::add, () -> remainingConjuncts.add(conjunct));
         }
 
         return new FilterSplitResult(comparisonConditions.build(), ExpressionUtils.and(remainingConjuncts.build()));
     }
 
-    private Optional<JoinCondition> getPushableJoinCondition(Expression conjunct, Set<Symbol> leftSymbols, Set<Symbol> rightSymbols, Context context)
+    public static Optional<JoinCondition> getPushableJoinCondition(Expression conjunct, Set<Symbol> leftSymbols, Set<Symbol> rightSymbols, SymbolAllocator symbolAllocator)
     {
         if (!(conjunct instanceof ComparisonExpression)) {
             return Optional.empty();
@@ -295,8 +300,8 @@ public class PushJoinIntoTableScan
         if (leftSymbols.contains(left) && rightSymbols.contains(right)) {
             return Optional.of(new JoinCondition(
                     joinConditionOperator(operator),
-                    new Variable(left.getName(), context.getSymbolAllocator().getTypes().get(left)),
-                    new Variable(right.getName(), context.getSymbolAllocator().getTypes().get(right))));
+                    new Variable(left.getName(), symbolAllocator.getTypes().get(left)),
+                    new Variable(right.getName(), symbolAllocator.getTypes().get(right))));
         }
         return Optional.empty();
     }
@@ -323,7 +328,7 @@ public class PushJoinIntoTableScan
         }
     }
 
-    private JoinCondition.Operator joinConditionOperator(ComparisonExpression.Operator operator)
+    private static JoinCondition.Operator joinConditionOperator(ComparisonExpression.Operator operator)
     {
         switch (operator) {
             case EQUAL:
@@ -344,7 +349,7 @@ public class PushJoinIntoTableScan
         throw new IllegalArgumentException("Unknown operator: " + operator);
     }
 
-    private JoinType getJoinType(JoinNode joinNode)
+    public static JoinType getJoinType(JoinNode joinNode)
     {
         switch (joinNode.getType()) {
             case INNER:
