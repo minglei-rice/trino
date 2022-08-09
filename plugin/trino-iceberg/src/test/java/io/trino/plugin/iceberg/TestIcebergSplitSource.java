@@ -119,6 +119,7 @@ public class TestIcebergSplitSource
         Table nationTable = loadIcebergTable(metastore, operationsProvider, SESSION, schemaTableName);
 
         IcebergSplitSource splitSource = new IcebergSplitSource(
+                SESSION,
                 tableHandle,
                 ImmutableSet.of(),
                 nationTable.newScan(),
@@ -378,6 +379,7 @@ public class TestIcebergSplitSource
         Table nationTable = loadIcebergTable(metastore, operationsProvider, SESSION, schemaTableName);
 
         IcebergSplitSource splitSource = new IcebergSplitSource(
+                SESSION,
                 tableHandle,
                 ImmutableSet.of(),
                 nationTable.newScan().option(TableProperties.SPLIT_SIZE, "1024"),

@@ -95,6 +95,7 @@ public class IcebergSplitManager
         }
 
         IcebergSplitSource splitSource = new IcebergSplitSource(
+                session,
                 table,
                 identityPartitionColumns,
                 tableScan,

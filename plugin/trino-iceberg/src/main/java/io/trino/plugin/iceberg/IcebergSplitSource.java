@@ -25,6 +25,7 @@ import io.trino.plugin.iceberg.util.MetricsUtils;
 import io.trino.spi.TrinoException;
 import io.trino.spi.connector.ColumnHandle;
 import io.trino.spi.connector.ConnectorPartitionHandle;
+import io.trino.spi.connector.ConnectorSession;
 import io.trino.spi.connector.ConnectorSplit;
 import io.trino.spi.connector.ConnectorSplitSource;
 import io.trino.spi.connector.Constraint;
@@ -105,6 +106,7 @@ public class IcebergSplitSource
     private final Constraint constraint;
     private final boolean indicesEnable;
     private final ExecutorService splitEnumeratorPool;
+    private final String threadNamePrefix;
 
     private volatile boolean closed;
     private final ReentrantReadWriteLock scanLock = new ReentrantReadWriteLock();
@@ -123,6 +125,7 @@ public class IcebergSplitSource
     private boolean includeIndex;
 
     public IcebergSplitSource(
+            ConnectorSession session,
             IcebergTableHandle tableHandle,
             Set<IcebergColumnHandle> identityPartitionColumns,
             TableScan tableScan,
@@ -141,11 +144,12 @@ public class IcebergSplitSource
         this.dynamicFilterWaitStopwatch = Stopwatch.createStarted();
         this.constraint = requireNonNull(constraint, "constraint is null");
         this.indicesEnable = indicesEnabled;
+        threadNamePrefix = String.format("Query-%s-%s-", session.getQueryId(), IcebergSplitSource.class.getSimpleName());
         // use a single thread pool so that file scan iterator won't be accessed concurrently
         this.splitEnumeratorPool = !generateSplitsAsync ? null : Executors.newSingleThreadExecutor(
                 new ThreadFactoryBuilder()
                         .setDaemon(true)
-                        .setNameFormat("IcebergSplitSource-" + tableHandle.getSchemaName() + "-" + tableHandle.getTableName())
+                        .setNameFormat(threadNamePrefix + "consumer")
                         .build());
     }
 
@@ -196,7 +200,8 @@ public class IcebergSplitSource
             TableScan refinedScan = tableScan
                     .filter(filterExpression)
                     .includeColumnStats()
-                    .option(SystemProperties.SCAN_FILTER_METRICS_ENABLED, "true");
+                    .option(SystemProperties.SCAN_FILTER_METRICS_ENABLED, "true")
+                    .withThreadName(threadNamePrefix + "producer");
 
             scanLock.writeLock().lock();
             try {
