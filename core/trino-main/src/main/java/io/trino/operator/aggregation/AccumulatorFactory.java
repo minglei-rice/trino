@@ -13,13 +13,17 @@
  */
 package io.trino.operator.aggregation;
 
+import java.util.List;
+
 public interface AccumulatorFactory
 {
-    Accumulator createAccumulator();
+    List<Class<?>> getLambdaInterfaces();
 
-    Accumulator createIntermediateAccumulator();
+    Accumulator createAccumulator(List<LambdaProvider> lambdaProviders);
 
-    GroupedAccumulator createGroupedAccumulator();
+    Accumulator createIntermediateAccumulator(List<LambdaProvider> lambdaProviders);
 
-    GroupedAccumulator createGroupedIntermediateAccumulator();
+    GroupedAccumulator createGroupedAccumulator(List<LambdaProvider> lambdaProviders);
+
+    GroupedAccumulator createGroupedIntermediateAccumulator(List<LambdaProvider> lambdaProviders);
 }

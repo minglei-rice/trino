@@ -60,10 +60,16 @@ public class DistinctAccumulatorFactory
     }
 
     @Override
-    public Accumulator createAccumulator()
+    public List<Class<?>> getLambdaInterfaces()
+    {
+        return delegate.getLambdaInterfaces();
+    }
+
+    @Override
+    public Accumulator createAccumulator(List<LambdaProvider> lambdaProviders)
     {
         return new DistinctAccumulator(
-                delegate.createAccumulator(),
+                delegate.createAccumulator(lambdaProviders),
                 argumentTypes,
                 session,
                 joinCompiler,
@@ -71,16 +77,16 @@ public class DistinctAccumulatorFactory
     }
 
     @Override
-    public Accumulator createIntermediateAccumulator()
+    public Accumulator createIntermediateAccumulator(List<LambdaProvider> lambdaProviders)
     {
-        return delegate.createIntermediateAccumulator();
+        return delegate.createIntermediateAccumulator(lambdaProviders);
     }
 
     @Override
-    public GroupedAccumulator createGroupedAccumulator()
+    public GroupedAccumulator createGroupedAccumulator(List<LambdaProvider> lambdaProviders)
     {
         return new DistinctGroupedAccumulator(
-                delegate.createGroupedAccumulator(),
+                delegate.createGroupedAccumulator(lambdaProviders),
                 argumentTypes,
                 session,
                 joinCompiler,
@@ -88,9 +94,9 @@ public class DistinctAccumulatorFactory
     }
 
     @Override
-    public GroupedAccumulator createGroupedIntermediateAccumulator()
+    public GroupedAccumulator createGroupedIntermediateAccumulator(List<LambdaProvider> lambdaProviders)
     {
-        return delegate.createGroupedIntermediateAccumulator();
+        return delegate.createGroupedIntermediateAccumulator(lambdaProviders);
     }
 
     private static class DistinctAccumulator

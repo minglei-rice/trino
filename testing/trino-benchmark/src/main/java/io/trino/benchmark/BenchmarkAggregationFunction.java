@@ -42,8 +42,7 @@ public class BenchmarkAggregationFunction
         accumulatorFactory = generateAccumulatorFactory(
                 signature,
                 aggregationMetadata,
-                resolvedFunction.getFunctionNullability(),
-                ImmutableList.of());
+                resolvedFunction.getFunctionNullability());
     }
 
     public AggregatorFactory bind(List<Integer> inputChannels)
@@ -55,6 +54,7 @@ public class BenchmarkAggregationFunction
                 finalType,
                 inputChannels,
                 OptionalInt.empty(),
-                true);
+                true,
+                ImmutableList.of());
     }
 }

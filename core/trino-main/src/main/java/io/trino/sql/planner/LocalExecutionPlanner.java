@@ -14,6 +14,8 @@
 package io.trino.sql.planner;
 
 import com.google.common.base.VerifyException;
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
 import com.google.common.collect.ContiguousSet;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.ImmutableBiMap;
@@ -40,6 +42,8 @@ import io.trino.execution.TaskManagerConfig;
 import io.trino.execution.buffer.OutputBuffer;
 import io.trino.execution.buffer.PagesSerdeFactory;
 import io.trino.index.IndexManager;
+import io.trino.metadata.BoundSignature;
+import io.trino.metadata.FunctionId;
 import io.trino.metadata.FunctionKind;
 import io.trino.metadata.Metadata;
 import io.trino.metadata.ResolvedFunction;
@@ -253,6 +257,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.Set;
@@ -263,6 +268,7 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import static com.google.common.base.Functions.forMap;
+import static com.google.common.base.MoreObjects.toStringHelper;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.base.Verify.verify;
@@ -342,6 +348,7 @@ import static io.trino.sql.tree.SkipTo.Position.LAST;
 import static io.trino.sql.tree.SortItem.Ordering.ASCENDING;
 import static io.trino.sql.tree.SortItem.Ordering.DESCENDING;
 import static io.trino.sql.tree.WindowFrame.Type.ROWS;
+import static io.trino.util.CacheUtils.uncheckedCacheGet;
 import static io.trino.util.Reflection.constructorMethodHandle;
 import static io.trino.util.SpatialJoinUtils.ST_CONTAINS;
 import static io.trino.util.SpatialJoinUtils.ST_DISTANCE;
@@ -351,6 +358,7 @@ import static io.trino.util.SpatialJoinUtils.extractSupportedSpatialComparisons;
 import static io.trino.util.SpatialJoinUtils.extractSupportedSpatialFunctions;
 import static java.util.Collections.nCopies;
 import static java.util.Objects.requireNonNull;
+import static java.util.concurrent.TimeUnit.HOURS;
 import static java.util.stream.Collectors.partitioningBy;
 import static java.util.stream.IntStream.range;
 
@@ -385,6 +393,16 @@ public class LocalExecutionPlanner
     private final DynamicFilterConfig dynamicFilterConfig;
     private final BlockTypeOperators blockTypeOperators;
     private final TableExecuteContextManager tableExecuteContextManager;
+
+    private final Cache<FunctionKey, AccumulatorFactory> accumulatorFactoryCache = CacheBuilder.newBuilder()
+            .maximumSize(1000)
+            .expireAfterWrite(1, HOURS)
+            .build();
+    private final Cache<FunctionKey, AggregationWindowFunctionSupplier> aggregationWindowFunctionSupplierCache =
+            CacheBuilder.newBuilder()
+            .maximumSize(1000)
+            .expireAfterWrite(1, HOURS)
+            .build();
 
     @Inject
     public LocalExecutionPlanner(
@@ -1158,11 +1176,16 @@ public class LocalExecutionPlanner
         private WindowFunctionSupplier getWindowFunctionImplementation(ResolvedFunction resolvedFunction)
         {
             if (resolvedFunction.getFunctionKind() == FunctionKind.AGGREGATE) {
-                AggregationMetadata aggregationMetadata = metadata.getAggregateFunctionImplementation(resolvedFunction);
-                return new AggregationWindowFunctionSupplier(
-                        resolvedFunction.getSignature(),
-                        aggregationMetadata,
-                        resolvedFunction.getFunctionNullability());
+                return uncheckedCacheGet(
+                        aggregationWindowFunctionSupplierCache,
+                        new FunctionKey(resolvedFunction.getFunctionId(), resolvedFunction.getSignature()),
+                        () -> {
+                            AggregationMetadata aggregationMetadata = metadata.getAggregateFunctionImplementation(resolvedFunction);
+                            return new AggregationWindowFunctionSupplier(
+                                    resolvedFunction.getSignature(),
+                                    aggregationMetadata,
+                                    resolvedFunction.getFunctionNullability());
+                        });
             }
             return metadata.getWindowFunctionImplementation(resolvedFunction);
         }
@@ -1498,13 +1521,14 @@ public class LocalExecutionPlanner
                 }
                 else {
                     AggregationValuePointer pointer = (AggregationValuePointer) valuePointer;
+                    ResolvedFunction resolvedFunction = pointer.getFunction();
 
                     boolean classifierInvolved = false;
 
-                    AggregationMetadata aggregationMetadata = metadata.getAggregateFunctionImplementation(pointer.getFunction());
+                    AggregationMetadata aggregationMetadata = metadata.getAggregateFunctionImplementation(resolvedFunction);
 
                     ImmutableList.Builder<Map.Entry<Expression, Type>> builder = ImmutableList.builder();
-                    List<Type> signatureTypes = pointer.getFunction().getSignature().getArgumentTypes();
+                    List<Type> signatureTypes = resolvedFunction.getSignature().getArgumentTypes();
                     for (int i = 0; i < pointer.getArguments().size(); i++) {
                         builder.add(new SimpleEntry<>(pointer.getArguments().get(i), signatureTypes.get(i)));
                     }
@@ -1517,7 +1541,7 @@ public class LocalExecutionPlanner
                             .map(LambdaExpression.class::cast)
                             .collect(toImmutableList());
 
-                    List<FunctionType> functionTypes = pointer.getFunction().getSignature().getArgumentTypes().stream()
+                    List<FunctionType> functionTypes = resolvedFunction.getSignature().getArgumentTypes().stream()
                             .filter(FunctionType.class::isInstance)
                             .map(FunctionType.class::cast)
                             .collect(toImmutableList());
@@ -1566,10 +1590,17 @@ public class LocalExecutionPlanner
                         }
                     }
 
+                    AggregationWindowFunctionSupplier aggregationWindowFunctionSupplier = uncheckedCacheGet(
+                            aggregationWindowFunctionSupplierCache,
+                            new FunctionKey(resolvedFunction.getFunctionId(), resolvedFunction.getSignature()),
+                            () -> new AggregationWindowFunctionSupplier(
+                                    resolvedFunction.getSignature(),
+                                    aggregationMetadata,
+                                    resolvedFunction.getFunctionNullability()));
+
                     matchAggregations.add(new MatchAggregationInstantiator(
                             pointer.getFunction().getSignature(),
-                            aggregationMetadata,
-                            pointer.getFunction().getFunctionNullability(),
+                            aggregationWindowFunctionSupplier,
                             valueChannels,
                             lambdaProviders,
                             new SetEvaluatorSupplier(pointer.getSetDescriptor(), mapping)));
@@ -3542,25 +3573,19 @@ public class LocalExecutionPlanner
                 }
             }
 
+            ResolvedFunction resolvedFunction = aggregation.getResolvedFunction();
             OptionalInt maskChannel = aggregation.getMask().stream()
                     .mapToInt(value -> source.getLayout().get(value))
                     .findAny();
-            AggregationMetadata aggregationMetadata = metadata.getAggregateFunctionImplementation(aggregation.getResolvedFunction());
-            List<LambdaExpression> lambdaExpressions = aggregation.getArguments().stream()
-                    .filter(LambdaExpression.class::isInstance)
-                    .map(LambdaExpression.class::cast)
-                    .collect(toImmutableList());
-            List<FunctionType> functionTypes = aggregation.getResolvedFunction().getSignature().getArgumentTypes().stream()
-                    .filter(FunctionType.class::isInstance)
-                    .map(FunctionType.class::cast)
-                    .collect(toImmutableList());
-            List<LambdaProvider> lambdaProviders = makeLambdaProviders(lambdaExpressions, aggregationMetadata.getLambdaInterfaces(), functionTypes);
+            AggregationMetadata aggregationMetadata = metadata.getAggregateFunctionImplementation(resolvedFunction);
 
-            AccumulatorFactory accumulatorFactory = generateAccumulatorFactory(
-                    aggregation.getResolvedFunction().getSignature(),
-                    aggregationMetadata,
-                    aggregation.getResolvedFunction().getFunctionNullability(),
-                    lambdaProviders);
+            AccumulatorFactory accumulatorFactory = uncheckedCacheGet(
+                    accumulatorFactoryCache,
+                    new FunctionKey(resolvedFunction.getFunctionId(), resolvedFunction.getSignature()),
+                    () -> generateAccumulatorFactory(
+                            resolvedFunction.getSignature(),
+                            aggregationMetadata,
+                            resolvedFunction.getFunctionNullability()));
 
             if (aggregation.isDistinct()) {
                 accumulatorFactory = new DistinctAccumulatorFactory(
@@ -3612,6 +3637,16 @@ public class LocalExecutionPlanner
             Type intermediateType = (intermediateTypes.size() == 1) ? getOnlyElement(intermediateTypes) : RowType.anonymous(intermediateTypes);
             Type finalType = aggregation.getResolvedFunction().getSignature().getReturnType();
 
+            List<LambdaExpression> lambdaExpressions = aggregation.getArguments().stream()
+                    .filter(LambdaExpression.class::isInstance)
+                    .map(LambdaExpression.class::cast)
+                    .collect(toImmutableList());
+            List<FunctionType> functionTypes = resolvedFunction.getSignature().getArgumentTypes().stream()
+                    .filter(FunctionType.class::isInstance)
+                    .map(FunctionType.class::cast)
+                    .collect(toImmutableList());
+            List<LambdaProvider> lambdaProviders = makeLambdaProviders(lambdaExpressions, aggregationMetadata.getLambdaInterfaces(), functionTypes);
+
             return new AggregatorFactory(
                     accumulatorFactory,
                     step,
@@ -3619,7 +3654,8 @@ public class LocalExecutionPlanner
                     finalType,
                     argumentChannels,
                     maskChannel,
-                    !aggregation.isDistinct() && aggregation.getOrderingScheme().isEmpty());
+                    !aggregation.isDistinct() && aggregation.getOrderingScheme().isEmpty(),
+                    lambdaProviders);
         }
 
         private List<LambdaProvider> makeLambdaProviders(List<LambdaExpression> lambdaExpressions, List<Class<?>> lambdaInterfaces, List<FunctionType> functionTypes)
@@ -4158,6 +4194,57 @@ public class LocalExecutionPlanner
         public boolean isClassifierInvolved()
         {
             return classifierInvolved;
+        }
+    }
+
+    private static class FunctionKey
+    {
+        private final FunctionId functionId;
+        private final BoundSignature boundSignature;
+
+        public FunctionKey(FunctionId functionId, BoundSignature boundSignature)
+        {
+            this.functionId = requireNonNull(functionId, "functionId is null");
+            this.boundSignature = requireNonNull(boundSignature, "boundSignature is null");
+        }
+
+        public FunctionId getFunctionId()
+        {
+            return functionId;
+        }
+
+        public BoundSignature getBoundSignature()
+        {
+            return boundSignature;
+        }
+
+        @Override
+        public boolean equals(Object o)
+        {
+            if (this == o) {
+                return true;
+            }
+            if (o == null || getClass() != o.getClass()) {
+                return false;
+            }
+            FunctionKey that = (FunctionKey) o;
+            return functionId.equals(that.functionId) &&
+                    boundSignature.equals(that.boundSignature);
+        }
+
+        @Override
+        public int hashCode()
+        {
+            return Objects.hash(functionId, boundSignature);
+        }
+
+        @Override
+        public String toString()
+        {
+            return toStringHelper(this)
+                    .add("functionId", functionId)
+                    .add("boundSignature", boundSignature)
+                    .toString();
         }
     }
 }

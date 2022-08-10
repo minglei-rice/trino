@@ -64,29 +64,35 @@ public class OrderedAccumulatorFactory
     }
 
     @Override
-    public Accumulator createAccumulator()
+    public List<Class<?>> getLambdaInterfaces()
     {
-        Accumulator accumulator = delegate.createAccumulator();
+        return delegate.getLambdaInterfaces();
+    }
+
+    @Override
+    public Accumulator createAccumulator(List<LambdaProvider> lambdaProviders)
+    {
+        Accumulator accumulator = delegate.createAccumulator(lambdaProviders);
         return new OrderedAccumulator(accumulator, sourceTypes, argumentChannels, orderByChannels, orderings, pagesIndexFactory);
     }
 
     @Override
-    public Accumulator createIntermediateAccumulator()
+    public Accumulator createIntermediateAccumulator(List<LambdaProvider> lambdaProviders)
     {
-        return delegate.createIntermediateAccumulator();
+        return delegate.createIntermediateAccumulator(lambdaProviders);
     }
 
     @Override
-    public GroupedAccumulator createGroupedAccumulator()
+    public GroupedAccumulator createGroupedAccumulator(List<LambdaProvider> lambdaProviders)
     {
-        GroupedAccumulator accumulator = delegate.createGroupedAccumulator();
+        GroupedAccumulator accumulator = delegate.createGroupedAccumulator(lambdaProviders);
         return new OrderingGroupedAccumulator(accumulator, sourceTypes, argumentChannels, orderByChannels, orderings, pagesIndexFactory);
     }
 
     @Override
-    public GroupedAccumulator createGroupedIntermediateAccumulator()
+    public GroupedAccumulator createGroupedIntermediateAccumulator(List<LambdaProvider> lambdaProviders)
     {
-        return delegate.createGroupedIntermediateAccumulator();
+        return delegate.createGroupedIntermediateAccumulator(lambdaProviders);
     }
 
     private static class OrderedAccumulator

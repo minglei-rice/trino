@@ -32,6 +32,7 @@ public class AggregatorFactory
     private final List<Integer> inputChannels;
     private final OptionalInt maskChannel;
     private final boolean spillable;
+    private final List<LambdaProvider> lambdaProviders;
 
     public AggregatorFactory(
             AccumulatorFactory accumulatorFactory,
@@ -40,7 +41,8 @@ public class AggregatorFactory
             Type finalType,
             List<Integer> inputChannels,
             OptionalInt maskChannel,
-            boolean spillable)
+            boolean spillable,
+            List<LambdaProvider> lambdaProviders)
     {
         this.accumulatorFactory = requireNonNull(accumulatorFactory, "accumulatorFactory is null");
         this.step = requireNonNull(step, "step is null");
@@ -49,6 +51,7 @@ public class AggregatorFactory
         this.inputChannels = ImmutableList.copyOf(requireNonNull(inputChannels, "inputChannels is null"));
         this.maskChannel = requireNonNull(maskChannel, "maskChannel is null");
         this.spillable = spillable;
+        this.lambdaProviders = ImmutableList.copyOf(requireNonNull(lambdaProviders, "lambdaProviders is null"));
 
         checkArgument(step.isInputRaw() || inputChannels.size() == 1, "expected 1 input channel for intermediate aggregation");
     }
@@ -57,10 +60,10 @@ public class AggregatorFactory
     {
         Accumulator accumulator;
         if (step.isInputRaw()) {
-            accumulator = accumulatorFactory.createAccumulator();
+            accumulator = accumulatorFactory.createAccumulator(lambdaProviders);
         }
         else {
-            accumulator = accumulatorFactory.createIntermediateAccumulator();
+            accumulator = accumulatorFactory.createIntermediateAccumulator(lambdaProviders);
         }
         return new Aggregator(accumulator, step, intermediateType, finalType, inputChannels, maskChannel);
     }
@@ -69,10 +72,10 @@ public class AggregatorFactory
     {
         GroupedAccumulator accumulator;
         if (step.isInputRaw()) {
-            accumulator = accumulatorFactory.createGroupedAccumulator();
+            accumulator = accumulatorFactory.createGroupedAccumulator(lambdaProviders);
         }
         else {
-            accumulator = accumulatorFactory.createGroupedIntermediateAccumulator();
+            accumulator = accumulatorFactory.createGroupedIntermediateAccumulator(lambdaProviders);
         }
         return new GroupedAggregator(accumulator, step, intermediateType, finalType, inputChannels, maskChannel);
     }
@@ -81,10 +84,10 @@ public class AggregatorFactory
     {
         GroupedAccumulator accumulator;
         if (step.isInputRaw()) {
-            accumulator = accumulatorFactory.createGroupedAccumulator();
+            accumulator = accumulatorFactory.createGroupedAccumulator(lambdaProviders);
         }
         else {
-            accumulator = accumulatorFactory.createGroupedIntermediateAccumulator();
+            accumulator = accumulatorFactory.createGroupedIntermediateAccumulator(lambdaProviders);
         }
         return new GroupedAggregator(accumulator, step, intermediateType, finalType, ImmutableList.of(inputChannel), maskChannel);
     }
@@ -92,5 +95,10 @@ public class AggregatorFactory
     public boolean isSpillable()
     {
         return spillable;
+    }
+
+    public List<LambdaProvider> getLambdaProviders()
+    {
+        return lambdaProviders;
     }
 }
