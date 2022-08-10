@@ -99,6 +99,7 @@ public class TestQueryInfo
                 ImmutableList.of("number"),
                 "SELECT 1 as number",
                 Optional.of("prepared_query"),
+                Optional.of("complete_query"),
                 TestQueryStats.EXPECTED,
                 Optional.of("set_catalog"),
                 Optional.of("set_schema"),
