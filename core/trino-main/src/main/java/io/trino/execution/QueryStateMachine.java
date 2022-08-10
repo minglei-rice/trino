@@ -106,6 +106,7 @@ public class QueryStateMachine
     private final QueryId queryId;
     private final String query;
     private final Optional<String> preparedQuery;
+    private final AtomicReference<String> completeExecuteQuery = new AtomicReference<>();
     private final Session session;
     private final URI self;
     private final ResourceGroupId resourceGroup;
@@ -440,6 +441,7 @@ public class QueryStateMachine
                 outputManager.getQueryOutputInfo().map(QueryOutputInfo::getColumnNames).orElse(ImmutableList.of()),
                 query,
                 preparedQuery,
+                Optional.ofNullable(completeExecuteQuery.get()),
                 getQueryStats(rootStage),
                 Optional.ofNullable(setCatalog.get()),
                 Optional.ofNullable(setSchema.get()),
@@ -828,6 +830,11 @@ public class QueryStateMachine
         clearTransactionId.set(true);
     }
 
+    public void setCompleteExecuteQuery(String completeQuery)
+    {
+        completeExecuteQuery.set(requireNonNull(completeQuery, "complete query is null"));
+    }
+
     public void setUpdateType(String updateType)
     {
         this.updateType.set(updateType);
@@ -1142,6 +1149,7 @@ public class QueryStateMachine
                 queryInfo.getFieldNames(),
                 queryInfo.getQuery(),
                 queryInfo.getPreparedQuery(),
+                queryInfo.getCompleteExecuteQuery(),
                 pruneQueryStats(queryInfo.getQueryStats()),
                 queryInfo.getSetCatalog(),
                 queryInfo.getSetSchema(),

@@ -164,6 +164,7 @@ public class MockManagedQueryExecution
                 ImmutableList.of(),
                 "SELECT 1",
                 Optional.empty(),
+                Optional.empty(),
                 new QueryStats(
                         new DateTime(1),
                         new DateTime(2),

@@ -39,6 +39,7 @@ import io.trino.server.DynamicFilterService;
 import io.trino.server.protocol.Slug;
 import io.trino.spi.QueryId;
 import io.trino.spi.TrinoException;
+import io.trino.sql.ExpressionFormatter;
 import io.trino.sql.PlannerContext;
 import io.trino.sql.analyzer.Analysis;
 import io.trino.sql.analyzer.Analyzer;
@@ -58,6 +59,10 @@ import io.trino.sql.planner.TypeAnalyzer;
 import io.trino.sql.planner.optimizations.PlanOptimizer;
 import io.trino.sql.planner.plan.OutputNode;
 import io.trino.sql.tree.ExplainAnalyze;
+import io.trino.sql.tree.Expression;
+import io.trino.sql.tree.NodeLocation;
+import io.trino.sql.tree.NodeRef;
+import io.trino.sql.tree.Parameter;
 import io.trino.sql.tree.Query;
 import io.trino.sql.tree.Statement;
 import org.joda.time.DateTime;
@@ -65,7 +70,9 @@ import org.joda.time.DateTime;
 import javax.annotation.concurrent.ThreadSafe;
 import javax.inject.Inject;
 
+import java.util.AbstractMap.SimpleEntry;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -78,6 +85,7 @@ import java.util.function.Consumer;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.base.Throwables.throwIfInstanceOf;
+import static com.google.common.collect.ImmutableList.toImmutableList;
 import static com.google.common.util.concurrent.MoreExecutors.directExecutor;
 import static io.airlift.units.DataSize.succinctBytes;
 import static io.trino.SystemSessionProperties.isEnableDynamicFiltering;
@@ -258,9 +266,66 @@ public class SqlQueryExecution
         stateMachine.setReferencedTables(analysis.getReferencedTables());
         stateMachine.setRoutines(analysis.getRoutines());
 
+        // try to generate complete query for execute statement
+        if (preparedQuery.getPrepareSql().isPresent()) {
+            try {
+                stateMachine.setCompleteExecuteQuery(getCompleteExecuteQuery(
+                        preparedQuery.getPrepareSql().get(), analysis.getParameters()));
+            }
+            catch (Exception e) {
+                LOG.warn(e, "Fail to generate complete query for execute statement");
+            }
+        }
+
         stateMachine.endAnalysis();
 
         return analysis;
+    }
+
+    private static String getCompleteExecuteQuery(String prepareSql, Map<NodeRef<Parameter>, Expression> parameters)
+    {
+        if (parameters.isEmpty()) {
+            return prepareSql;
+        }
+
+        List<SimpleEntry<NodeLocation, Expression>> sortedParams = parameters.entrySet().stream()
+                .map(entry -> new SimpleEntry<>(entry.getKey().getNode().getLocation().get(), entry.getValue()))
+                .sorted(Map.Entry.comparingByKey(Comparator.comparing(NodeLocation::getLineNumber)
+                        .thenComparing(NodeLocation::getColumnNumber)))
+                .collect(toImmutableList());
+
+        StringBuilder sb = new StringBuilder();
+        List<String> lines = prepareSql.lines().collect(toImmutableList());
+        NodeLocation last = null;
+        for (SimpleEntry<NodeLocation, Expression> param : sortedParams) {
+            appendBetween(sb, lines, last, param.getKey());
+            sb.append(ExpressionFormatter.formatExpression(param.getValue()));
+            last = param.getKey();
+        }
+        appendBetween(sb, lines, last, null);
+        return sb.append("\n").toString();
+    }
+
+    private static void appendBetween(StringBuilder sb, List<String> lines, NodeLocation start, NodeLocation end)
+    {
+        if (start == null && end == null) {
+            lines.forEach(line -> sb.append(line).append("\n"));
+        }
+        else {
+            int startLine = start == null ? 0 : start.getLineNumber() - 1;
+            int startCol = start == null ? 0 : start.getColumnNumber();
+            int endLine = end == null ? lines.size() - 1 : end.getLineNumber() - 1;
+            int endCol = end == null ? lines.get(lines.size() - 1).length() : end.getColumnNumber() - 1;
+
+            if (startLine == endLine) {
+                sb.append(lines.get(startLine), startCol, endCol);
+            }
+            else {
+                sb.append(lines.get(startLine).substring(startCol)).append("\n");
+                lines.subList(startLine + 1, endLine).forEach(line -> sb.append(line).append("\n"));
+                sb.append(lines.get(endLine), 0, endCol);
+            }
+        }
     }
 
     @Override

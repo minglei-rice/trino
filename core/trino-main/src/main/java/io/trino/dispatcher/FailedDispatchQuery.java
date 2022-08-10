@@ -221,6 +221,7 @@ public class FailedDispatchQuery
                 ImmutableList.of(),
                 query,
                 preparedQuery,
+                Optional.empty(),
                 immediateFailureQueryStats(),
                 Optional.empty(),
                 Optional.empty(),

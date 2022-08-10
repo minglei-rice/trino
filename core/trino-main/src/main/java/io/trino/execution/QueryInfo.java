@@ -57,6 +57,7 @@ public class QueryInfo
     private final List<String> fieldNames;
     private final String query;
     private final Optional<String> preparedQuery;
+    private final Optional<String> completeExecuteQuery;
     private final QueryStats queryStats;
     private final Optional<String> setCatalog;
     private final Optional<String> setSchema;
@@ -94,6 +95,7 @@ public class QueryInfo
             @JsonProperty("fieldNames") List<String> fieldNames,
             @JsonProperty("query") String query,
             @JsonProperty("preparedQuery") Optional<String> preparedQuery,
+            @JsonProperty("completeExecuteQuery") Optional<String> completeExecuteQuery,
             @JsonProperty("queryStats") QueryStats queryStats,
             @JsonProperty("setCatalog") Optional<String> setCatalog,
             @JsonProperty("setSchema") Optional<String> setSchema,
@@ -135,6 +137,7 @@ public class QueryInfo
         requireNonNull(startedTransactionId, "startedTransactionId is null");
         requireNonNull(query, "query is null");
         requireNonNull(preparedQuery, "preparedQuery is null");
+        requireNonNull(completeExecuteQuery, "completeExecuteQuery is null");
         requireNonNull(outputStage, "outputStage is null");
         requireNonNull(inputs, "inputs is null");
         requireNonNull(output, "output is null");
@@ -154,6 +157,7 @@ public class QueryInfo
         this.fieldNames = ImmutableList.copyOf(fieldNames);
         this.query = query;
         this.preparedQuery = preparedQuery;
+        this.completeExecuteQuery = completeExecuteQuery;
         this.queryStats = queryStats;
         this.setCatalog = setCatalog;
         this.setSchema = setSchema;
@@ -233,6 +237,12 @@ public class QueryInfo
     public Optional<String> getPreparedQuery()
     {
         return preparedQuery;
+    }
+
+    @JsonProperty
+    public Optional<String> getCompleteExecuteQuery()
+    {
+        return completeExecuteQuery;
     }
 
     @JsonProperty
