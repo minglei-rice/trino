@@ -1,6 +1,6 @@
 coordinator=true
 node.environment=production
-node-scheduler.include-coordinator=false
+node-scheduler.include-coordinator={SCHEDULER_INCLUDE_COORDINATOR}
 http-server.http.port={SERVER_HTTP_PORT}
 discovery-server.enabled=true
 #need to change worknum*pernode

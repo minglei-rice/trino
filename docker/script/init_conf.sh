@@ -24,6 +24,7 @@ sed --in-place "s/{QUERY_MAX_MEMORY_PER_NODE}/${QUERY_MAX_MEMORY_PER_NODE:-70GB}
 sed --in-place "s/{QUERY_MAX_TOTAL_MEMORY_PER_NODE}/${QUERY_MAX_TOTAL_MEMORY_PER_NODE:-80GB}/" ${TRINO_ETC_DIR}/config.properties
 sed --in-place "s/{TASK_MAX_WORKER_THREADS}/${TASK_MAX_WORKER_THREADS:-32}/" ${TRINO_ETC_DIR}/config.properties
 sed --in-place "s/{TASK_CONCURRENCY}/${TASK_CONCURRENCY:-16}/" ${TRINO_ETC_DIR}/config.properties
+sed --in-place "s/{SCHEDULER_INCLUDE_COORDINATOR}/${SCHEDULER_INCLUDE_COORDINATOR:-false}/" ${TRINO_ETC_DIR}/config.properties
 
 ## reset catalog confs from env
 sed -i "s#{TRINO_BASE_DIR}#${TRINO_BASE_DIR}#g" ${TRINO_ETC_DIR}/catalog/iceberg.properties
