@@ -69,7 +69,7 @@
   </property>
     <property>
         <name>dfs.nameservices</name>
-        <value>jssz-bigdata-ns1,jssz-bigdata-ns2,jssz-bigdata-ns3,jssz-bigdata-ns4,jssz-bigdata-proxy-ns1,jssz-bigdata-proxy-ns2</value>
+        <value>jssz-bigdata-ns1,jssz-bigdata-ns2,jssz-bigdata-ns3,jssz-bigdata-ns4,jssz-bigdata-proxy-ns1,jssz-bigdata-proxy-ns2,jssz-bigdata-proxy-ns3</value>
     </property>
     <!-- jssz-bigdata-ns1 start -->
     <property>
@@ -293,6 +293,29 @@
         <value>org.apache.hadoop.hdfs.server.namenode.ha.ConfiguredFailoverProxyProvider</value>
     </property>
     <!-- jssz-bigdata-proxy-ns2 end -->
+
+    <!-- jssz-bigdata-proxy-ns3 start -->
+    <property>
+        <name>dfs.ha.namenodes.jssz-bigdata-proxy-ns3</name>
+        <value>nn-0,nn-1,nn-2</value>
+      </property>
+    <property>
+        <name>dfs.namenode.rpc-address.jssz-bigdata-proxy-ns3.nn-0</name>
+        <value>jssz-bigdata-nnproxy-01:56310</value>
+    </property>
+    <property>
+        <name>dfs.namenode.rpc-address.jssz-bigdata-proxy-ns3.nn-1</name>
+        <value>jssz-bigdata-nnproxy-02:56310</value>
+    </property>
+    <property>
+        <name>dfs.namenode.rpc-address.jssz-bigdata-proxy-ns3.nn-2</name>
+        <value>jssz-bigdata-nnproxy-03:56310</value>
+    </property>
+    <property>
+        <name>dfs.client.failover.proxy.provider.jssz-bigdata-proxy-ns3</name>
+        <value>org.apache.hadoop.hdfs.server.namenode.ha.ConfiguredFailoverProxyProvider</value>
+    </property>
+    <!-- jssz-bigdata-proxy-ns3 end -->
 
   <property>
     <name>dfs.namenode.shared.edits.dir</name>
