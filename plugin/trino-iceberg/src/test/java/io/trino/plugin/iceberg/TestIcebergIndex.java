@@ -38,6 +38,7 @@ import org.apache.iceberg.IndexField;
 import org.apache.iceberg.IndexFile;
 import org.apache.iceberg.IndexSpec;
 import org.apache.iceberg.IndexType;
+import org.apache.iceberg.IndexWriterContext;
 import org.apache.iceberg.RewriteFiles;
 import org.apache.iceberg.Table;
 import org.apache.iceberg.catalog.TableIdentifier;
@@ -198,7 +199,7 @@ public class TestIcebergIndex
         for (IndexField indexField : indexSpec.fields()) {
             Path indexPath = IndexUtils.getIndexPath(new Path(sourceFile.path().toString()), new Path(table.location()),
                     indexField, indexRootPath, snapshotId);
-            Index index = IndexFactory.createIndex(indexField.indexType(), indexField.properties());
+            Index index = IndexFactory.createIndex(new IndexWriterContext<>(indexField.indexType(), table.schema().findType(indexField.sourceId()), indexField.properties()));
             IndexWriter indexWriter = new IndexWriter(table.io(), indexPath.toString(), index, -1);
             // just assume source id starts from 1
             final int ordinal = indexField.sourceId() - 1;
