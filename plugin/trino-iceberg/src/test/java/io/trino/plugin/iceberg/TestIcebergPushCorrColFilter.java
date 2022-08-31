@@ -17,6 +17,8 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.io.Files;
 import io.trino.Session;
+import io.trino.cost.StatsProvider;
+import io.trino.execution.warnings.WarningCollector;
 import io.trino.filesystem.TrinoFileSystemFactory;
 import io.trino.filesystem.hdfs.HdfsFileSystemFactory;
 import io.trino.hdfs.DynamicHdfsConfiguration;
@@ -25,6 +27,7 @@ import io.trino.hdfs.HdfsConfiguration;
 import io.trino.hdfs.HdfsConfigurationInitializer;
 import io.trino.hdfs.HdfsEnvironment;
 import io.trino.hdfs.authentication.NoHdfsAuthentication;
+import io.trino.metadata.Metadata;
 import io.trino.metadata.QualifiedObjectName;
 import io.trino.plugin.base.CatalogName;
 import io.trino.plugin.hive.metastore.Database;
@@ -35,6 +38,7 @@ import io.trino.plugin.iceberg.catalog.TrinoCatalog;
 import io.trino.plugin.iceberg.catalog.file.FileMetastoreTableOperationsProvider;
 import io.trino.plugin.iceberg.catalog.file.TestingIcebergFileMetastoreCatalogModule;
 import io.trino.plugin.iceberg.catalog.hms.TrinoHiveCatalog;
+import io.trino.spi.connector.ConnectorTableHandle;
 import io.trino.spi.connector.SchemaTableName;
 import io.trino.spi.predicate.Domain;
 import io.trino.spi.predicate.Range;
@@ -42,8 +46,18 @@ import io.trino.spi.predicate.TupleDomain;
 import io.trino.spi.predicate.ValueSet;
 import io.trino.spi.security.PrincipalType;
 import io.trino.spi.type.TestingTypeManager;
+import io.trino.sql.planner.Plan;
+import io.trino.sql.planner.RuleStatsRecorder;
 import io.trino.sql.planner.assertions.BasePushdownPlanTest;
+import io.trino.sql.planner.assertions.MatchResult;
+import io.trino.sql.planner.assertions.Matcher;
+import io.trino.sql.planner.assertions.PlanAssert;
 import io.trino.sql.planner.assertions.PlanMatchPattern;
+import io.trino.sql.planner.assertions.SymbolAliases;
+import io.trino.sql.planner.iterative.rule.PushCorrColFilterIntoTableScan;
+import io.trino.sql.planner.optimizations.PlanOptimizer;
+import io.trino.sql.planner.plan.PlanNode;
+import io.trino.sql.planner.plan.TableScanNode;
 import io.trino.testing.LocalQueryRunner;
 import org.apache.iceberg.CorrelatedColumns;
 import org.apache.iceberg.CorrelatedColumns.JoinConstraint;
@@ -58,8 +72,11 @@ import org.testng.annotations.Test;
 
 import java.io.File;
 import java.util.Collections;
+import java.util.List;
 import java.util.Optional;
+import java.util.function.Predicate;
 
+import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.io.MoreFiles.deleteRecursively;
 import static com.google.common.io.RecursiveDeleteOption.ALLOW_INSECURE;
 import static com.google.inject.util.Modules.EMPTY_MODULE;
@@ -67,13 +84,15 @@ import static io.airlift.slice.Slices.utf8Slice;
 import static io.trino.plugin.hive.metastore.file.FileHiveMetastore.createTestingFileHiveMetastore;
 import static io.trino.spi.type.DoubleType.DOUBLE;
 import static io.trino.spi.type.VarcharType.VARCHAR;
+import static io.trino.sql.planner.LogicalPlanner.Stage.OPTIMIZED_AND_VALIDATED;
 import static io.trino.sql.planner.assertions.PlanMatchPattern.anyTree;
-import static io.trino.sql.planner.assertions.PlanMatchPattern.tableScan;
+import static io.trino.sql.planner.assertions.PlanMatchPattern.node;
 import static io.trino.testing.TestingConnectorSession.SESSION;
 import static io.trino.testing.TestingSession.testSessionBuilder;
 import static io.trino.testing.sql.TestTable.randomTableSuffix;
 import static java.lang.String.format;
 
+@Test(singleThreaded = true)
 public class TestIcebergPushCorrColFilter
         extends BasePushdownPlanTest
 {
@@ -257,10 +276,30 @@ public class TestIcebergPushCorrColFilter
         assertPlan(format("select * from %s join %s on %s.x=%s.x and s='a' left join %s on %s.x=%s.k where %s.y>0", foo, bar, foo, bar, baz, foo, baz, baz), matchFooTS);
     }
 
+    @Override
+    protected void assertPlan(String sql, PlanMatchPattern pattern)
+    {
+        LocalQueryRunner queryRunner = getQueryRunner();
+        RuleStatsRecorder ruleStatsRecorder = new RuleStatsRecorder();
+        List<PlanOptimizer> optimizers = queryRunner.getPlanOptimizers(true, ruleStatsRecorder);
+        queryRunner.inTransaction(transactionSession -> {
+            Plan actualPlan = queryRunner.createPlan(transactionSession, sql, optimizers, OPTIMIZED_AND_VALIDATED, WarningCollector.NOOP);
+            try {
+                PlanAssert.assertPlan(transactionSession, queryRunner.getMetadata(), queryRunner.getFunctionManager(), queryRunner.getStatsCalculator(), actualPlan, pattern);
+            }
+            catch (Throwable t) {
+                System.out.println();
+                throw new AssertionError(
+                        String.format("Plan assertion error, rule stats: [%s]", ruleStatsRecorder.getStats().get(PushCorrColFilterIntoTableScan.class)), t);
+            }
+            return null;
+        });
+    }
+
     private PlanMatchPattern matchTableScan(String tableName, TupleDomain<IcebergColumnHandle> expectedCorrColDomain)
     {
-        return anyTree(tableScan(
-                table -> {
+        return anyTree(node(TableScanNode.class)
+                .with(new TableHandleMatcher(table -> {
                     IcebergTableHandle icebergTableHandle = (IcebergTableHandle) table;
                     // we don't care about other tables
                     if (!icebergTableHandle.getTableName().equals(tableName)) {
@@ -268,9 +307,32 @@ public class TestIcebergPushCorrColFilter
                     }
                     TupleDomain<IcebergColumnHandle> corrColDomain = icebergTableHandle.getCorrColPredicate();
                     return corrColDomain.equals(expectedCorrColDomain);
-                },
-                TupleDomain.all(),
-                Collections.emptyMap()));
+                })));
+    }
+
+    private static class TableHandleMatcher
+            implements Matcher
+    {
+        private final Predicate<ConnectorTableHandle> expectedTable;
+
+        private TableHandleMatcher(Predicate<ConnectorTableHandle> expectedTable)
+        {
+            this.expectedTable = expectedTable;
+        }
+
+        @Override
+        public boolean shapeMatches(PlanNode node)
+        {
+            return node instanceof TableScanNode;
+        }
+
+        @Override
+        public MatchResult detailMatches(PlanNode node, StatsProvider stats, Session session, Metadata metadata, SymbolAliases symbolAliases)
+        {
+            checkState(shapeMatches(node));
+            ConnectorTableHandle tableHandle = ((TableScanNode) node).getTable().getConnectorHandle();
+            return new MatchResult(expectedTable.test(tableHandle));
+        }
     }
 
     private Table loadIcebergTable(String tableName)

@@ -110,7 +110,9 @@ public class TestIcebergV2
     public void tearDown()
             throws IOException
     {
-        deleteRecursively(tempDir, ALLOW_INSECURE);
+        if (tempDir != null) {
+            deleteRecursively(tempDir, ALLOW_INSECURE);
+        }
     }
 
     @Test
