@@ -961,6 +961,11 @@ public class LocalQueryRunner
 
     public List<PlanOptimizer> getPlanOptimizers(boolean forceSingleNode)
     {
+        return getPlanOptimizers(forceSingleNode, new RuleStatsRecorder());
+    }
+
+    public List<PlanOptimizer> getPlanOptimizers(boolean forceSingleNode, RuleStatsRecorder ruleStats)
+    {
         return planOptimizersProvider.getPlanOptimizers(
                 plannerContext,
                 new TypeAnalyzer(plannerContext, statementAnalyzerFactory),
@@ -975,7 +980,7 @@ public class LocalQueryRunner
                 new CostComparator(featuresConfig),
                 taskCountEstimator,
                 nodePartitioningManager,
-                new RuleStatsRecorder()).get();
+                ruleStats).get();
     }
 
     public Plan createPlan(Session session, @Language("SQL") String sql, List<PlanOptimizer> optimizers, WarningCollector warningCollector)

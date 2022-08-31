@@ -66,4 +66,10 @@ public class RuleStats
     {
         return failures.get();
     }
+
+    @Override
+    public String toString()
+    {
+        return String.format("Invocations: %d, Hits: %d, Failures: %d", getInvocations(), getHits(), getFailures());
+    }
 }
