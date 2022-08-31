@@ -18,7 +18,6 @@ variables:
 
 test:
   stage: test
-  resource_group: ci
   script:
     - unset HADOOP_HOME HADOOP_CONF_DIR HIVE_HOME SPARK_HOME FLINK_HOME
     - export JAVA_HOME=/data/sdk/jdk11
@@ -31,7 +30,6 @@ test:
 
 package:
   stage: package
-  resource_group: ci
   script:
     - unset HADOOP_HOME HADOOP_CONF_DIR HIVE_HOME SPARK_HOME FLINK_HOME
     - export JAVA_HOME=/data/sdk/jdk11
