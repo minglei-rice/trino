@@ -65,7 +65,6 @@ import static io.trino.plugin.hive.metastore.file.FileHiveMetastore.createTestin
 import static io.trino.plugin.iceberg.IcebergQueryRunner.createIcebergQueryRunner;
 import static io.trino.testing.TestingConnectorSession.SESSION;
 import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertFalse;
 
 /**
  * Test reading iceberg tables with indices.
@@ -197,8 +196,7 @@ public class TestIcebergIndex
         IndexSpec indexSpec = table.indexSpec();
         List<IndexFile> indexFiles = new ArrayList<>();
         for (IndexField indexField : indexSpec.fields()) {
-            Path indexPath = IndexUtils.getIndexPath(new Path(sourceFile.path().toString()), new Path(table.location()),
-                    indexField, indexRootPath, snapshotId);
+            Path indexPath = IndexUtils.getIndexPath(new Path(sourceFile.path().toString()), new Path(table.location()), indexField, indexRootPath);
             Index index = IndexFactory.createIndex(new IndexWriterContext<>(indexField.indexType(), table.schema().findType(indexField.sourceId()), indexField.properties()));
             IndexWriter indexWriter = new IndexWriter(table.io(), indexPath.toString(), index, -1);
             // just assume source id starts from 1
@@ -206,9 +204,7 @@ public class TestIcebergIndex
             for (Object[] row : rows) {
                 indexWriter.addData(row[ordinal]);
             }
-            assertFalse(indexWriter.finish().isInPlace());
-            IndexFile indexFile = new IndexFile(indexPath.toString(), indexField.indexType(),
-                    indexField.sourceId(), indexField.indexName(), indexField.properties());
+            IndexFile indexFile = new IndexFile(indexField.indexId(), false, indexPath.toString());
             indexFiles.add(indexFile);
         }
         return DataFiles.builder(table.spec()).copy(sourceFile).withIndexFile(indexFiles).build();

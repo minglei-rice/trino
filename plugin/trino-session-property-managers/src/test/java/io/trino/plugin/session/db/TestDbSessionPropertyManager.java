@@ -70,16 +70,22 @@ public class TestDbSessionPropertyManager
     @AfterMethod(alwaysRun = true)
     public void teardown()
     {
-        dao.dropSessionPropertiesTable();
-        dao.dropSessionClientTagsTable();
-        dao.dropSessionSpecsTable();
+        if (dao != null) {
+            dao.dropSessionPropertiesTable();
+            dao.dropSessionClientTagsTable();
+            dao.dropSessionSpecsTable();
+        }
     }
 
     @AfterClass(alwaysRun = true)
     public void destroy()
     {
-        specsProvider.destroy();
-        mysqlContainer.close();
+        if (specsProvider != null) {
+            specsProvider.destroy();
+        }
+        if (mysqlContainer != null) {
+            mysqlContainer.close();
+        }
     }
 
     @Override

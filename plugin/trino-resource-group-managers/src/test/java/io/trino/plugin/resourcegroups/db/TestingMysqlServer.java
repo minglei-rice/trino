@@ -14,6 +14,7 @@
 package io.trino.plugin.resourcegroups.db;
 
 import org.testcontainers.containers.MySQLContainer;
+import org.testcontainers.utility.MountableFile;
 
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -40,6 +41,17 @@ public class TestingMysqlServer
         }
         catch (SQLException e) {
             throw new RuntimeException(e);
+        }
+    }
+
+    @Override
+    protected void optionallyMapResourceParameterAsVolume(String paramName, String pathNameInContainer, String defaultResource)
+    {
+        String resourceName = this.parameters.getOrDefault(paramName, defaultResource);
+        if (resourceName != null) {
+            // explicitly set mode as octal 755
+            MountableFile mountableFile = MountableFile.forClasspathResource(resourceName, 493);
+            withCopyFileToContainer(mountableFile, pathNameInContainer);
         }
     }
 }

@@ -14,6 +14,7 @@
 package io.trino.plugin.session.db;
 
 import org.testcontainers.containers.MySQLContainer;
+import org.testcontainers.utility.MountableFile;
 
 public class TestingMySqlContainer
         extends MySQLContainer<TestingMySqlContainer>
@@ -21,6 +22,17 @@ public class TestingMySqlContainer
     public TestingMySqlContainer()
     {
         super("mysql:8.0.12");
+    }
+
+    @Override
+    protected void optionallyMapResourceParameterAsVolume(String paramName, String pathNameInContainer, String defaultResource)
+    {
+        String resourceName = this.parameters.getOrDefault(paramName, defaultResource);
+        if (resourceName != null) {
+            // explicitly set mode as octal 755
+            MountableFile mountableFile = MountableFile.forClasspathResource(resourceName, 493);
+            withCopyFileToContainer(mountableFile, pathNameInContainer);
+        }
     }
 
     @Override

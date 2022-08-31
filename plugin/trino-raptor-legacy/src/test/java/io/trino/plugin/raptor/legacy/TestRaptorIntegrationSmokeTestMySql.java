@@ -19,6 +19,7 @@ import io.trino.testing.DistributedQueryRunner;
 import io.trino.testing.QueryRunner;
 import io.trino.tpch.TpchTable;
 import org.testcontainers.containers.MySQLContainer;
+import org.testcontainers.utility.MountableFile;
 import org.testng.annotations.AfterClass;
 
 import java.io.File;
@@ -37,7 +38,7 @@ public class TestRaptorIntegrationSmokeTestMySql
     protected QueryRunner createQueryRunner()
             throws Exception
     {
-        mysqlContainer = new MySQLContainer<>("mysql:8.0.12");
+        mysqlContainer = new TestMySQLContainer();
         mysqlContainer.start();
         return createRaptorMySqlQueryRunner(getJdbcUrl(mysqlContainer));
     }
@@ -80,5 +81,25 @@ public class TestRaptorIntegrationSmokeTestMySql
         copyTables(queryRunner, "tpch", createSession(), false, TpchTable.getTables());
 
         return queryRunner;
+    }
+
+    private static class TestMySQLContainer
+            extends MySQLContainer<TestMySQLContainer>
+    {
+        TestMySQLContainer()
+        {
+            super("mysql:8.0.12");
+        }
+
+        @Override
+        protected void optionallyMapResourceParameterAsVolume(String paramName, String pathNameInContainer, String defaultResource)
+        {
+            String resourceName = this.parameters.getOrDefault(paramName, defaultResource);
+            if (resourceName != null) {
+                // explicitly set mode as octal 755
+                MountableFile mountableFile = MountableFile.forClasspathResource(resourceName, 493);
+                withCopyFileToContainer(mountableFile, pathNameInContainer);
+            }
+        }
     }
 }

@@ -14,6 +14,7 @@
 package io.trino.plugin.mysql;
 
 import org.testcontainers.containers.MySQLContainer;
+import org.testcontainers.utility.MountableFile;
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -45,7 +46,7 @@ public class TestingMySqlServer
 
     public TestingMySqlServer(String dockerImageName, boolean globalTransactionEnable)
     {
-        MySQLContainer<?> container = new MySQLContainer<>(dockerImageName);
+        MySQLContainer<?> container = new TestMySQLContainer(dockerImageName);
         container = container.withDatabaseName("tpch");
         if (globalTransactionEnable) {
             container = container.withCommand("--gtid-mode=ON", "--enforce-gtid-consistency=ON");
@@ -108,6 +109,26 @@ public class TestingMySqlServer
         }
         catch (IOException e) {
             throw new UncheckedIOException(e);
+        }
+    }
+
+    private static class TestMySQLContainer
+            extends MySQLContainer<TestMySQLContainer>
+    {
+        TestMySQLContainer(String dockerImageName)
+        {
+            super(dockerImageName);
+        }
+
+        @Override
+        protected void optionallyMapResourceParameterAsVolume(String paramName, String pathNameInContainer, String defaultResource)
+        {
+            String resourceName = this.parameters.getOrDefault(paramName, defaultResource);
+            if (resourceName != null) {
+                // explicitly set mode as octal 755
+                MountableFile mountableFile = MountableFile.forClasspathResource(resourceName, 493);
+                withCopyFileToContainer(mountableFile, pathNameInContainer);
+            }
         }
     }
 }
