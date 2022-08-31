@@ -22,8 +22,8 @@ test:
     - unset HADOOP_HOME HADOOP_CONF_DIR HIVE_HOME SPARK_HOME FLINK_HOME
     - export JAVA_HOME=/data/sdk/jdk11
     - export PATH=$PATH:$JAVA_HOME/bin:/opt/maven/apache-maven-3.8.1/bin
-    - ./mvnw -T 4 -pl -docs clean install -DskipTests -Djava.io.tmpdir=/data
-    - ./mvnw -pl -plugin/trino-pinot,-plugin/trino-phoenix,-plugin/trino-redshift,-testing/trino-test-jdbc-compatibility-old-server,-plugin/trino-redis,-plugin/trino-kudu,-plugin/trino-mongodb,-plugin/trino-oracle,-plugin/trino-phoenix5,-plugin/trino-postgresql,-plugin/trino-sqlserver,-plugin/trino-teradata-functions,-plugin/trino-accumulo,-plugin/trino-druid,-plugin/trino-atop,-plugin/trino-bigquery,-plugin/trino-cassandra,-plugin/trino-kafka,-testing/trino-testing-kafka,-plugin/trino-memsql,-plugin/trino-kinesis,-plugin/trino-geospatial,-plugin/trino-accumulo-iterators,-plugin/trino-prometheus,-plugin/trino-elasticsearch,-plugin/trino-google-sheets,-core/trino-server-rpm,-docs verify -Djava.io.tmpdir=/data
+    - ./mvnw -T 4 -pl -docs clean install -DskipTests -Djava.io.tmpdir=/data/tmp
+    - ./mvnw -pl -plugin/trino-pinot,-plugin/trino-phoenix,-plugin/trino-redshift,-testing/trino-test-jdbc-compatibility-old-server,-plugin/trino-redis,-plugin/trino-kudu,-plugin/trino-mongodb,-plugin/trino-oracle,-plugin/trino-phoenix5,-plugin/trino-postgresql,-plugin/trino-sqlserver,-plugin/trino-teradata-functions,-plugin/trino-accumulo,-plugin/trino-druid,-plugin/trino-atop,-plugin/trino-bigquery,-plugin/trino-cassandra,-plugin/trino-kafka,-testing/trino-testing-kafka,-plugin/trino-memsql,-plugin/trino-kinesis,-plugin/trino-geospatial,-plugin/trino-accumulo-iterators,-plugin/trino-prometheus,-plugin/trino-elasticsearch,-plugin/trino-google-sheets,-core/trino-server-rpm,-docs verify -Djava.io.tmpdir=/data/tmp
   only:
     - merge_requests
     - branches
@@ -34,8 +34,8 @@ package:
     - unset HADOOP_HOME HADOOP_CONF_DIR HIVE_HOME SPARK_HOME FLINK_HOME
     - export JAVA_HOME=/data/sdk/jdk11
     - export PATH=$PATH:$JAVA_HOME/bin:/opt/maven/apache-maven-3.8.1/bin
-    - ./mvnw -T 4 -pl -docs clean package -DskipTests -Djava.io.tmpdir=/data
-    - ./mvnw -T 4 deploy -pl client/trino-jdbc,core/trino-main -am -DskipTests -Djava.io.tmpdir=/data
+    - ./mvnw -T 4 -pl -docs clean package -DskipTests -Djava.io.tmpdir=/data/tmp
+    - ./mvnw -T 4 deploy -pl client/trino-jdbc,core/trino-main -am -DskipTests -Djava.io.tmpdir=/data/tmp
     - mv ./core/trino-server/target/trino-server-*.tar.gz $SERVER_ARTIFACTS_PATH/trino-server.tar.gz
     - mv ./client/trino-cli/target/trino-cli-*-executable.jar $CLIENT_ARTIFACTS_PATH/trino-cli-executable.jar
   only:
