@@ -515,9 +515,9 @@ public class PipelinedStageExecution
         stage.recordGetSplitTime(start);
     }
 
-    public void updateConnectorMetrics(Metrics newConnectorMetrics)
+    public void updateConnectorMetrics(Metrics newConnectorMetrics, PlanNodeId planNodeId)
     {
-        stage.updateConnectorMetrics(newConnectorMetrics);
+        stage.updateConnectorMetrics(newConnectorMetrics, planNodeId);
     }
 
     public StageId getStageId()

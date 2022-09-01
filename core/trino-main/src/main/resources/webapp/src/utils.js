@@ -525,10 +525,7 @@ export function getTotalFromLongCountMetrics(longCount: any): number {
     return longCount.total;
 }
 
-export function getCountWithPercentage(numerator: number, denominator: number): string {
-    if (denominator !== 0) {
-        const percentage = numerator / denominator * 100;
-        return numerator.toString() + ' (' + precisionRound(percentage) + '%)';
-    }
-    return numerator.toString();
+export function formatPercentage(numerator: number, denominator: number): string {
+    const percentage = denominator === 0 ? 0 : numerator / denominator * 100;
+    return precisionRound(percentage) + "%";
 }

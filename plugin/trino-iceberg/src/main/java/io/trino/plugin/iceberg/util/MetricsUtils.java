@@ -14,42 +14,47 @@
 package io.trino.plugin.iceberg.util;
 
 import com.google.common.collect.ImmutableMap;
-import io.trino.plugin.base.metrics.LongCount;
-import io.trino.spi.metrics.Metric;
+import io.trino.spi.metrics.DataSkippingMetrics;
 import io.trino.spi.metrics.Metrics;
 import org.apache.iceberg.FilterMetrics;
 
+import static io.trino.spi.metrics.DataSkippingMetrics.MetricType.SKIPPED_BY_DF_IN_COORDINATOR;
+import static io.trino.spi.metrics.DataSkippingMetrics.MetricType.SKIPPED_BY_MINMAX_STATS;
+import static io.trino.spi.metrics.DataSkippingMetrics.MetricType.SKIPPED_BY_PART_FILTER;
+import static io.trino.spi.metrics.DataSkippingMetrics.MetricType.TOTAL;
+
 public class MetricsUtils
 {
-    public static final String TOTAL_SPLITS_IN_PARTITIONS = "iceberg_total_splits_in_partitions";
-    public static final String TOTAL_SPLITS_READ = "iceberg_total_splits_read";
-    public static final String SKIPPED_SPLITS_BY_INDEX = "iceberg_skipped_splits_by_index";
-    public static final String SKIPPED_SPLITS_BY_MINMAX = "iceberg_skipped_splits_by_minmax";
-    public static final String SKIPPED_SPLITS_BY_DF_IN_COORDINATOR = "iceberg_skipped_splits_by_df_in_coordinator";
-    public static final String SKIPPED_SPLITS_BY_DF_IN_WORKER = "iceberg_skipped_splits_by_df_in_worker";
+    public static final String DATA_SKIPPING_METRICS = "iceberg_data_skipping_metrics";
 
     private MetricsUtils() {}
 
-    public static Metrics makeMetricsFromFilterMetrics(FilterMetrics filterMetrics)
+    public static Metrics makeMetrics(
+            FilterMetrics filterMetrics,
+            int skippedSplitsByDfInCoordinator,
+            long skippedDataSizeByDfInCoordinator,
+            int skippedSplitsByPartitionFilter,
+            long skippedDataSizeByPartitionFilter)
     {
-        if (filterMetrics == null) {
-            return Metrics.EMPTY;
+        DataSkippingMetrics.Builder builder = DataSkippingMetrics.builder()
+                .withMetric(SKIPPED_BY_DF_IN_COORDINATOR, skippedSplitsByDfInCoordinator, skippedDataSizeByDfInCoordinator)
+                .withMetric(SKIPPED_BY_PART_FILTER, skippedSplitsByPartitionFilter, skippedDataSizeByPartitionFilter);
+
+        if (filterMetrics != null) {
+            filterMetrics.getMetricEntry(FilterMetrics.MetricType.TOTAL).ifPresent(entry ->
+                    builder.withMetric(TOTAL, entry.getRawSplitCount(), entry.getTotalFileSize()));
+            filterMetrics.getMetricEntry(FilterMetrics.MetricType.SKIPPED_BY_MINMAX).ifPresent(entry ->
+                    builder.withMetric(SKIPPED_BY_MINMAX_STATS, entry.getRawSplitCount(), entry.getTotalFileSize()));
         }
 
-        ImmutableMap.Builder<String, Metric<?>> metricsBuilder = ImmutableMap.builder();
-        metricsBuilder.put(TOTAL_SPLITS_IN_PARTITIONS, new LongCount(
-                filterMetrics.getMetricEntry(FilterMetrics.MetricType.TOTAL)
-                        .map(FilterMetrics.MetricEntry::getRawSplitCount)
-                        .orElse(0)));
-        metricsBuilder.put(SKIPPED_SPLITS_BY_MINMAX, new LongCount(
-                filterMetrics.getMetricEntry(FilterMetrics.MetricType.SKIPPED_BY_MINMAX)
-                        .map(FilterMetrics.MetricEntry::getRawSplitCount)
-                        .orElse(0)));
-        return new Metrics(metricsBuilder.build());
+        return new Metrics(ImmutableMap.of(DATA_SKIPPING_METRICS, builder.build()));
     }
 
-    public static Metrics makeLongCountMetrics(String name, long count)
+    public static Metrics makeMetrics(DataSkippingMetrics.MetricType metricType, int splitCount, long dataSize)
     {
-        return new Metrics(ImmutableMap.of(name, new LongCount(count)));
+        DataSkippingMetrics dataSkippingMetrics = DataSkippingMetrics.builder()
+                .withMetric(metricType, splitCount, dataSize)
+                .build();
+        return new Metrics(ImmutableMap.of(DATA_SKIPPING_METRICS, dataSkippingMetrics));
     }
 }

@@ -18,7 +18,6 @@ import com.google.common.collect.ImmutableSet;
 import io.airlift.json.JsonCodec;
 import io.airlift.units.DataSize;
 import io.airlift.units.Duration;
-import io.trino.spi.metrics.Metrics;
 import org.joda.time.DateTime;
 import org.testng.annotations.Test;
 
@@ -80,8 +79,6 @@ public class TestTaskStats
             24,
 
             DataSize.ofBytes(25),
-
-            Metrics.EMPTY,
 
             26,
             new Duration(27, NANOSECONDS),

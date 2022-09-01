@@ -23,8 +23,8 @@ import {
     formatDataSize,
     formatDataSizeBytes,
     formatDuration,
+    formatPercentage,
     formatShortDateTime,
-    getCountWithPercentage,
     getFirstParameter,
     getHostAndPort,
     getHostname,
@@ -33,7 +33,6 @@ import {
     getStageStateColor,
     getTaskIdSuffix,
     getTaskNumber,
-    getTotalFromLongCountMetrics,
     GLYPHICON_HIGHLIGHT,
     parseAndFormatDataSize,
     parseDataSize,
@@ -226,6 +225,108 @@ class TaskList extends React.Component {
                 </Thead>
                 {renderedTasks}
             </Table>
+        );
+    }
+}
+
+class DataSkippingMetricsList extends React.Component {
+    formatMetricHeader(metrics) {
+        const header = [];
+        if (metrics.isSum) {
+            header.push(<td colSpan="2">SUM</td>);
+        }
+        else {
+            header.push(
+                <td>
+                    {metrics.stageId + "-" + metrics.planNodeId}
+                </td>
+            );
+            header.push(
+                <td>
+                    {metrics.schemaName}. <br/>
+                    {metrics.tableName}
+                </td>
+            );
+        }
+        return header;
+    }
+
+    formatMetricWithOption(metric, totalMetric) {
+        switch (this.props.displayOption) {
+            case "DataSize":
+                return (
+                    <td>
+                        {formatDataSize(metric.dataSize)} <br/>
+                        ({formatPercentage(metric.dataSize, totalMetric.dataSize)})
+                    </td>
+                )
+            case "SplitCount":
+                return (
+                    <td>
+                        {metric.splitCount} <br/>
+                        ({formatPercentage(metric.splitCount, totalMetric.splitCount)})
+                    </td>
+                )
+            default:
+                return (
+                    <td>N/A</td>
+                )
+        }
+    }
+
+    render() {
+        const renderedMetricsList = this.props.metricsList.map(metrics => (
+            <tr>
+                {this.formatMetricHeader(metrics)}
+                {this.formatMetricWithOption(metrics.total, metrics.total)}
+                {this.formatMetricWithOption(metrics.read, metrics.total)}
+                {this.formatMetricWithOption(metrics.skippedByMinmaxStats, metrics.total)}
+                {this.formatMetricWithOption(metrics.skippedByDfInCoordinator, metrics.total)}
+                {this.formatMetricWithOption(metrics.skippedByPartFilter, metrics.total)}
+                {this.formatMetricWithOption(metrics.skippedByIndexInCoordinator, metrics.total)}
+                {this.formatMetricWithOption(metrics.skippedByDfInWorker, metrics.total)}
+                {this.formatMetricWithOption(metrics.skippedByIndexInWorker, metrics.total)}
+            </tr>
+        ));
+
+        return (
+            <table className="table" id="data-skipping-metrics-list">
+                <thead>
+                    <tr className="data-skipping-metrics-list-header-group">
+                        <th rowSpan="2">
+                            <span data-toggle="tooltip" data-placement="top" title="StageId-PlanNodeId">ID</span>
+                        </th>
+                        <th rowSpan="2">Table</th>
+                        <th rowSpan="2">
+                            <span data-toggle="tooltip" data-placement="top" title="Total in target partitions">Total</span>
+                        </th>
+                        <th rowSpan="2">Read</th>
+                        <th colSpan="4">Skipped In Coordinator</th>
+                        <th colSpan="2">Skipped In Worker</th>
+                    </tr>
+                    <tr>
+                        <th>Minmax</th>
+                        <th>
+                            <span data-toggle="tooltip" data-placement="top" title="Dynamic Filter">Dyn. Filter</span>
+                        </th>
+                        <th>
+                            <span data-toggle="tooltip" data-placement="top" title="Partition Filter For Complicated Constraints">Part. Filter</span>
+                        </th>
+                        <th>
+                            <span data-toggle="tooltip" data-placement="top" title="In-place Index">Index</span>
+                        </th>
+                        <th>
+                            <span data-toggle="tooltip" data-placement="top" title="Dynamic Filter">Dyn. Filter</span>
+                        </th>
+                        <th>
+                            <span data-toggle="tooltip" data-placement="top" title="Non In-place Index">Index</span>
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {renderedMetricsList}
+                </tbody>
+            </table>
         );
     }
 }
@@ -675,6 +776,9 @@ export class QueryDetail extends React.Component {
             stageRefresh: true,
             taskRefresh: true,
 
+            dataSkippingMetricsList: null,
+            metricsDisplayOption: "DataSize",
+
             taskFilter: TASK_FILTER.ALL,
         };
 
@@ -1072,76 +1176,117 @@ export class QueryDetail extends React.Component {
         return renderedEstimates;
     }
 
-    renderSplitFilterMetrics() {
-        const metrics = this.state.query.queryStats.connectorMetrics;
-        if (metrics) {
-            const totalSplitsInPartitions = getTotalFromLongCountMetrics(metrics.iceberg_total_splits_in_partitions)
-            const totalSplitsRead = getTotalFromLongCountMetrics(metrics.iceberg_total_splits_read)
-            const skippedSplitsByIndex = getTotalFromLongCountMetrics(metrics.iceberg_skipped_splits_by_index)
-            const skippedSplitsByMinMax = getTotalFromLongCountMetrics(metrics.iceberg_skipped_splits_by_minmax)
-            const skippedSplitsByDFInCoordinator = getTotalFromLongCountMetrics(metrics.iceberg_skipped_splits_by_df_in_coordinator)
-            const skippedSplitsByDFInWorker = getTotalFromLongCountMetrics(metrics.iceberg_skipped_splits_by_df_in_worker)
-            return (
-                <div className="col-xs-6">
-                    <h3>Source Split Filter Metrics (Iceberg Only)</h3>
-                    <hr className="h3-hr"/>
-                    <table className="table">
-                        <tbody>
-                        <tr>
-                            <td className="info-title" style={{width: '50%'}}>
-                                Total Splits in Target Partitions
-                            </td>
-                            <td className="info-text">
-                                {totalSplitsInPartitions}
-                            </td>
-                        </tr>
-                        <tr>
-                            <td className="info-title">
-                                Total Splits Read
-                            </td>
-                            <td className="info-text">
-                                {getCountWithPercentage(totalSplitsRead, totalSplitsInPartitions)}
-                            </td>
-                        </tr>
-                        <tr>
-                            <td className="info-title">
-                                Skipped Splits by Index
-                            </td>
-                            <td className="info-text">
-                                {getCountWithPercentage(skippedSplitsByIndex, totalSplitsInPartitions)}
-                            </td>
-                        </tr>
-                        <tr>
-                            <td className="info-title">
-                                Skipped Splits by MinMax Statistics
-                            </td>
-                            <td className="info-text">
-                                {getCountWithPercentage(skippedSplitsByMinMax, totalSplitsInPartitions)}
-                            </td>
-                        </tr>
-                        <tr>
-                            <td className="info-title">
-                                Skipped Splits by Dynamic Filter in Coordinator
-                            </td>
-                            <td className="info-text">
-                                {getCountWithPercentage(skippedSplitsByDFInCoordinator, totalSplitsInPartitions)}
-                            </td>
-                        </tr>
-                        <tr>
-                            <td className="info-title">
-                                Skipped Splits by Dynamic Filter in Worker
-                            </td>
-                            <td className="info-text">
-                                {getCountWithPercentage(skippedSplitsByDFInWorker, totalSplitsInPartitions)}
-                            </td>
-                        </tr>
-                        </tbody>
-                    </table>
+    renderDataSkippingMetrics() {
+        if (this.state.dataSkippingMetricsList === null) {
+            const connectorMetrics = this.state.query.queryStats.connectorMetrics;
+            const defaultMetric = {splitCount: 0, dataSize: 0};
+            this.state.dataSkippingMetricsList = [];
+            if (connectorMetrics && connectorMetrics.hasOwnProperty('iceberg_data_skipping_metrics_table_level')) {
+                const metricsMap = connectorMetrics.iceberg_data_skipping_metrics_table_level;
+                if (metricsMap) {
+                    for (let tableKey in metricsMap) {
+                        if (tableKey !== "@class" && metricsMap.hasOwnProperty(tableKey)) {
+                            const tableKeyArray = tableKey.split(":");
+                            const tableNameArray = tableKeyArray[2].split(".");
+                            this.state.dataSkippingMetricsList.push({
+                                isSum: false,
+                                stageId: parseInt(tableKeyArray[0]),
+                                planNodeId: parseInt(tableKeyArray[1]),
+                                schemaName: tableNameArray[0],
+                                tableName: tableNameArray[1],
+                                total: metricsMap[tableKey]['TOTAL'] || defaultMetric,
+                                read: metricsMap[tableKey]['READ'] || defaultMetric,
+                                skippedByMinmaxStats: metricsMap[tableKey]['SKIPPED_BY_MINMAX_STATS'] || defaultMetric,
+                                skippedByIndexInCoordinator: metricsMap[tableKey]['SKIPPED_BY_INDEX_IN_COORDINATOR'] || defaultMetric,
+                                skippedByIndexInWorker: metricsMap[tableKey]['SKIPPED_BY_INDEX_IN_WORKER'] || defaultMetric,
+                                skippedByDfInCoordinator: metricsMap[tableKey]['SKIPPED_BY_DF_IN_COORDINATOR'] || defaultMetric,
+                                skippedByDfInWorker: metricsMap[tableKey]['SKIPPED_BY_DF_IN_WORKER'] || defaultMetric,
+                                skippedByPartFilter: metricsMap[tableKey]['SKIPPED_BY_PART_FILTER'] || defaultMetric
+                            })
+                        }
+                    }
+                }
+                this.state.dataSkippingMetricsList.sort((metricsA, metricsB) => {
+                    if (metricsA.stageId !== metricsB.stageId) {
+                        return metricsA.stageId > metricsB.stageId ? 1 : -1;
+                    }
+                    if (metricsA.planNodeId !== metricsB.planNodeId) {
+                        return metricsA.planNodeId > metricsB.planNodeId ? 1 : -1;
+                    }
+                    return 0;
+                })
+            }
+
+            if (connectorMetrics && connectorMetrics.hasOwnProperty('iceberg_data_skipping_metrics')) {
+                const sumMetrics = connectorMetrics.iceberg_data_skipping_metrics;
+                if (sumMetrics) {
+                    this.state.dataSkippingMetricsList.push({
+                        isSum: true,
+                        total: sumMetrics['TOTAL'] || defaultMetric,
+                        read: sumMetrics['READ'] || defaultMetric,
+                        skippedByMinmaxStats: sumMetrics['SKIPPED_BY_MINMAX_STATS'] || defaultMetric,
+                        skippedByIndexInCoordinator: sumMetrics['SKIPPED_BY_INDEX_IN_COORDINATOR'] || defaultMetric,
+                        skippedByIndexInWorker: sumMetrics['SKIPPED_BY_INDEX_IN_WORKER'] || defaultMetric,
+                        skippedByDfInCoordinator: sumMetrics['SKIPPED_BY_DF_IN_COORDINATOR'] || defaultMetric,
+                        skippedByDfInWorker: sumMetrics['SKIPPED_BY_DF_IN_WORKER'] || defaultMetric,
+                        skippedByPartFilter: sumMetrics['SKIPPED_BY_PART_FILTER'] || defaultMetric
+                    })
+                }
+            }
+        }
+
+        if (this.state.dataSkippingMetricsList.length === 0) {
+            return;
+        }
+        return (
+            <div>
+                <div className="row">
+                    <div className="col-xs-9">
+                        <h3>Data Skipping Metrics (Iceberg Only)</h3>
+                    </div>
+                    <div className="col-xs-3">
+                        <table className="header-inline-links">
+                            <tbody>
+                            <tr>
+                                <td>
+                                    {this.renderMetricsDisplayOptionButton()}
+                                </td>
+                            </tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
-            );
+                <div className="row">
+                    <div className="col-xs-12">
+                        <DataSkippingMetricsList
+                                key={this.state.query.queryId}
+                                metricsList={this.state.dataSkippingMetricsList}
+                                displayOption={this.state.metricsDisplayOption}/>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    renderMetricsDisplayOptionButton() {
+        if (this.state.metricsDisplayOption === "DataSize") {
+            return <button className="btn btn-info live-button" onClick={this.handleMetricsDisplayOptionClick.bind(this)}>Display Metrics In Split Count</button>
+        }
+        else if (this.state.metricsDisplayOption === "SplitCount") {
+            return <button className="btn btn-info live-button" onClick={this.handleMetricsDisplayOptionClick.bind(this)}>Display Metrics In Data Size</button>
+        }
+    }
+
+    handleMetricsDisplayOptionClick() {
+        if (this.state.metricsDisplayOption === "DataSize") {
+            this.setState({
+                metricsDisplayOption: "SplitCount"
+            });
         }
         else {
-            return null;
+            this.setState({
+                metricsDisplayOption: "DataSize"
+            });
         }
     }
 
@@ -1692,7 +1837,7 @@ export class QueryDetail extends React.Component {
                         </div>
                     </div>
                 </div>
-                {this.renderSplitFilterMetrics()}
+                {this.renderDataSkippingMetrics()}
                 {this.renderWarningInfo()}
                 {this.renderFailureInfo()}
                 <div className="row">

@@ -121,8 +121,12 @@ public class IcebergSplitSource
     private Iterator<FileScanTask> fileScanIterator;
 
     private TupleDomain<IcebergColumnHandle> pushedDownDynamicFilterPredicate;
-    private int skippedSplitsByDynamicFilter;
     private boolean includeIndex;
+
+    private int skippedSplitsByDynamicFilter;
+    private long skippedDataSizeByDynamicFilter;
+    private int skippedSplitsByPartitionFilter;
+    private long skippedDataSizeByPartitionFilter;
 
     public IcebergSplitSource(
             ConnectorSession session,
@@ -267,7 +271,7 @@ public class IcebergSplitSource
                         identityPartitionColumns,
                         partitionValues,
                         dynamicFilterPredicate)) {
-                    skippedSplitsByDynamicFilter++;
+                    recordSkipMetricsForDynamicFilter(1, icebergSplit.getLength());
                     continue;
                 }
                 if (!fileMatchesPredicate(
@@ -276,16 +280,29 @@ public class IcebergSplitSource
                         scanTask.file().lowerBounds(),
                         scanTask.file().upperBounds(),
                         scanTask.file().nullValueCounts())) {
-                    skippedSplitsByDynamicFilter++;
+                    recordSkipMetricsForDynamicFilter(1, icebergSplit.getLength());
                     continue;
                 }
             }
             if (!partitionMatchesConstraint(identityPartitionColumns, partitionValues, constraint)) {
+                recordSkipMetricsForPartitionFilter(1, icebergSplit.getLength());
                 continue;
             }
             splits.add(icebergSplit);
         }
         return new ConnectorSplitBatch(splits.build(), isFinished());
+    }
+
+    private void recordSkipMetricsForDynamicFilter(int splitCount, long dataSize)
+    {
+        skippedSplitsByDynamicFilter += splitCount;
+        skippedDataSizeByDynamicFilter += dataSize;
+    }
+
+    private void recordSkipMetricsForPartitionFilter(int splitCount, long dataSize)
+    {
+        skippedSplitsByPartitionFilter += splitCount;
+        skippedDataSizeByPartitionFilter += dataSize;
     }
 
     private void finish()
@@ -318,19 +335,20 @@ public class IcebergSplitSource
     @Override
     public Optional<Metrics> getMetrics()
     {
-        Metrics.Accumulator metricsAccumulator = Metrics.accumulator();
-
+        Metrics metrics;
         scanLock.readLock().lock();
         try {
-            metricsAccumulator.add(MetricsUtils.makeMetricsFromFilterMetrics(filterMetrics));
+            metrics = MetricsUtils.makeMetrics(
+                    filterMetrics,
+                    skippedSplitsByDynamicFilter,
+                    skippedDataSizeByDynamicFilter,
+                    skippedSplitsByPartitionFilter,
+                    skippedDataSizeByPartitionFilter);
         }
         finally {
             scanLock.readLock().unlock();
         }
-
-        metricsAccumulator.add(MetricsUtils.makeLongCountMetrics(
-                MetricsUtils.SKIPPED_SPLITS_BY_DF_IN_COORDINATOR, skippedSplitsByDynamicFilter));
-        return Optional.of(metricsAccumulator.get());
+        return Optional.of(metrics);
     }
 
     @Override

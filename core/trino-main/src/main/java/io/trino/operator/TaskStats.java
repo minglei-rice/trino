@@ -19,7 +19,6 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import io.airlift.units.DataSize;
 import io.airlift.units.Duration;
-import io.trino.spi.metrics.Metrics;
 import org.joda.time.DateTime;
 
 import javax.annotation.Nullable;
@@ -85,8 +84,6 @@ public class TaskStats
 
     private final DataSize physicalWrittenDataSize;
 
-    private final Metrics connectorMetrics;
-
     private final int fullGcCount;
     private final Duration fullGcTime;
 
@@ -134,7 +131,6 @@ public class TaskStats
                 DataSize.ofBytes(0),
                 0,
                 DataSize.ofBytes(0),
-                Metrics.EMPTY,
                 0,
                 new Duration(0, MILLISECONDS),
                 ImmutableList.of());
@@ -192,8 +188,6 @@ public class TaskStats
             @JsonProperty("outputPositions") long outputPositions,
 
             @JsonProperty("physicalWrittenDataSize") DataSize physicalWrittenDataSize,
-
-            @JsonProperty("connectorMetrics") Metrics connectorMetrics,
 
             @JsonProperty("fullGcCount") int fullGcCount,
             @JsonProperty("fullGcTime") Duration fullGcTime,
@@ -267,8 +261,6 @@ public class TaskStats
         this.outputPositions = outputPositions;
 
         this.physicalWrittenDataSize = requireNonNull(physicalWrittenDataSize, "physicalWrittenDataSize is null");
-
-        this.connectorMetrics = requireNonNull(connectorMetrics, "connectorMetrics is null");
 
         checkArgument(fullGcCount >= 0, "fullGcCount is negative");
         this.fullGcCount = fullGcCount;
@@ -498,12 +490,6 @@ public class TaskStats
     }
 
     @JsonProperty
-    public Metrics getConnectorMetrics()
-    {
-        return connectorMetrics;
-    }
-
-    @JsonProperty
     public List<PipelineStats> getPipelines()
     {
         return pipelines;
@@ -588,7 +574,6 @@ public class TaskStats
                 outputDataSize,
                 outputPositions,
                 physicalWrittenDataSize,
-                connectorMetrics,
                 fullGcCount,
                 fullGcTime,
                 ImmutableList.of());
@@ -637,7 +622,6 @@ public class TaskStats
                 outputDataSize,
                 outputPositions,
                 physicalWrittenDataSize,
-                connectorMetrics,
                 fullGcCount,
                 fullGcTime,
                 summarizePipelineStats(pipelines));

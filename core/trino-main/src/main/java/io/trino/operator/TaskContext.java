@@ -34,7 +34,6 @@ import io.trino.memory.QueryContext;
 import io.trino.memory.QueryContextVisitor;
 import io.trino.memory.context.LocalMemoryContext;
 import io.trino.memory.context.MemoryTrackingContext;
-import io.trino.spi.metrics.Metrics;
 import io.trino.spi.predicate.Domain;
 import io.trino.sql.planner.LocalDynamicFiltersCollector;
 import io.trino.sql.planner.plan.DynamicFilterId;
@@ -89,9 +88,6 @@ public class TaskContext
     private final Set<Lifespan> completedDriverGroups = newConcurrentHashSet();
 
     private final List<PipelineContext> pipelineContexts = new CopyOnWriteArrayList<>();
-
-    // update only if task is done to avoid redundant computation
-    private final AtomicReference<Metrics> connectorMetrics = new AtomicReference<>(Metrics.EMPTY);
 
     private final boolean perOperatorCpuTimerEnabled;
     private final boolean cpuTimerEnabled;
@@ -238,15 +234,6 @@ public class TaskContext
             endNanos.compareAndSet(0, System.nanoTime());
             endFullGcCount.compareAndSet(-1, majorGcCount);
             endFullGcTimeNanos.compareAndSet(-1, majorGcTime);
-
-            // collect connector metrics directly from operators
-            Metrics.Accumulator connectorMetricsAccumulator = Metrics.accumulator();
-            pipelineContexts.stream()
-                    .map(PipelineContext::getPipelineStats)
-                    .flatMap(pipelineStats -> pipelineStats.getOperatorSummaries().stream())
-                    .map(OperatorStats::getConnectorMetrics)
-                    .forEach(connectorMetricsAccumulator::add);
-            connectorMetrics.compareAndSet(Metrics.EMPTY, connectorMetricsAccumulator.get());
         }
     }
 
@@ -596,7 +583,6 @@ public class TaskContext
                 succinctBytes(outputDataSize),
                 outputPositions,
                 succinctBytes(physicalWrittenDataSize),
-                connectorMetrics.get(),
                 fullGcCount,
                 fullGcTime,
                 pipelineStats);

@@ -33,6 +33,8 @@ import java.util.OptionalLong;
 import static com.google.common.base.Throwables.throwIfInstanceOf;
 import static io.trino.plugin.iceberg.IcebergErrorCode.ICEBERG_BAD_DATA;
 import static io.trino.plugin.iceberg.IcebergUtil.deserializePartitionValue;
+import static io.trino.plugin.iceberg.util.MetricsUtils.makeMetrics;
+import static io.trino.spi.metrics.DataSkippingMetrics.MetricType.READ;
 import static java.util.Objects.requireNonNull;
 
 public class IcebergPageSource
@@ -42,23 +44,12 @@ public class IcebergPageSource
     private final int[] delegateIndexes;
     private final ConnectorPageSource delegate;
     private final Optional<ReaderProjectionsAdapter> projectionsAdapter;
-    private final Metrics metrics;
 
     public IcebergPageSource(
             List<IcebergColumnHandle> columns,
             Map<Integer, Optional<String>> partitionKeys,
             ConnectorPageSource delegate,
             Optional<ReaderProjectionsAdapter> projectionsAdapter)
-    {
-        this(columns, partitionKeys, delegate, projectionsAdapter, Metrics.EMPTY);
-    }
-
-    public IcebergPageSource(
-            List<IcebergColumnHandle> columns,
-            Map<Integer, Optional<String>> partitionKeys,
-            ConnectorPageSource delegate,
-            Optional<ReaderProjectionsAdapter> projectionsAdapter,
-            Metrics metrics)
     {
         int size = requireNonNull(columns, "columns is null").size();
         requireNonNull(partitionKeys, "partitionKeys is null");
@@ -67,7 +58,6 @@ public class IcebergPageSource
         this.prefilledBlocks = new Block[size];
         this.delegateIndexes = new int[size];
         this.projectionsAdapter = requireNonNull(projectionsAdapter, "projectionsAdapter is null");
-        this.metrics = metrics;
 
         int outputIndex = 0;
         int delegateIndex = 0;
@@ -167,7 +157,8 @@ public class IcebergPageSource
     @Override
     public Metrics getMetrics()
     {
-        return (delegate.getMetrics() != Metrics.EMPTY) ? metrics.mergeWith(delegate.getMetrics()) : metrics;
+        Metrics metrics = makeMetrics(READ, 1, getCompletedBytes());
+        return delegate.getMetrics() == Metrics.EMPTY ? metrics : metrics.mergeWith(delegate.getMetrics());
     }
 
     protected void closeWithSuppression(Throwable throwable)

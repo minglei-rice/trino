@@ -254,9 +254,9 @@ public final class SqlStage
         stateMachine.recordGetSplitTime(start);
     }
 
-    public void updateConnectorMetrics(Metrics newConnectorMetrics)
+    public void updateConnectorMetrics(Metrics newConnectorMetrics, PlanNodeId planNodeId)
     {
-        stateMachine.updateConnectorMetrics(newConnectorMetrics);
+        stateMachine.updateConnectorMetrics(newConnectorMetrics, planNodeId);
     }
 
     private synchronized void updateTaskStatus(TaskStatus status)

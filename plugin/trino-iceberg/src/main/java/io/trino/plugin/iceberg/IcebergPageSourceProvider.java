@@ -51,7 +51,6 @@ import io.trino.plugin.hive.parquet.HdfsParquetDataSource;
 import io.trino.plugin.hive.parquet.ParquetPageSource;
 import io.trino.plugin.hive.parquet.ParquetReaderConfig;
 import io.trino.plugin.iceberg.IcebergParquetColumnIOConverter.FieldContext;
-import io.trino.plugin.iceberg.util.MetricsUtils;
 import io.trino.spi.TrinoException;
 import io.trino.spi.connector.ColumnHandle;
 import io.trino.spi.connector.ConnectorPageSource;
@@ -62,7 +61,6 @@ import io.trino.spi.connector.ConnectorTableHandle;
 import io.trino.spi.connector.ConnectorTransactionHandle;
 import io.trino.spi.connector.DynamicFilter;
 import io.trino.spi.connector.EmptyPageSource;
-import io.trino.spi.metrics.Metrics;
 import io.trino.spi.predicate.Domain;
 import io.trino.spi.predicate.TupleDomain;
 import io.trino.spi.type.ArrayType;
@@ -137,7 +135,9 @@ import static io.trino.plugin.iceberg.IcebergSessionProperties.isUseFileSizeFrom
 import static io.trino.plugin.iceberg.IcebergSplitManager.ICEBERG_DOMAIN_COMPACTION_THRESHOLD;
 import static io.trino.plugin.iceberg.TypeConverter.ICEBERG_BINARY_TYPE;
 import static io.trino.plugin.iceberg.TypeConverter.ORC_ICEBERG_ID_KEY;
+import static io.trino.plugin.iceberg.util.MetricsUtils.makeMetrics;
 import static io.trino.spi.StandardErrorCode.NOT_SUPPORTED;
+import static io.trino.spi.metrics.DataSkippingMetrics.MetricType.SKIPPED_BY_INDEX_IN_WORKER;
 import static io.trino.spi.type.UuidType.UUID;
 import static io.trino.spi.type.VarbinaryType.VARBINARY;
 import static java.lang.String.format;
@@ -186,7 +186,6 @@ public class IcebergPageSourceProvider
     {
         IcebergSplit split = (IcebergSplit) connectorSplit;
         IcebergTableHandle table = (IcebergTableHandle) connectorTable;
-        Metrics.Accumulator metricsAccumulator = Metrics.accumulator();
 
         HdfsContext hdfsContext = new HdfsContext(session);
         FileScanTask fileScanTask = split.decodeFileScanTask();
@@ -195,11 +194,9 @@ public class IcebergPageSourceProvider
             HdfsFileIo hdfsFileIo = new HdfsFileIo(hdfsEnvironment, hdfsContext);
             split.setIsSkippedByIndex(!fileScanTask.isRequired(hdfsFileIo, false));
             split.setIndexReadTime(System.currentTimeMillis() - start);
-            metricsAccumulator.add(MetricsUtils.makeLongCountMetrics(
-                    MetricsUtils.SKIPPED_SPLITS_BY_INDEX, split.isSkippedByIndex() ? 1 : 0));
             if (split.isSkippedByIndex()) {
                 log.info("Indices hit for file : %s, split skipped, time spent : %s ms", fileScanTask.file().path(), split.getIndexReadTime());
-                return new EmptyPageSource(metricsAccumulator.get());
+                return new EmptyPageSource(makeMetrics(SKIPPED_BY_INDEX_IN_WORKER, 1, split.getLength()));
             }
             log.info("Indices missed for file : %s, time spent : %s ms", fileScanTask.file().path(), split.getIndexReadTime());
         }
@@ -239,9 +236,7 @@ public class IcebergPageSourceProvider
                         readerColumns,
                         column -> ((IcebergColumnHandle) column).getType(),
                         IcebergPageSourceProvider::applyProjection));
-        metricsAccumulator.add(MetricsUtils.makeLongCountMetrics(MetricsUtils.TOTAL_SPLITS_READ, 1));
-        return new IcebergPageSource(icebergColumns, partitionKeys, dataPageSource.get(),
-                projectionsAdapter, metricsAccumulator.get());
+        return new IcebergPageSource(icebergColumns, partitionKeys, dataPageSource.get(), projectionsAdapter);
     }
 
     private ReaderPageSource createDataPageSource(
