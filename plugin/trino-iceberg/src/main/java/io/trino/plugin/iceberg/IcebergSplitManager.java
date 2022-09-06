@@ -87,6 +87,10 @@ public class IcebergSplitManager
             log.info("Index enabled, including index stats");
             tableScan = tableScan.includeIndexStats();
         }
+        else {
+            tableScan = tableScan.disableInPlaceIndex(true);
+        }
+
         IcebergSplitSource splitSource = new IcebergSplitSource(
                 session,
                 hdfsEnvironment,
