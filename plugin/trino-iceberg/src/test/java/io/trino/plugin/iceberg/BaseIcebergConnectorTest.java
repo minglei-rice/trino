@@ -18,7 +18,6 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import io.airlift.units.DataSize;
-import io.trino.FeaturesConfig;
 import io.trino.Session;
 import io.trino.execution.warnings.WarningCollector;
 import io.trino.metadata.Metadata;
@@ -95,7 +94,6 @@ import static com.google.common.collect.ImmutableMap.toImmutableMap;
 import static com.google.common.collect.Iterables.getOnlyElement;
 import static com.google.common.collect.MoreCollectors.onlyElement;
 import static com.google.common.collect.MoreCollectors.toOptional;
-import static io.trino.SystemSessionProperties.JOIN_DISTRIBUTION_TYPE;
 import static io.trino.SystemSessionProperties.PREFERRED_WRITE_PARTITIONING_MIN_NUMBER_OF_PARTITIONS;
 import static io.trino.plugin.hive.HdfsEnvironment.HdfsContext;
 import static io.trino.plugin.hive.HiveTestUtils.HDFS_ENVIRONMENT;
@@ -2804,30 +2802,6 @@ public abstract class BaseIcebergConnectorTest
                                 ")");
 
         assertUpdate("DROP TABLE test_all_types");
-    }
-
-    @Test
-    public void testLocalDynamicFilteringWithSelectiveBuildSizeJoin()
-    {
-        long fullTableScan = (Long) computeActual("SELECT count(*) FROM lineitem").getOnlyValue();
-        long numberOfFiles = (Long) computeActual("SELECT count(*) FROM \"lineitem$files\"").getOnlyValue();
-        Session session = Session.builder(getSession())
-                .setSystemProperty(JOIN_DISTRIBUTION_TYPE, FeaturesConfig.JoinDistributionType.BROADCAST.name())
-                .build();
-
-        ResultWithQueryId<MaterializedResult> result = getDistributedQueryRunner().executeWithQueryId(
-                session,
-                "SELECT * FROM lineitem JOIN orders ON lineitem.orderkey = orders.orderkey AND orders.totalprice = 974.04");
-        assertEquals(result.getResult().getRowCount(), 1);
-
-        OperatorStats probeStats = searchScanFilterAndProjectOperatorStats(
-                result.getQueryId(),
-                new QualifiedObjectName(ICEBERG_CATALOG, "tpch", "lineitem"));
-
-        // Assert no split level pruning occurs. If this starts failing a new totalprice may need to be selected
-        assertThat(probeStats.getTotalDrivers()).isEqualTo(numberOfFiles);
-        // Assert some lineitem rows were filtered out on file level
-        assertThat(probeStats.getInputPositions()).isLessThan(fullTableScan);
     }
 
     @Test(dataProvider = "repartitioningDataProvider")
