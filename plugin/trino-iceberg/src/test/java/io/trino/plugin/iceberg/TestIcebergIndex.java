@@ -25,6 +25,7 @@ import io.trino.hdfs.HdfsConfiguration;
 import io.trino.hdfs.HdfsConfigurationInitializer;
 import io.trino.hdfs.HdfsEnvironment;
 import io.trino.hdfs.authentication.NoHdfsAuthentication;
+import io.trino.operator.OperatorStats;
 import io.trino.plugin.base.CatalogName;
 import io.trino.plugin.hive.metastore.HiveMetastore;
 import io.trino.plugin.hive.metastore.cache.CachingHiveMetastore;
@@ -32,10 +33,14 @@ import io.trino.plugin.iceberg.catalog.IcebergTableOperationsProvider;
 import io.trino.plugin.iceberg.catalog.TrinoCatalog;
 import io.trino.plugin.iceberg.catalog.file.FileMetastoreTableOperationsProvider;
 import io.trino.plugin.iceberg.catalog.hms.TrinoHiveCatalog;
+import io.trino.spi.QueryId;
 import io.trino.spi.connector.SchemaTableName;
 import io.trino.spi.type.TestingTypeManager;
+import io.trino.sql.planner.optimizations.PlanNodeSearcher;
+import io.trino.sql.planner.plan.PlanNode;
+import io.trino.sql.planner.plan.TableScanNode;
 import io.trino.testing.AbstractTestQueryFramework;
-import io.trino.testing.MaterializedRow;
+import io.trino.testing.MaterializedResultWithQueryId;
 import io.trino.testing.QueryRunner;
 import org.apache.hadoop.fs.Path;
 import org.apache.iceberg.CorrelatedColumns;
@@ -67,6 +72,8 @@ import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
+import java.util.stream.Collectors;
 
 import static com.google.common.io.MoreFiles.deleteRecursively;
 import static com.google.common.io.RecursiveDeleteOption.ALLOW_INSECURE;
@@ -74,6 +81,7 @@ import static io.trino.plugin.hive.HiveTestUtils.HDFS_ENVIRONMENT;
 import static io.trino.plugin.hive.metastore.file.FileHiveMetastore.createTestingFileHiveMetastore;
 import static io.trino.testing.TestingConnectorSession.SESSION;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNotNull;
 
 /**
  * Test reading iceberg tables with indices.
@@ -145,7 +153,7 @@ public class TestIcebergIndex
         getQueryRunner().execute("create table fact(f_k int,v int)");
         getQueryRunner().execute("create table dim(d_k int,v double)");
         getQueryRunner().execute("insert into fact values (1,1),(1,2),(3,3)");
-        getQueryRunner().execute("insert into dim values (1,1.0),(2,2.0),(3,3.0)");
+        getQueryRunner().execute("insert into dim values (1,1.0),(2,2.0),(3,3.0),(4,4.0)");
         Table fact = loadIcebergTable("fact");
         // alter table fact add correlated column (v as dim_v) from inner join dim on f_k=d_k with pk_fk
         CorrelatedColumns.Builder corrColBuilder = new CorrelatedColumns.Builder(fact.schema(), false)
@@ -172,9 +180,36 @@ public class TestIcebergIndex
                 });
         fact.refresh();
 
-        List<MaterializedRow> results = getQueryRunner().execute("select sum(fact.v) from fact join dim on f_k=d_k where dim.v=5.0 group by f_k").getMaterializedRows();
-        // TODO: verify split is skipped by index
-        assertEquals(results.size(), 0);
+        MaterializedResultWithQueryId resultWithId = getDistributedQueryRunner().executeWithQueryId(
+                getSession(), "select sum(fact.v) from fact join dim on f_k=d_k where dim.v=5.0 group by f_k");
+        assertEquals(resultWithId.getResult().getMaterializedRows().size(), 0);
+        QueryId queryId = resultWithId.getQueryId();
+        List<OperatorStats> operatorStats = getTableScanStats(queryId, "fact");
+        assertEquals(operatorStats.size(), 1);
+        assertEquals(operatorStats.get(0).getOutputPositions(), 0L);
+    }
+
+    private List<OperatorStats> getTableScanStats(QueryId queryId, String tableName)
+    {
+        List<OperatorStats> operatorStats =
+                getDistributedQueryRunner().getCoordinator().getQueryManager().getFullQueryInfo(queryId).getQueryStats().getOperatorSummaries();
+        List<OperatorStats> allTSStats = operatorStats.stream()
+                .filter(x -> x.getOperatorType().equals("ScanFilterAndProjectOperator")).collect(Collectors.toList());
+        PlanNode root = getDistributedQueryRunner().getQueryPlan(queryId).getRoot();
+        List<OperatorStats> res = new ArrayList<>();
+        for (OperatorStats stats : allTSStats) {
+            PlanNode start = PlanNodeSearcher.searchFrom(root).where(n -> n.getId().equals(stats.getPlanNodeId())).findOnlyElement(null);
+            assertNotNull(start, String.format("PlanNodeId (%s) not found in query plan", stats.getPlanNodeId()));
+            Optional<PlanNode> tableScan = PlanNodeSearcher.searchFrom(start).where(node -> {
+                if (node instanceof TableScanNode) {
+                    TableScanNode ts = (TableScanNode) node;
+                    return ((IcebergTableHandle) ts.getTable().getConnectorHandle()).getTableName().equals(tableName);
+                }
+                return false;
+            }).findSingle();
+            tableScan.ifPresent(ignore -> res.add(stats));
+        }
+        return res;
     }
 
     private Table loadIcebergTable(String tableName)
@@ -195,7 +230,7 @@ public class TestIcebergIndex
                 SESSION, new SchemaTableName("tpch", tableName));
     }
 
-    private <T> void generateIndexFiles(Table table, FileScanTask task, Object[][] rows)
+    private void generateIndexFiles(Table table, FileScanTask task, Object[][] rows)
             throws Exception
     {
         Path indexRootPath = new Path(table.location(), "index");
@@ -206,7 +241,7 @@ public class TestIcebergIndex
     }
 
     // generate all required index files for a source file, and return the updated DataFile
-    private <T> DataFile generateIndexFiles(Table table, FileScanTask task, Path indexRootPath, Object[][] rows)
+    private DataFile generateIndexFiles(Table table, FileScanTask task, Path indexRootPath, Object[][] rows)
             throws Exception
     {
         DataFile sourceFile = task.file();
