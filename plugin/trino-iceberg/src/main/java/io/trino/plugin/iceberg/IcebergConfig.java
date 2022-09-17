@@ -40,6 +40,7 @@ public class IcebergConfig
     private boolean projectionPushdownEnabled = true;
     private boolean readIndicesSwitchOn = true;
     private boolean generateSplitsAsync = true;
+    private boolean queryPartitionFilterRequired;
 
     public CatalogType getCatalogType()
     {
@@ -192,5 +193,17 @@ public class IcebergConfig
     public boolean isGenerateSplitsAsync()
     {
         return generateSplitsAsync;
+    }
+
+    @Config("iceberg.query-partition-filter-required")
+    public IcebergConfig setQueryPartitionFilterRequired(boolean queryPartitionFilterRequired)
+    {
+        this.queryPartitionFilterRequired = queryPartitionFilterRequired;
+        return this;
+    }
+
+    public boolean isQueryPartitionFilterRequired()
+    {
+        return queryPartitionFilterRequired;
     }
 }

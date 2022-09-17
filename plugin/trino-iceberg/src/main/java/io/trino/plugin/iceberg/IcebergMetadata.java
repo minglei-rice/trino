@@ -27,6 +27,7 @@ import io.trino.plugin.base.classloader.ClassLoaderSafeSystemTable;
 import io.trino.plugin.hive.HiveApplyProjectionUtil;
 import io.trino.plugin.hive.HiveApplyProjectionUtil.ProjectedColumnRepresentation;
 import io.trino.plugin.hive.HiveWrittenPartitions;
+import io.trino.spi.StandardErrorCode;
 import io.trino.spi.TrinoException;
 import io.trino.spi.connector.Assignment;
 import io.trino.spi.connector.CatalogSchemaName;
@@ -134,6 +135,7 @@ import static io.trino.plugin.iceberg.TypeConverter.toIcebergType;
 import static io.trino.plugin.iceberg.TypeConverter.toTrinoType;
 import static io.trino.spi.StandardErrorCode.NOT_SUPPORTED;
 import static io.trino.spi.type.BigintType.BIGINT;
+import static java.lang.String.format;
 import static java.util.Collections.singletonList;
 import static java.util.Objects.requireNonNull;
 import static java.util.function.Function.identity;
@@ -968,6 +970,29 @@ public class IcebergMetadata
                 newProjections,
                 outputAssignments,
                 false));
+    }
+
+    /**
+     * Determine if there is a filter on a table. For partition table require at least one partition filter,
+     * for non-partitioned table no filter is required.
+     */
+    @Override
+    public void validateScan(ConnectorSession session, ConnectorTableHandle handle)
+    {
+        IcebergTableHandle table = (IcebergTableHandle) handle;
+        Table icebergTable = catalog.loadTable(session, table.getSchemaTableName());
+        if (icebergTable.spec().isUnpartitioned()) {
+            return;
+        }
+        if (IcebergSessionProperties.isFilterOnPartitionTable(session)
+                && table.getEnforcedPredicate().equals(TupleDomain.all())) {
+            throw new TrinoException(
+                    StandardErrorCode.QUERY_REJECTED,
+                    format("Filter required on %s.%s for at least one partition column, if you actually want query run without partition filter, " +
+                            "please set session query_partition_filter_required to false.",
+                            table.getSchemaName(),
+                            table.getTableName()));
+        }
     }
 
     private static IcebergColumnHandle createProjectedColumnHandle(IcebergColumnHandle column, List<Integer> indices, io.trino.spi.type.Type projectedColumnType)

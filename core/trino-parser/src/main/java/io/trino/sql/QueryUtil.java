@@ -23,6 +23,7 @@ import io.trino.sql.tree.Expression;
 import io.trino.sql.tree.FunctionCall;
 import io.trino.sql.tree.GroupBy;
 import io.trino.sql.tree.Identifier;
+import io.trino.sql.tree.Limit;
 import io.trino.sql.tree.LogicalExpression;
 import io.trino.sql.tree.Node;
 import io.trino.sql.tree.NullLiteral;
@@ -209,6 +210,11 @@ public final class QueryUtil
     public static Query simpleQuery(Select select, Relation from, Expression where, OrderBy orderBy)
     {
         return simpleQuery(select, from, Optional.of(where), Optional.of(orderBy));
+    }
+
+    public static Query simpleQuery(Select select, Relation from, Optional<Expression> where, OrderBy orderBy, Limit limit)
+    {
+        return simpleQuery(select, from, where, Optional.empty(), Optional.empty(), Optional.of(orderBy), Optional.empty(), Optional.of(limit));
     }
 
     public static Query simpleQuery(Select select, Relation from, Optional<Expression> where, Optional<OrderBy> orderBy)

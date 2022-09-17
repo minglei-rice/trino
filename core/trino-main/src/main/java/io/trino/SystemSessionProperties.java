@@ -153,6 +153,8 @@ public final class SystemSessionProperties
     public static final String HIDE_INACCESSIBLE_COLUMNS = "hide_inaccessible_columns";
     public static final String QUERY_OPTIMIZE_WITH_METADATA_ENABLED = "query_optimize_with_metadata_enabled";
     public static final String PUSHDOWN_CORR_COL_FILTERS = "pushdown_corr_col_filters";
+    public static final String FORBID_CROSS_JOIN = "forbid_cross_join";
+    public static final String ORDER_BY_FULL_TABLE = "order_by_full_table";
 
     private final List<PropertyMetadata<?>> sessionProperties;
 
@@ -717,6 +719,16 @@ public final class SystemSessionProperties
                         PUSHDOWN_CORR_COL_FILTERS,
                         "Whether to pushdown filters on correlated columns",
                         true,
+                        false),
+                booleanProperty(
+                        FORBID_CROSS_JOIN,
+                        "Whether Join type forbid cross join",
+                        false,
+                        false),
+                booleanProperty(
+                        ORDER_BY_FULL_TABLE,
+                        "whether forbid order by full table.",
+                        false,
                         false));
     }
 
@@ -1287,5 +1299,15 @@ public final class SystemSessionProperties
     public static boolean isQueryOptimizeWithMetadataEnabled(Session session)
     {
         return session.getSystemProperty(QUERY_OPTIMIZE_WITH_METADATA_ENABLED, Boolean.class);
+    }
+
+    public static boolean forbidCrossJoin(Session session)
+    {
+        return session.getSystemProperty(FORBID_CROSS_JOIN, Boolean.class);
+    }
+
+    public static boolean orderByFullTable(Session session)
+    {
+        return session.getSystemProperty(ORDER_BY_FULL_TABLE, Boolean.class);
     }
 }

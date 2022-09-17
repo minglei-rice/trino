@@ -46,7 +46,8 @@ public class TestIcebergConfig
                 .setTableStatisticsEnabled(true)
                 .setProjectionPushdownEnabled(true)
                 .setReadIndicesSwitchOn(true)
-                .setGenerateSplitsAsync(true));
+                .setGenerateSplitsAsync(true)
+                .setQueryPartitionFilterRequired(false));
     }
 
     @Test
@@ -64,6 +65,7 @@ public class TestIcebergConfig
                 .put("iceberg.projection-pushdown-enabled", "false")
                 .put("iceberg.read-indices-switch-on", "false")
                 .put("iceberg.generate-splits-async", "false")
+                .put("iceberg.query-partition-filter-required", "true")
                 .build();
 
         IcebergConfig expected = new IcebergConfig()
@@ -77,7 +79,8 @@ public class TestIcebergConfig
                 .setTableStatisticsEnabled(false)
                 .setProjectionPushdownEnabled(false)
                 .setReadIndicesSwitchOn(false)
-                .setGenerateSplitsAsync(false);
+                .setGenerateSplitsAsync(false)
+                .setQueryPartitionFilterRequired(true);
 
         assertFullMapping(properties, expected);
     }
