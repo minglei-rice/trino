@@ -25,7 +25,6 @@ import io.airlift.slice.Slice;
 import io.airlift.stats.GcMonitor;
 import io.airlift.stats.JmxGcMonitor;
 import io.airlift.stats.PauseMeter;
-import io.airlift.units.DataSize;
 import io.airlift.units.Duration;
 import io.trino.FeaturesConfig;
 import io.trino.SystemSessionProperties;
@@ -170,7 +169,6 @@ import static io.airlift.http.client.HttpClientBinder.httpClientBinder;
 import static io.airlift.jaxrs.JaxrsBinder.jaxrsBinder;
 import static io.airlift.json.JsonBinder.jsonBinder;
 import static io.airlift.json.JsonCodecBinder.jsonCodecBinder;
-import static io.airlift.units.DataSize.Unit.MEGABYTE;
 import static io.trino.execution.scheduler.NodeSchedulerConfig.NodeSchedulerPolicy.TOPOLOGY;
 import static io.trino.execution.scheduler.NodeSchedulerConfig.NodeSchedulerPolicy.UNIFORM;
 import static java.util.Objects.requireNonNull;
@@ -332,15 +330,16 @@ public class ServerMainModule
         jaxrsBinder(binder).bind(PagesResponseWriter.class);
 
         // exchange client
+        ExchangeClientConfig exchangeClientConfig = buildConfigObject(ExchangeClientConfig.class);
         binder.bind(ExchangeClientSupplier.class).to(ExchangeClientFactory.class).in(Scopes.SINGLETON);
         httpClientBinder(binder).bindHttpClient("exchange", ForExchange.class)
                 .withTracing()
                 .withFilter(GenerateTraceTokenRequestFilter.class)
                 .withConfigDefaults(config -> {
-                    config.setIdleTimeout(new Duration(30, SECONDS));
-                    config.setRequestTimeout(new Duration(10, SECONDS));
-                    config.setMaxConnectionsPerServer(250);
-                    config.setMaxContentLength(DataSize.of(32, MEGABYTE));
+                    config.setIdleTimeout(exchangeClientConfig.getIdleTimeout());
+                    config.setRequestTimeout(exchangeClientConfig.getRequestTimeout());
+                    config.setMaxConnectionsPerServer(exchangeClientConfig.getMaxConnectionsPerServer());
+                    config.setMaxContentLength(exchangeClientConfig.getMaxContentLength());
                 });
 
         configBinder(binder).bindConfig(ExchangeClientConfig.class);

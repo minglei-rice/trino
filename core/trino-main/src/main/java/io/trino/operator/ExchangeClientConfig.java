@@ -16,7 +16,6 @@ package io.trino.operator;
 import io.airlift.configuration.Config;
 import io.airlift.http.client.HttpClientConfig;
 import io.airlift.units.DataSize;
-import io.airlift.units.DataSize.Unit;
 import io.airlift.units.Duration;
 import io.airlift.units.MinDataSize;
 import io.airlift.units.MinDuration;
@@ -26,15 +25,22 @@ import javax.validation.constraints.NotNull;
 
 import java.util.concurrent.TimeUnit;
 
+import static io.airlift.units.DataSize.Unit.MEGABYTE;
+import static java.util.concurrent.TimeUnit.SECONDS;
+
 public class ExchangeClientConfig
 {
-    private DataSize maxBufferSize = DataSize.of(32, Unit.MEGABYTE);
+    private DataSize maxBufferSize = DataSize.of(32, MEGABYTE);
     private int concurrentRequestMultiplier = 3;
     private Duration maxErrorDuration = new Duration(5, TimeUnit.MINUTES);
     private DataSize maxResponseSize = new HttpClientConfig().getMaxContentLength();
     private int clientThreads = 25;
     private int pageBufferClientMaxCallbackThreads = 25;
     private boolean acknowledgePages = true;
+    private Duration idleTimeout = new Duration(30, SECONDS);
+    private Duration requestTimeout = new Duration(10, SECONDS);
+    private int maxConnectionsPerServer = 250;
+    private DataSize maxContentLength = DataSize.of(32, MEGABYTE);
 
     @NotNull
     public DataSize getMaxBufferSize()
@@ -138,6 +144,54 @@ public class ExchangeClientConfig
     public ExchangeClientConfig setAcknowledgePages(boolean acknowledgePages)
     {
         this.acknowledgePages = acknowledgePages;
+        return this;
+    }
+
+    public Duration getIdleTimeout()
+    {
+        return idleTimeout;
+    }
+
+    @Config("exchange.http-client.idle-timeout")
+    public ExchangeClientConfig setIdleTimeout(Duration idleTimeout)
+    {
+        this.idleTimeout = idleTimeout;
+        return this;
+    }
+
+    public Duration getRequestTimeout()
+    {
+        return requestTimeout;
+    }
+
+    @Config("exchange.http-client.request-timeout")
+    public ExchangeClientConfig setRequestTimeout(Duration requestTimeout)
+    {
+        this.requestTimeout = requestTimeout;
+        return this;
+    }
+
+    public int getMaxConnectionsPerServer()
+    {
+        return maxConnectionsPerServer;
+    }
+
+    @Config("exchange.http-client.max-connections-per-server")
+    public ExchangeClientConfig setMaxConnectionsPerServer(int maxConnectionsPerServer)
+    {
+        this.maxConnectionsPerServer = maxConnectionsPerServer;
+        return this;
+    }
+
+    public DataSize getMaxContentLength()
+    {
+        return maxContentLength;
+    }
+
+    @Config("exchange.http-client.max-content-length")
+    public ExchangeClientConfig setMaxContentLength(DataSize maxContentLength)
+    {
+        this.maxContentLength = maxContentLength;
         return this;
     }
 }

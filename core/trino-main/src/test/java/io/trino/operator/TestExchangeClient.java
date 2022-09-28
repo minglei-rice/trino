@@ -19,14 +19,19 @@ import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ListMultimap;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
+import io.airlift.http.client.HttpClient;
+import io.airlift.http.client.HttpClientConfig;
 import io.airlift.http.client.HttpStatus;
 import io.airlift.http.client.Request;
 import io.airlift.http.client.Response;
+import io.airlift.http.client.jetty.JettyHttpClient;
 import io.airlift.http.client.testing.TestingHttpClient;
 import io.airlift.http.client.testing.TestingResponse;
+import io.airlift.node.NodeInfo;
 import io.airlift.units.DataSize;
 import io.airlift.units.DataSize.Unit;
 import io.airlift.units.Duration;
+import io.trino.FeaturesConfig;
 import io.trino.FeaturesConfig.DataIntegrityVerification;
 import io.trino.block.BlockAssertions;
 import io.trino.execution.StageId;
@@ -65,6 +70,7 @@ import static com.google.common.util.concurrent.Uninterruptibles.sleepUninterrup
 import static io.airlift.concurrent.MoreFutures.tryGetFutureValue;
 import static io.airlift.concurrent.Threads.daemonThreadsNamed;
 import static io.airlift.slice.Slices.utf8Slice;
+import static io.airlift.testing.Assertions.assertGreaterThan;
 import static io.airlift.testing.Assertions.assertLessThan;
 import static io.trino.execution.buffer.TestingPagesSerdeFactory.testingPagesSerde;
 import static io.trino.memory.context.AggregatedMemoryContext.newSimpleAggregatedMemoryContext;
@@ -965,5 +971,34 @@ public class TestExchangeClient
         assertEquals(clientStatus.getRequestsScheduled(), requestsScheduled, "requestsScheduled");
         assertEquals(clientStatus.getRequestsCompleted(), requestsCompleted, "requestsCompleted");
         assertEquals(clientStatus.getHttpRequestState(), httpRequestState, "httpRequestState");
+    }
+
+    @Test
+    public void testOverrideMaxResponseSize()
+    {
+        ExchangeClientConfig exchangeClientConfig = new ExchangeClientConfig();
+        HttpClient defaultHttpClient = new JettyHttpClient(new HttpClientConfig().setMaxContentLength(DataSize.of(16, Unit.MEGABYTE)));
+        ExchangeClient defaultExchangeClient = makeTestExchangeClient(exchangeClientConfig, defaultHttpClient);
+        assertLessThan(defaultExchangeClient.getMaxResponseSize().toBytes(), DataSize.of(16, Unit.MEGABYTE).toBytes());
+
+        // have no effects on client by increasing max response size through exchange client config
+        ExchangeClient exchangeClient = makeTestExchangeClient(exchangeClientConfig.setMaxResponseSize(DataSize.of(32, Unit.MEGABYTE)), defaultHttpClient);
+        assertLessThan(exchangeClient.getMaxResponseSize().toBytes(), DataSize.of(16, Unit.MEGABYTE).toBytes());
+
+        // only changing the http client config can effect the exchange client
+        HttpClient httpClient = new JettyHttpClient(new HttpClientConfig().setMaxContentLength(DataSize.of(32, Unit.MEGABYTE)));
+        exchangeClient = makeTestExchangeClient(exchangeClientConfig.setMaxResponseSize(DataSize.of(32, Unit.MEGABYTE)), httpClient);
+        assertGreaterThan(exchangeClient.getMaxResponseSize().toBytes(), DataSize.of(16, Unit.MEGABYTE).toBytes());
+    }
+
+    private ExchangeClient makeTestExchangeClient(ExchangeClientConfig exchangeClientConfig, HttpClient httpClient)
+    {
+        ExchangeClientFactory exchangeClientFactory = new ExchangeClientFactory(
+                new NodeInfo("test"),
+                new FeaturesConfig(),
+                new ExchangeClientConfig().setMaxResponseSize(DataSize.of(32, Unit.MEGABYTE)),
+                httpClient,
+                Executors.newSingleThreadScheduledExecutor());
+        return exchangeClientFactory.get(null, (ignored1, ignored2) -> {}, RetryPolicy.NONE);
     }
 }

@@ -40,7 +40,11 @@ public class TestExchangeClientConfig
                 .setMaxResponseSize(new HttpClientConfig().getMaxContentLength())
                 .setPageBufferClientMaxCallbackThreads(25)
                 .setClientThreads(25)
-                .setAcknowledgePages(true));
+                .setAcknowledgePages(true)
+                .setIdleTimeout(new Duration(30, TimeUnit.SECONDS))
+                .setRequestTimeout(new Duration(10, TimeUnit.SECONDS))
+                .setMaxConnectionsPerServer(250)
+                .setMaxContentLength(DataSize.of(32, Unit.MEGABYTE)));
     }
 
     @Test
@@ -55,6 +59,10 @@ public class TestExchangeClientConfig
                 .put("exchange.client-threads", "2")
                 .put("exchange.page-buffer-client.max-callback-threads", "16")
                 .put("exchange.acknowledge-pages", "false")
+                .put("exchange.http-client.idle-timeout", "50s")
+                .put("exchange.http-client.request-timeout", "20s")
+                .put("exchange.http-client.max-connections-per-server", "10")
+                .put("exchange.http-client.max-content-length", "512MB")
                 .build();
 
         ExchangeClientConfig expected = new ExchangeClientConfig()
@@ -65,7 +73,11 @@ public class TestExchangeClientConfig
                 .setMaxResponseSize(DataSize.of(1, Unit.MEGABYTE))
                 .setClientThreads(2)
                 .setPageBufferClientMaxCallbackThreads(16)
-                .setAcknowledgePages(false);
+                .setAcknowledgePages(false)
+                .setIdleTimeout(new Duration(50, TimeUnit.SECONDS))
+                .setRequestTimeout(new Duration(20, TimeUnit.SECONDS))
+                .setMaxConnectionsPerServer(10)
+                .setMaxContentLength(DataSize.of(512, Unit.MEGABYTE));
 
         assertFullMapping(properties, expected);
     }
