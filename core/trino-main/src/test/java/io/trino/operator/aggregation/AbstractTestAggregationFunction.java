@@ -41,7 +41,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 public abstract class AbstractTestAggregationFunction
 {
-    protected final TestingFunctionResolution functionResolution = new TestingFunctionResolution();
+    protected final TestingFunctionResolution functionResolution = createFunctionResolution();
+
+    protected TestingFunctionResolution createFunctionResolution()
+    {
+        return new TestingFunctionResolution();
+    }
 
     protected abstract Block[] getSequenceBlocks(int start, int length);
 
