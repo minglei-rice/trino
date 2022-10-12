@@ -777,7 +777,7 @@ export class QueryDetail extends React.Component {
             taskRefresh: true,
 
             dataSkippingMetricsList: null,
-            metricsDisplayOption: "DataSize",
+            metricsDisplayOption: "SplitCount",
 
             taskFilter: TASK_FILTER.ALL,
         };

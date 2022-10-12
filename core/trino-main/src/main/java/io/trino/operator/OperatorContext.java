@@ -32,6 +32,7 @@ import io.trino.operator.OperationTimer.OperationTiming;
 import io.trino.plugin.base.metrics.TDigestHistogram;
 import io.trino.spi.Page;
 import io.trino.spi.TrinoException;
+import io.trino.spi.metrics.DataSkippingMetrics;
 import io.trino.spi.metrics.Metrics;
 import io.trino.sql.planner.plan.PlanNodeId;
 
@@ -40,6 +41,7 @@ import javax.annotation.concurrent.GuardedBy;
 import javax.annotation.concurrent.ThreadSafe;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicLong;
@@ -49,10 +51,12 @@ import java.util.function.Supplier;
 import static com.google.common.base.MoreObjects.toStringHelper;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
+import static com.google.common.collect.ImmutableMap.toImmutableMap;
 import static com.google.common.util.concurrent.MoreExecutors.directExecutor;
 import static io.trino.operator.BlockedReason.WAITING_FOR_MEMORY;
 import static io.trino.operator.Operator.NOT_BLOCKED;
 import static io.trino.spi.StandardErrorCode.GENERIC_INTERNAL_ERROR;
+import static io.trino.spi.metrics.DataSkippingMetrics.MetricType.READ;
 import static java.lang.Math.max;
 import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
@@ -546,6 +550,20 @@ public class OperatorContext
         return operatorMetrics.mergeWith(new Metrics(ImmutableMap.of("Input distribution", new TDigestHistogram(digest))));
     }
 
+    // Fill readDataSize for DataSkippingMetrics. The provided DataSkippingMetrics is correct only if
+    // readSplitCount is set somewhere and readDataSize is 0 before calling this method
+    public static Metrics getOperatorConnectorMetrics(Metrics connectorMetrics, long physicalInputDataSizeInBytes)
+    {
+        Metrics extraMetrics = new Metrics(connectorMetrics.getMetrics().entrySet().stream()
+                .filter(entry -> entry.getValue() instanceof DataSkippingMetrics)
+                .collect(toImmutableMap(
+                        Map.Entry::getKey,
+                        entry -> DataSkippingMetrics.builder()
+                                .withMetric(READ, 0, physicalInputDataSizeInBytes)
+                                .build())));
+        return connectorMetrics.mergeWith(extraMetrics);
+    }
+
     public <C, R> R accept(QueryContextVisitor<C, R> visitor, C context)
     {
         return visitor.visitOperatorContext(this, context);
@@ -557,6 +575,7 @@ public class OperatorContext
         OperatorInfo info = Optional.ofNullable(infoSupplier).map(Supplier::get).orElse(null);
 
         long inputPositionsCount = inputPositions.getTotalCount();
+        long physicalInputDataSizeInBytes = physicalInputDataSize.getTotalCount();
 
         return new OperatorStats(
                 driverContext.getTaskId().getStageId().getId(),
@@ -573,11 +592,11 @@ public class OperatorContext
                 addInputTiming.getCalls(),
                 new Duration(addInputTiming.getWallNanos(), NANOSECONDS).convertToMostSuccinctTimeUnit(),
                 new Duration(addInputTiming.getCpuNanos(), NANOSECONDS).convertToMostSuccinctTimeUnit(),
-                DataSize.ofBytes(physicalInputDataSize.getTotalCount()),
+                DataSize.ofBytes(physicalInputDataSizeInBytes),
                 physicalInputPositions.getTotalCount(),
                 DataSize.ofBytes(internalNetworkInputDataSize.getTotalCount()),
                 internalNetworkPositions.getTotalCount(),
-                DataSize.ofBytes(physicalInputDataSize.getTotalCount() + internalNetworkInputDataSize.getTotalCount()),
+                DataSize.ofBytes(physicalInputDataSizeInBytes + internalNetworkInputDataSize.getTotalCount()),
                 DataSize.ofBytes(inputDataSize.getTotalCount()),
                 inputPositionsCount,
                 (double) inputPositionsCount * inputPositionsCount,
@@ -590,7 +609,7 @@ public class OperatorContext
 
                 dynamicFilterSplitsProcessed.get(),
                 getOperatorMetrics(metrics.get(), inputPositionsCount),
-                connectorMetrics.get(),
+                getOperatorConnectorMetrics(connectorMetrics.get(), physicalInputDataSizeInBytes),
 
                 DataSize.ofBytes(physicalWrittenDataSize.get()),
 

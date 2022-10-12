@@ -40,6 +40,9 @@ import static java.util.Objects.requireNonNull;
 public class IcebergPageSource
         implements ConnectorPageSource
 {
+    // To avoid inconsistency with physicalInputDataSize, readDataSize is set when creating operatorStats
+    private static final Metrics metrics = makeMetrics(READ, 1, 0);
+
     private final Block[] prefilledBlocks;
     private final int[] delegateIndexes;
     private final ConnectorPageSource delegate;
@@ -157,7 +160,6 @@ public class IcebergPageSource
     @Override
     public Metrics getMetrics()
     {
-        Metrics metrics = makeMetrics(READ, 1, getCompletedBytes());
         return delegate.getMetrics() == Metrics.EMPTY ? metrics : metrics.mergeWith(delegate.getMetrics());
     }
 

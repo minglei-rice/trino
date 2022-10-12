@@ -137,6 +137,7 @@ import static io.trino.plugin.iceberg.TypeConverter.ICEBERG_BINARY_TYPE;
 import static io.trino.plugin.iceberg.TypeConverter.ORC_ICEBERG_ID_KEY;
 import static io.trino.plugin.iceberg.util.MetricsUtils.makeMetrics;
 import static io.trino.spi.StandardErrorCode.NOT_SUPPORTED;
+import static io.trino.spi.metrics.DataSkippingMetrics.MetricType.SKIPPED_BY_DF_IN_WORKER;
 import static io.trino.spi.metrics.DataSkippingMetrics.MetricType.SKIPPED_BY_INDEX_IN_WORKER;
 import static io.trino.spi.type.UuidType.UUID;
 import static io.trino.spi.type.VarbinaryType.VARBINARY;
@@ -215,7 +216,7 @@ public class IcebergPageSourceProvider
                 .intersect(dynamicFilter.getCurrentPredicate().transformKeys(IcebergColumnHandle.class::cast))
                 .simplify(ICEBERG_DOMAIN_COMPACTION_THRESHOLD);
         if (effectivePredicate.isNone()) {
-            return new EmptyPageSource();
+            return new EmptyPageSource(makeMetrics(SKIPPED_BY_DF_IN_WORKER, 1, split.getLength()));
         }
 
         ReaderPageSource dataPageSource = createDataPageSource(

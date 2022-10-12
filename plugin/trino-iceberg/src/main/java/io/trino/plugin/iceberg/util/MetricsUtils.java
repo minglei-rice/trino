@@ -19,13 +19,16 @@ import io.trino.spi.metrics.Metrics;
 import org.apache.iceberg.FilterMetrics;
 
 import static io.trino.spi.metrics.DataSkippingMetrics.MetricType.SKIPPED_BY_DF_IN_COORDINATOR;
+import static io.trino.spi.metrics.DataSkippingMetrics.MetricType.SKIPPED_BY_INDEX_IN_COORDINATOR;
 import static io.trino.spi.metrics.DataSkippingMetrics.MetricType.SKIPPED_BY_MINMAX_STATS;
 import static io.trino.spi.metrics.DataSkippingMetrics.MetricType.SKIPPED_BY_PART_FILTER;
 import static io.trino.spi.metrics.DataSkippingMetrics.MetricType.TOTAL;
 
 public class MetricsUtils
 {
-    public static final String DATA_SKIPPING_METRICS = "iceberg_data_skipping_metrics";
+    public static final String DATA_SKIPPING_METRICS_NAME = "iceberg_data_skipping_metrics";
+    public static final Metrics EMPTY_DATA_SKIPPING_METRICS =
+            new Metrics(ImmutableMap.of(DATA_SKIPPING_METRICS_NAME, DataSkippingMetrics.EMPTY));
 
     private MetricsUtils() {}
 
@@ -45,9 +48,11 @@ public class MetricsUtils
                     builder.withMetric(TOTAL, entry.getRawSplitCount(), entry.getTotalFileSize()));
             filterMetrics.getMetricEntry(FilterMetrics.MetricType.SKIPPED_BY_MINMAX).ifPresent(entry ->
                     builder.withMetric(SKIPPED_BY_MINMAX_STATS, entry.getRawSplitCount(), entry.getTotalFileSize()));
+            filterMetrics.getMetricEntry(FilterMetrics.MetricType.SKIPPED_BY_IN_PLACE).ifPresent(entry ->
+                    builder.withMetric(SKIPPED_BY_INDEX_IN_COORDINATOR, entry.getRawSplitCount(), entry.getTotalFileSize()));
         }
 
-        return new Metrics(ImmutableMap.of(DATA_SKIPPING_METRICS, builder.build()));
+        return new Metrics(ImmutableMap.of(DATA_SKIPPING_METRICS_NAME, builder.build()));
     }
 
     public static Metrics makeMetrics(DataSkippingMetrics.MetricType metricType, int splitCount, long dataSize)
@@ -55,6 +60,6 @@ public class MetricsUtils
         DataSkippingMetrics dataSkippingMetrics = DataSkippingMetrics.builder()
                 .withMetric(metricType, splitCount, dataSize)
                 .build();
-        return new Metrics(ImmutableMap.of(DATA_SKIPPING_METRICS, dataSkippingMetrics));
+        return new Metrics(ImmutableMap.of(DATA_SKIPPING_METRICS_NAME, dataSkippingMetrics));
     }
 }
