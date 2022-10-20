@@ -73,13 +73,12 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Supplier;
 
 import static com.google.common.base.Suppliers.memoize;
-import static com.google.common.base.Verify.verify;
-import static com.google.common.collect.Sets.intersection;
 import static io.trino.plugin.iceberg.ExpressionConverter.toIcebergExpression;
 import static io.trino.plugin.iceberg.IcebergSplitManager.ICEBERG_DOMAIN_COMPACTION_THRESHOLD;
 import static io.trino.plugin.iceberg.IcebergTypes.convertIcebergValueToTrino;
 import static io.trino.plugin.iceberg.IcebergUtil.deserializePartitionValue;
 import static io.trino.plugin.iceberg.IcebergUtil.getPartitionKeys;
+import static io.trino.plugin.iceberg.IcebergUtil.partitionMatchesConstraint;
 import static io.trino.plugin.iceberg.IcebergUtil.primitiveFieldTypes;
 import static io.trino.plugin.iceberg.TypeConverter.toIcebergType;
 import static io.trino.spi.StandardErrorCode.NOT_SUPPORTED;
@@ -203,6 +202,7 @@ public class IcebergSplitSource
 
             TableScan refinedScan = tableScan
                     .filter(filterExpression)
+                    .partEvaluator(tableHandle.getEnforcedEvaluator().orElse(null))
                     .includeColumnStats()
                     .option(SystemProperties.SCAN_FILTER_METRICS_ENABLED, "true")
                     .withThreadName(threadNamePrefix + "producer");
@@ -284,7 +284,10 @@ public class IcebergSplitSource
                     continue;
                 }
             }
-            if (!partitionMatchesConstraint(identityPartitionColumns, partitionValues, constraint)) {
+            // Owning enforced evaluator means that the filter predicate on partitions had been
+            // pushed down to table scan, hence in such case each split should be candidate.
+            if (tableHandle.getEnforcedEvaluator().isEmpty() &&
+                    !partitionMatchesConstraint(identityPartitionColumns, partitionValues, constraint)) {
                 recordSkipMetricsForPartitionFilter(1, icebergSplit.getLength());
                 continue;
             }
@@ -443,21 +446,6 @@ public class IcebergSplitSource
             statisticsRange = Range.greaterThanOrEqual(type, convertIcebergValueToTrino(icebergType, lowerBound));
         }
         return Domain.create(ValueSet.ofRanges(statisticsRange), mayContainNulls);
-    }
-
-    static boolean partitionMatchesConstraint(
-            Set<IcebergColumnHandle> identityPartitionColumns,
-            Supplier<Map<ColumnHandle, NullableValue>> partitionValues,
-            Constraint constraint)
-    {
-        // We use Constraint just to pass functional predicate here from DistributedExecutionPlanner
-        verify(constraint.getSummary().isAll());
-
-        if (constraint.predicate().isEmpty() ||
-                intersection(constraint.getPredicateColumns().orElseThrow(), identityPartitionColumns).isEmpty()) {
-            return true;
-        }
-        return constraint.predicate().get().test(partitionValues.get());
     }
 
     @VisibleForTesting

@@ -13,6 +13,7 @@
  */
 package io.trino.plugin.iceberg;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import io.airlift.log.Logger;
 import io.airlift.units.Duration;
@@ -59,6 +60,12 @@ public class IcebergSplitManager
     {
         this.transactionManager = requireNonNull(transactionManager, "transactionManager is null");
         this.typeManager = requireNonNull(typeManager, "typeManager is null");
+    }
+
+    @VisibleForTesting
+    IcebergTransactionManager getTransactionManager()
+    {
+        return transactionManager;
     }
 
     @Override

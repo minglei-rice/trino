@@ -914,4 +914,16 @@ public abstract class AbstractMockMetadata
     {
         throw new UnsupportedOperationException();
     }
+
+    @Override
+    public Map<String, ColumnHandle> getPartitionColumnHandles(Session session, TableHandle tableHandle)
+    {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public boolean supportsPruningPartitionsWithPredicateExpression(Session session, TableHandle tableHandle)
+    {
+        return false;
+    }
 }

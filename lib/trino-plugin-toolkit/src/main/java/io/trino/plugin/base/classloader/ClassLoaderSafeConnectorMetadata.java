@@ -320,6 +320,14 @@ public class ClassLoaderSafeConnectorMetadata
     }
 
     @Override
+    public Map<String, ColumnHandle> getPartitionColumnHandles(ConnectorSession session, ConnectorTableHandle tableHandle)
+    {
+        try (ThreadContextClassLoader ignored = new ThreadContextClassLoader(classLoader)) {
+            return delegate.getPartitionColumnHandles(session, tableHandle);
+        }
+    }
+
+    @Override
     public ColumnMetadata getColumnMetadata(ConnectorSession session, ConnectorTableHandle tableHandle, ColumnHandle columnHandle)
     {
         try (ThreadContextClassLoader ignored = new ThreadContextClassLoader(classLoader)) {
@@ -1101,6 +1109,14 @@ public class ClassLoaderSafeConnectorMetadata
     {
         try (ThreadContextClassLoader ignored = new ThreadContextClassLoader(classLoader)) {
             return delegate.isSupportedVersionType(session, tableName, pointerType, versioning);
+        }
+    }
+
+    @Override
+    public boolean supportsPruningWithPredicateExpression(ConnectorSession session, ConnectorTableHandle tableHandle)
+    {
+        try (ThreadContextClassLoader ignored = new ThreadContextClassLoader(classLoader)) {
+            return delegate.supportsPruningWithPredicateExpression(session, tableHandle);
         }
     }
 }

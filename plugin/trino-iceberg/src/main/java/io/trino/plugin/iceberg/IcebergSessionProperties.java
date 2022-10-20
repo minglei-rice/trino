@@ -72,6 +72,7 @@ public final class IcebergSessionProperties
     private static final String READ_INDICES_SWITCH_ON = "read_indices_switch_on";
     private static final String GENERATE_SPLITS_ASYNC = "generate_splits_async";
     private static final String QUERY_PARTITION_FILTER_REQUIRED = "query_partition_filter_required";
+    private static final String COMPLEX_EXPRESSIONS_ON_PARTITION_KEYS_PUSHDOWN_ENABLED = "expressions_on_partition_keys_pushdown_enabled";
     private final List<PropertyMetadata<?>> sessionProperties;
 
     @Inject
@@ -228,6 +229,13 @@ public final class IcebergSessionProperties
                         "Whether there is a filter on partition table",
                         icebergConfig.isQueryPartitionFilterRequired(),
                         false))
+                .add(booleanProperty(
+                        COMPLEX_EXPRESSIONS_ON_PARTITION_KEYS_PUSHDOWN_ENABLED,
+                        "Push down the complex expressions on partition keys to table scan. " +
+                                "Notice that this feature may cause performance issue if the cost of " +
+                                "expressions interpretation is too expensive",
+                        icebergConfig.isComplexExpressionsOnPartitionKeysPushdownEnabled(),
+                        false))
                 .build();
     }
 
@@ -377,5 +385,10 @@ public final class IcebergSessionProperties
     public static boolean isFilterOnPartitionTable(ConnectorSession session)
     {
         return session.getProperty(QUERY_PARTITION_FILTER_REQUIRED, Boolean.class);
+    }
+
+    public static boolean isComplexExpressionsOnPartitionKeysPushdownEnabled(ConnectorSession session)
+    {
+        return session.getProperty(COMPLEX_EXPRESSIONS_ON_PARTITION_KEYS_PUSHDOWN_ENABLED, Boolean.class);
     }
 }

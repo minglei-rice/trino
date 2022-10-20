@@ -41,6 +41,7 @@ public class IcebergConfig
     private boolean readIndicesSwitchOn = true;
     private boolean generateSplitsAsync = true;
     private boolean queryPartitionFilterRequired;
+    private boolean complexExpressionsOnPartitionKeysPushdownEnabled = true;
 
     public CatalogType getCatalogType()
     {
@@ -205,5 +206,17 @@ public class IcebergConfig
     public boolean isQueryPartitionFilterRequired()
     {
         return queryPartitionFilterRequired;
+    }
+
+    @Config("iceberg.complex-expressions-on-partition-keys-pushdown-enabled")
+    public IcebergConfig setComplexExpressionsOnPartitionKeysPushdownEnabled(boolean complexExpressionsOnPartitionKeysPushdownEnabled)
+    {
+        this.complexExpressionsOnPartitionKeysPushdownEnabled = complexExpressionsOnPartitionKeysPushdownEnabled;
+        return this;
+    }
+
+    public boolean isComplexExpressionsOnPartitionKeysPushdownEnabled()
+    {
+        return complexExpressionsOnPartitionKeysPushdownEnabled;
     }
 }

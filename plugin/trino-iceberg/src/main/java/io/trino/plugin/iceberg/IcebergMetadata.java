@@ -81,6 +81,7 @@ import org.apache.iceberg.PartitionSpecParser;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.SchemaParser;
 import org.apache.iceberg.Snapshot;
+import org.apache.iceberg.StructLike;
 import org.apache.iceberg.Table;
 import org.apache.iceberg.TableProperties;
 import org.apache.iceberg.TableScan;
@@ -105,6 +106,7 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
+import static com.google.common.base.Suppliers.memoize;
 import static com.google.common.base.Verify.verify;
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static com.google.common.collect.ImmutableMap.toImmutableMap;
@@ -115,6 +117,7 @@ import static io.trino.plugin.hive.util.HiveUtil.isStructuralType;
 import static io.trino.plugin.iceberg.ColumnIdentity.primitiveColumnIdentity;
 import static io.trino.plugin.iceberg.ExpressionConverter.toIcebergExpression;
 import static io.trino.plugin.iceberg.IcebergErrorCode.ICEBERG_INVALID_METADATA;
+import static io.trino.plugin.iceberg.IcebergSessionProperties.isComplexExpressionsOnPartitionKeysPushdownEnabled;
 import static io.trino.plugin.iceberg.IcebergSessionProperties.isProjectionPushdownEnabled;
 import static io.trino.plugin.iceberg.IcebergSessionProperties.isStatisticsEnabled;
 import static io.trino.plugin.iceberg.IcebergTableProperties.FILE_FORMAT_PROPERTY;
@@ -123,9 +126,12 @@ import static io.trino.plugin.iceberg.IcebergTableProperties.getPartitioning;
 import static io.trino.plugin.iceberg.IcebergUtil.deserializePartitionValue;
 import static io.trino.plugin.iceberg.IcebergUtil.getColumns;
 import static io.trino.plugin.iceberg.IcebergUtil.getFileFormat;
+import static io.trino.plugin.iceberg.IcebergUtil.getIdentityPartitionKeys;
+import static io.trino.plugin.iceberg.IcebergUtil.getIdentityPartitions;
 import static io.trino.plugin.iceberg.IcebergUtil.getPartitionKeys;
 import static io.trino.plugin.iceberg.IcebergUtil.getTableComment;
 import static io.trino.plugin.iceberg.IcebergUtil.newCreateTableTransaction;
+import static io.trino.plugin.iceberg.IcebergUtil.partitionMatchesConstraint;
 import static io.trino.plugin.iceberg.IcebergUtil.toIcebergSchema;
 import static io.trino.plugin.iceberg.PartitionFields.parsePartitionFields;
 import static io.trino.plugin.iceberg.PartitionFields.toPartitionFields;
@@ -358,6 +364,18 @@ public class IcebergMetadata
         IcebergTableHandle table = (IcebergTableHandle) tableHandle;
         Table icebergTable = catalog.loadTable(session, table.getSchemaTableName());
         return getColumns(icebergTable.schema(), typeManager).stream()
+                .collect(toImmutableMap(IcebergColumnHandle::getName, identity()));
+    }
+
+    @Override
+    public Map<String, ColumnHandle> getPartitionColumnHandles(ConnectorSession session, ConnectorTableHandle tableHandle)
+    {
+        IcebergTableHandle table = (IcebergTableHandle) tableHandle;
+        Table icebergTable = catalog.loadTable(session, table.getSchemaTableName());
+        Set<Integer> identityPartitionFields = identityPartitionColumnsInAllSpecs(icebergTable);
+        return getColumns(icebergTable.schema(), typeManager)
+                .stream()
+                .filter(column -> identityPartitionFields.contains(column.getId()))
                 .collect(toImmutableMap(IcebergColumnHandle::getName, identity()));
     }
 
@@ -717,6 +735,12 @@ public class IcebergMetadata
     }
 
     @Override
+    public boolean supportsPruningWithPredicateExpression(ConnectorSession session, ConnectorTableHandle handle)
+    {
+        return isComplexExpressionsOnPartitionKeysPushdownEnabled(session);
+    }
+
+    @Override
     public Optional<ConstraintApplicationResult<ConnectorTableHandle>> applyFilter(ConnectorSession session, ConnectorTableHandle handle, Constraint constraint)
     {
         IcebergTableHandle table = (IcebergTableHandle) handle;
@@ -740,13 +764,24 @@ public class IcebergMetadata
                 .filter((columnHandle, predicate) -> !isStructuralType(columnHandle.getType()))
                 .intersect(table.getUnenforcedPredicate());
 
-        if (newEnforcedConstraint.equals(table.getEnforcedPredicate())
+        if (constraint.getEvaluator().isEmpty() && newEnforcedConstraint.equals(table.getEnforcedPredicate())
                 && newUnenforcedConstraint.equals(table.getUnenforcedPredicate())) {
             return Optional.empty();
         }
 
+        // Constraint has an evaluator supplier implies Iceberg should push it down to table scan node
+        // along with the summary.
+        Optional<BiPredicate<PartitionSpec, StructLike>> enforcedEvaluator;
+        // Considering the supplier is constructed from the remaining expression which could not be
+        // translated into tuple domains in each iteration of filter applying, it's safe to override
+        // the previous enforced evaluator.
+        enforcedEvaluator = constraint.getEvaluator()
+                .map(supplier -> new EnforcedEvaluator(icebergTable.schema(), icebergTable.spec(), typeManager, supplier.get()))
+                .map(evaluator -> (BiPredicate<PartitionSpec, StructLike>) evaluator)
+                .or(table::getEnforcedEvaluator);
         return Optional.of(new ConstraintApplicationResult<>(
-                new IcebergTableHandle(table.getSchemaName(),
+                new IcebergTableHandle(
+                        table.getSchemaName(),
                         table.getTableName(),
                         table.getTableType(),
                         table.getSnapshotId(),
@@ -754,9 +789,52 @@ public class IcebergMetadata
                         newEnforcedConstraint,
                         table.getProjectedColumns(),
                         table.getNameMappingJson(),
-                        table.getCorrColPredicate()),
+                        table.getCorrColPredicate(),
+                        enforcedEvaluator),
                 remainingConstraint.transformKeys(ColumnHandle.class::cast),
                 false));
+    }
+
+    static class EnforcedEvaluator
+            implements BiPredicate<PartitionSpec, StructLike>
+    {
+        Schema schema;
+        PartitionSpec spec;
+        TypeManager typeManager;
+        Constraint constraint;
+
+        public EnforcedEvaluator(Schema schema, PartitionSpec spec, TypeManager typeManager, Constraint constraint)
+        {
+            this.schema = schema;
+            this.spec = spec;
+            this.typeManager = typeManager;
+            this.constraint = constraint;
+        }
+
+        @Override
+        public boolean test(PartitionSpec spec, StructLike partition)
+        {
+            Map<Integer, Optional<String>> partitionKeys = getIdentityPartitionKeys(spec, partition);
+            Set<Integer> identityPartitionFieldIds = getIdentityPartitions(spec).keySet().stream()
+                    .map(PartitionField::sourceId)
+                    .collect(toImmutableSet());
+            Set<IcebergColumnHandle> identityPartitionColumns = getColumns(schema, typeManager).stream()
+                    .filter(column -> identityPartitionFieldIds.contains(column.getId()))
+                    .collect(toImmutableSet());
+            Supplier<Map<ColumnHandle, NullableValue>> partitionValues = memoize(() -> {
+                Map<ColumnHandle, NullableValue> bindings = new HashMap<>();
+                for (IcebergColumnHandle partitionColumn : identityPartitionColumns) {
+                    Object partitionValue = deserializePartitionValue(
+                            partitionColumn.getType(),
+                            partitionKeys.get(partitionColumn.getId()).orElse(null),
+                            partitionColumn.getName());
+                    NullableValue bindingValue = new NullableValue(partitionColumn.getType(), partitionValue);
+                    bindings.put(partitionColumn, bindingValue);
+                }
+                return bindings;
+            });
+            return partitionMatchesConstraint(identityPartitionColumns, partitionValues, constraint);
+        }
     }
 
     @Override
@@ -1044,7 +1122,7 @@ public class IcebergMetadata
                 .or(() -> Optional.ofNullable(table.currentSnapshot()).map(Snapshot::snapshotId));
     }
 
-    Table getIcebergTable(ConnectorSession session, SchemaTableName schemaTableName)
+    public Table getIcebergTable(ConnectorSession session, SchemaTableName schemaTableName)
     {
         return catalog.loadTable(session, schemaTableName);
     }

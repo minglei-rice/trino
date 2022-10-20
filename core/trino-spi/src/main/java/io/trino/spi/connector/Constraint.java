@@ -20,6 +20,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Predicate;
+import java.util.function.Supplier;
 
 import static java.util.Objects.requireNonNull;
 
@@ -28,6 +29,7 @@ public class Constraint
     private final TupleDomain<ColumnHandle> summary;
     private final Optional<Predicate<Map<ColumnHandle, NullableValue>>> predicate;
     private final Optional<Set<ColumnHandle>> predicateColumns;
+    private final Optional<Supplier<Constraint>> evaluator;
 
     public static Constraint alwaysTrue()
     {
@@ -49,11 +51,22 @@ public class Constraint
         this(summary, Optional.of(predicate), Optional.of(predicateColumns));
     }
 
+    public Constraint(Constraint constraint, Supplier<Constraint> evaluator)
+    {
+        this(constraint.getSummary(), constraint.predicate(), constraint.getPredicateColumns(), Optional.of(evaluator));
+    }
+
     private Constraint(TupleDomain<ColumnHandle> summary, Optional<Predicate<Map<ColumnHandle, NullableValue>>> predicate, Optional<Set<ColumnHandle>> predicateColumns)
+    {
+        this(summary, predicate, predicateColumns, Optional.empty());
+    }
+
+    private Constraint(TupleDomain<ColumnHandle> summary, Optional<Predicate<Map<ColumnHandle, NullableValue>>> predicate, Optional<Set<ColumnHandle>> predicateColumns, Optional<Supplier<Constraint>> evaluator)
     {
         this.summary = requireNonNull(summary, "summary is null");
         this.predicate = requireNonNull(predicate, "predicate is null");
         this.predicateColumns = requireNonNull(predicateColumns, "predicateColumns is null");
+        this.evaluator = requireNonNull(evaluator, "evaluator is null");
 
         if (predicateColumns.isPresent() && predicate.isEmpty()) {
             throw new IllegalArgumentException("predicateColumns cannot be present when predicate is not present");
@@ -87,5 +100,10 @@ public class Constraint
     public Optional<Set<ColumnHandle>> getPredicateColumns()
     {
         return predicateColumns;
+    }
+
+    public Optional<Supplier<Constraint>> getEvaluator()
+    {
+        return evaluator;
     }
 }

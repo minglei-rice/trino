@@ -121,6 +121,7 @@ public class TableStatisticsMaker
 
         TableScan tableScan = icebergTable.newScan()
                 .filter(toIcebergExpression(intersection))
+                .partEvaluator(tableHandle.getEnforcedEvaluator().orElse(null))
                 .useSnapshot(tableHandle.getSnapshotId().get())
                 .includeColumnStats();
 

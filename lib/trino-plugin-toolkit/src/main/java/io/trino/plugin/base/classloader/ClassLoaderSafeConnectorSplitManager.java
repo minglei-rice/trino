@@ -13,6 +13,7 @@
  */
 package io.trino.plugin.base.classloader;
 
+import com.google.common.annotations.VisibleForTesting;
 import io.trino.spi.classloader.ThreadContextClassLoader;
 import io.trino.spi.connector.ConnectorSession;
 import io.trino.spi.connector.ConnectorSplitManager;
@@ -38,6 +39,15 @@ public final class ClassLoaderSafeConnectorSplitManager
     {
         this.delegate = requireNonNull(delegate, "delegate is null");
         this.classLoader = requireNonNull(classLoader, "classLoader is null");
+    }
+
+    /**
+     * Should avoid getting splits through the returned manager.
+     */
+    @VisibleForTesting
+    public ConnectorSplitManager getDelegate()
+    {
+        return delegate;
     }
 
     @Override

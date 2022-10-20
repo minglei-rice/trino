@@ -161,6 +161,11 @@ public interface Metadata
     Map<String, ColumnHandle> getColumnHandles(Session session, TableHandle tableHandle);
 
     /**
+     * Gets all of the partition columns on the specified table, or an empty map if the columns cannot be enumerated.
+     */
+    Map<String, ColumnHandle> getPartitionColumnHandles(Session session, TableHandle tableHandle);
+
+    /**
      * Gets the metadata for the specified table column.
      *
      * @throws RuntimeException if table or column handles are no longer valid
@@ -731,4 +736,12 @@ public interface Metadata
      * Returns a table handle for the specified table name with a specified version
      */
     Optional<TableHandle> getTableHandle(Session session, QualifiedObjectName tableName, Optional<TableVersion> startVersion, Optional<TableVersion> endVersion);
+
+    /**
+     * Return true if the connector supports pruning partitions through an expression evaluator, otherwise false.
+     *
+     * Note: Prune partitions will utilize the expression interpreter to evaluate the predicate expression,
+     * therefore it's expensive for some scenarios.
+     */
+    boolean supportsPruningPartitionsWithPredicateExpression(Session session, TableHandle tableHandle);
 }

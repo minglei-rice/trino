@@ -108,7 +108,7 @@ public class SplitManager
         return splitSource;
     }
 
-    private ConnectorSplitManager getConnectorSplitManager(CatalogName catalogName)
+    public ConnectorSplitManager getConnectorSplitManager(CatalogName catalogName)
     {
         ConnectorSplitManager result = splitManagers.get(catalogName);
         checkArgument(result != null, "No split manager for connector '%s'", catalogName);

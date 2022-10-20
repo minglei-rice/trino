@@ -47,7 +47,8 @@ public class TestIcebergConfig
                 .setProjectionPushdownEnabled(true)
                 .setReadIndicesSwitchOn(true)
                 .setGenerateSplitsAsync(true)
-                .setQueryPartitionFilterRequired(false));
+                .setQueryPartitionFilterRequired(false)
+                .setComplexExpressionsOnPartitionKeysPushdownEnabled(true));
     }
 
     @Test
@@ -66,6 +67,7 @@ public class TestIcebergConfig
                 .put("iceberg.read-indices-switch-on", "false")
                 .put("iceberg.generate-splits-async", "false")
                 .put("iceberg.query-partition-filter-required", "true")
+                .put("iceberg.complex-expressions-on-partition-keys-pushdown-enabled", "false")
                 .build();
 
         IcebergConfig expected = new IcebergConfig()
@@ -80,7 +82,8 @@ public class TestIcebergConfig
                 .setProjectionPushdownEnabled(false)
                 .setReadIndicesSwitchOn(false)
                 .setGenerateSplitsAsync(false)
-                .setQueryPartitionFilterRequired(true);
+                .setQueryPartitionFilterRequired(true)
+                .setComplexExpressionsOnPartitionKeysPushdownEnabled(false);
 
         assertFullMapping(properties, expected);
     }

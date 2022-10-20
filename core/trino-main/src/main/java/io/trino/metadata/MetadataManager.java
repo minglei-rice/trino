@@ -600,6 +600,20 @@ public final class MetadataManager
     }
 
     @Override
+    public Map<String, ColumnHandle> getPartitionColumnHandles(Session session, TableHandle tableHandle)
+    {
+        CatalogName catalogName = tableHandle.getCatalogName();
+        ConnectorMetadata metadata = getMetadata(session, catalogName);
+        Map<String, ColumnHandle> handles = metadata.getPartitionColumnHandles(session.toConnectorSession(catalogName), tableHandle.getConnectorHandle());
+
+        ImmutableMap.Builder<String, ColumnHandle> map = ImmutableMap.builder();
+        for (Entry<String, ColumnHandle> mapEntry : handles.entrySet()) {
+            map.put(mapEntry.getKey().toLowerCase(ENGLISH), mapEntry.getValue());
+        }
+        return map.build();
+    }
+
+    @Override
     public ColumnMetadata getColumnMetadata(Session session, TableHandle tableHandle, ColumnHandle columnHandle)
     {
         requireNonNull(tableHandle, "tableHandle is null");
@@ -1840,6 +1854,15 @@ public final class MetadataManager
                         new TableHandle(catalogName, result.getHandle(), table.getTransaction(), Optional.empty()),
                         result.getRemainingFilter(),
                         result.isPrecalculateStatistics()));
+    }
+
+    @Override
+    public boolean supportsPruningPartitionsWithPredicateExpression(Session session, TableHandle table)
+    {
+        CatalogName catalogName = table.getCatalogName();
+        ConnectorMetadata metadata = getMetadata(session, catalogName);
+        ConnectorSession connectorSession = session.toConnectorSession(catalogName);
+        return metadata.supportsPruningWithPredicateExpression(connectorSession, table.getConnectorHandle());
     }
 
     @Override

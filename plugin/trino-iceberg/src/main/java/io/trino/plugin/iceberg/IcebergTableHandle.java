@@ -19,11 +19,14 @@ import com.google.common.collect.ImmutableSet;
 import io.trino.spi.connector.ConnectorTableHandle;
 import io.trino.spi.connector.SchemaTableName;
 import io.trino.spi.predicate.TupleDomain;
+import org.apache.iceberg.PartitionSpec;
+import org.apache.iceberg.StructLike;
 
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.BiPredicate;
 
 import static java.util.Objects.requireNonNull;
 
@@ -40,6 +43,9 @@ public class IcebergTableHandle
 
     // Filter guaranteed to be enforced by Iceberg connector
     private final TupleDomain<IcebergColumnHandle> enforcedPredicate;
+    // The evaluator, as the extra Filter which could not be translated to tuple domains,
+    // should contain partition columns and is guaranteed to be enforced by Iceberg connector
+    private Optional<BiPredicate<PartitionSpec, StructLike>> enforcedEvaluator = Optional.empty();
 
     private final Set<IcebergColumnHandle> projectedColumns;
     private final Optional<String> nameMappingJson;
@@ -67,6 +73,22 @@ public class IcebergTableHandle
         this.projectedColumns = ImmutableSet.copyOf(requireNonNull(projectedColumns, "projectedColumns is null"));
         this.nameMappingJson = requireNonNull(nameMappingJson, "nameMappingJson is null");
         this.corrColPredicate = requireNonNull(corrColPredicate, "corrColPredicate is null");
+    }
+
+    public IcebergTableHandle(
+            String schemaName,
+            String tableName,
+            TableType tableType,
+            Optional<Long> snapshotId,
+            TupleDomain<IcebergColumnHandle> unenforcedPredicate,
+            TupleDomain<IcebergColumnHandle> enforcedPredicate,
+            Set<IcebergColumnHandle> projectedColumns,
+            Optional<String> nameMappingJson,
+            TupleDomain<IcebergColumnHandle> corrColPredicate,
+            Optional<BiPredicate<PartitionSpec, StructLike>> enforcedEvaluator)
+    {
+        this(schemaName, tableName, tableType, snapshotId, unenforcedPredicate, enforcedPredicate, projectedColumns, nameMappingJson, corrColPredicate);
+        this.enforcedEvaluator = requireNonNull(enforcedEvaluator, "evaluator is null");
     }
 
     @JsonProperty
@@ -144,7 +166,8 @@ public class IcebergTableHandle
                 enforcedPredicate,
                 projectedColumns,
                 nameMappingJson,
-                corrColPredicate);
+                corrColPredicate,
+                enforcedEvaluator);
     }
 
     @Override
@@ -178,5 +201,10 @@ public class IcebergTableHandle
     public String toString()
     {
         return getSchemaTableNameWithType() + snapshotId.map(v -> "@" + v).orElse("");
+    }
+
+    public Optional<BiPredicate<PartitionSpec, StructLike>> getEnforcedEvaluator()
+    {
+        return enforcedEvaluator;
     }
 }

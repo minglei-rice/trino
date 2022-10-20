@@ -17,13 +17,16 @@ import com.google.common.base.VerifyException;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Streams;
 import io.airlift.units.DataSize;
 import io.trino.Session;
+import io.trino.connector.CatalogName;
 import io.trino.execution.warnings.WarningCollector;
 import io.trino.metadata.Metadata;
 import io.trino.metadata.QualifiedObjectName;
 import io.trino.metadata.TableHandle;
 import io.trino.operator.OperatorStats;
+import io.trino.plugin.base.classloader.ClassLoaderSafeConnectorSplitManager;
 import io.trino.plugin.hive.HdfsEnvironment;
 import io.trino.spi.QueryId;
 import io.trino.spi.connector.ColumnHandle;
@@ -38,6 +41,7 @@ import io.trino.spi.statistics.TableStatistics;
 import io.trino.sql.planner.Plan;
 import io.trino.sql.planner.assertions.PlanAssert;
 import io.trino.sql.planner.assertions.PlanMatchPattern;
+import io.trino.sql.planner.optimizations.PlanNodeSearcher;
 import io.trino.sql.planner.plan.AggregationNode;
 import io.trino.sql.planner.plan.FilterNode;
 import io.trino.sql.planner.plan.ProjectNode;
@@ -64,6 +68,9 @@ import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.iceberg.FileFormat;
+import org.apache.iceberg.FileScanTask;
+import org.apache.iceberg.Table;
+import org.apache.iceberg.io.CloseableIterable;
 import org.intellij.lang.annotations.Language;
 import org.testng.SkipException;
 import org.testng.annotations.DataProvider;
@@ -146,6 +153,17 @@ public abstract class BaseIcebergConnectorTest
     protected BaseIcebergConnectorTest(FileFormat format)
     {
         this.format = requireNonNull(format, "format is null");
+    }
+
+    private static IcebergColumnHandle getColumnHandleFromStatistics(TableStatistics tableStatistics, String columnName)
+    {
+        for (ColumnHandle columnHandle : tableStatistics.getColumnStatistics().keySet()) {
+            IcebergColumnHandle handle = (IcebergColumnHandle) columnHandle;
+            if (handle.getName().equals(columnName)) {
+                return handle;
+            }
+        }
+        throw new IllegalArgumentException("TableStatistics did not contain column named " + columnName);
     }
 
     @Override
@@ -1633,7 +1651,7 @@ public abstract class BaseIcebergConnectorTest
     @DataProvider
     public Object[][] truncateNumberTypesProvider()
     {
-        return new Object[][] {
+        return new Object[][]{
                 {"integer"},
                 {"bigint"},
         };
@@ -2213,51 +2231,6 @@ public abstract class BaseIcebergConnectorTest
         });
     }
 
-    private static class TestRelationalNumberPredicate
-            implements Predicate<Map<ColumnHandle, NullableValue>>
-    {
-        private final String columnName;
-        private final Number comparand;
-        private final Predicate<Integer> comparePredicate;
-
-        public TestRelationalNumberPredicate(String columnName, Number comparand, Predicate<Integer> comparePredicate)
-        {
-            this.columnName = columnName;
-            this.comparand = comparand;
-            this.comparePredicate = comparePredicate;
-        }
-
-        @Override
-        public boolean test(Map<ColumnHandle, NullableValue> nullableValues)
-        {
-            for (Map.Entry<ColumnHandle, NullableValue> entry : nullableValues.entrySet()) {
-                IcebergColumnHandle handle = (IcebergColumnHandle) entry.getKey();
-                if (columnName.equals(handle.getName())) {
-                    Object object = entry.getValue().getValue();
-                    if (object instanceof Long) {
-                        return comparePredicate.test(((Long) object).compareTo(comparand.longValue()));
-                    }
-                    if (object instanceof Double) {
-                        return comparePredicate.test(((Double) object).compareTo(comparand.doubleValue()));
-                    }
-                    throw new IllegalArgumentException(format("NullableValue is neither Long or Double, but %s", object));
-                }
-            }
-            return false;
-        }
-    }
-
-    private static IcebergColumnHandle getColumnHandleFromStatistics(TableStatistics tableStatistics, String columnName)
-    {
-        for (ColumnHandle columnHandle : tableStatistics.getColumnStatistics().keySet()) {
-            IcebergColumnHandle handle = (IcebergColumnHandle) columnHandle;
-            if (handle.getName().equals(columnName)) {
-                return handle;
-            }
-        }
-        throw new IllegalArgumentException("TableStatistics did not contain column named " + columnName);
-    }
-
     private ColumnStatistics checkColumnStatistics(ColumnStatistics statistics)
     {
         assertNotNull(statistics, "statistics is null");
@@ -2827,7 +2800,7 @@ public abstract class BaseIcebergConnectorTest
                 .setSystemProperty(PREFERRED_WRITE_PARTITIONING_MIN_NUMBER_OF_PARTITIONS, "1")
                 .build();
 
-        return new Object[][] {
+        return new Object[][]{
                 // identity partitioning column
                 {obeyConnectorPartitioning, "'orderstatus'", 3},
                 // bucketing
@@ -2965,8 +2938,8 @@ public abstract class BaseIcebergConnectorTest
             String tableName = table.getName();
             String values =
                     Stream.concat(
-                                nCopies(100, testSetup.getSampleValueLiteral()).stream(),
-                                nCopies(100, testSetup.getHighValueLiteral()).stream())
+                            nCopies(100, testSetup.getSampleValueLiteral()).stream(),
+                            nCopies(100, testSetup.getHighValueLiteral()).stream())
                             .map(value -> "(" + value + ", rand())")
                             .collect(Collectors.joining(", "));
             assertUpdate(withSmallRowGroups(getSession()), "INSERT INTO " + tableName + " VALUES " + values, 200);
@@ -3619,5 +3592,130 @@ public abstract class BaseIcebergConnectorTest
                 .stream()
                 .filter(summary -> summary.getOperatorType().contains("Scan"))
                 .collect(onlyElement());
+    }
+
+    @Test
+    public void testPushDownFunctionExpressionsOnPartitionKeys()
+    {
+        String tableName = "test_complex_expressions_pushdown";
+        getQueryRunner().execute(format("CREATE TABLE %s (int_t int, log_date varchar, type int) WITH (partitioning = ARRAY['log_date', 'type'])", tableName));
+        getQueryRunner().execute(format("INSERT INTO %s VALUES (12345, '20220904', 1)", tableName));
+        getQueryRunner().execute(format("INSERT INTO %s VALUES (90301, '20220903', 2)", tableName));
+        getQueryRunner().execute(format("INSERT INTO %s VALUES (90302, '20220903', 3)", tableName));
+        getQueryRunner().execute(format("INSERT INTO %s VALUES (-12345, '20220901', 4)", tableName));
+
+        verifyPrunePlanFiles(
+                format("select int_t from %s where %s", tableName, "log_date >= '20220904' AND int_t > 0"),
+                1,
+                false,
+                1);
+
+        verifyPrunePlanFiles(
+                format("select int_t from %s where %s", tableName, "cast(date(date_parse(\"log_date\", '%Y%m%d')) as varchar) >= '2022-09-04' AND int_t > 0"),
+                4,
+                true,
+                1);
+
+        verifyPrunePlanFiles(
+                format("select int_t from %s where %s", tableName, "date_parse(\"log_date\", '%Y%m%d') = date_parse('2022-09-03', '%Y-%m-%d')"),
+                4,
+                true,
+                2);
+
+        // 'type > 1' will be pushed down as enforced predicate, so the init matched files will be 3
+        verifyPrunePlanFiles(
+                format("select int_t from %s where %s", tableName, "date_parse(\"log_date\", '%Y%m%d') = date_parse('2022-09-03', '%Y-%m-%d') AND type > 1 AND int_t > 0"),
+                3,
+                true,
+                2);
+
+        Session session = Session.builder(getSession())
+                .setCatalogSessionProperty(ICEBERG_CATALOG, "expressions_on_partition_keys_pushdown_enabled", "false")
+                .build();
+
+        verifyPrunePlanFiles(
+                session,
+                format("select int_t from %s where %s", tableName, "date_parse(\"log_date\", '%Y%m%d') = date_parse('2022-09-03', '%Y-%m-%d')"),
+                4,
+                false,
+                4);
+
+        dropTable(tableName);
+    }
+
+    private void verifyPrunePlanFiles(Session newSession, String sql, int files, boolean shouldPrune, int prunedFiles)
+    {
+        withTransaction(newSession, session -> {
+            Plan plan = getQueryRunner().createPlan(session, sql, WarningCollector.NOOP);
+
+            Optional<TableScanNode> tableScanNode = PlanNodeSearcher.searchFrom(plan.getRoot()).where(TableScanNode.class::isInstance).findFirst();
+            assertTrue(tableScanNode.isPresent());
+
+            IcebergTableHandle icebergTableHandle = (IcebergTableHandle) tableScanNode.get().getTable().getConnectorHandle();
+            if (shouldPrune) {
+                assertTrue(icebergTableHandle.getEnforcedEvaluator().isPresent());
+            }
+            else {
+                assertTrue(icebergTableHandle.getEnforcedEvaluator().isEmpty());
+            }
+
+            ClassLoaderSafeConnectorSplitManager delegatedSplitManager =
+                    (ClassLoaderSafeConnectorSplitManager) getQueryRunner().getSplitManager().getConnectorSplitManager(new CatalogName("iceberg"));
+            IcebergSplitManager icebergSplitManager = (IcebergSplitManager) delegatedSplitManager.getDelegate();
+            Table table = icebergSplitManager.getTransactionManager().get(tableScanNode.get().getTable().getTransaction()).getIcebergTable(getSession().toConnectorSession(), icebergTableHandle.getSchemaTableName());
+            CloseableIterable<FileScanTask> dataFiles = table.newScan()
+                    .useSnapshot(icebergTableHandle.getSnapshotId().get())
+                    .filter(ExpressionConverter.toIcebergExpression(icebergTableHandle.getEnforcedPredicate()))
+                    .planFiles();
+            assertEquals(Streams.stream(dataFiles).count(), files);
+
+            if (shouldPrune) {
+                CloseableIterable<FileScanTask> prunedDataFiles = table.newScan()
+                        .useSnapshot(icebergTableHandle.getSnapshotId().get())
+                        .filter(ExpressionConverter.toIcebergExpression(icebergTableHandle.getEnforcedPredicate()))
+                        .partEvaluator(icebergTableHandle.getEnforcedEvaluator().get())
+                        .planFiles();
+                assertEquals(Streams.stream(prunedDataFiles).count(), prunedFiles);
+            }
+        });
+    }
+
+    private void verifyPrunePlanFiles(String sql, int files, boolean shouldPrune, int prunedFiles)
+    {
+        verifyPrunePlanFiles(getSession(), sql, files, shouldPrune, prunedFiles);
+    }
+
+    private static class TestRelationalNumberPredicate
+            implements Predicate<Map<ColumnHandle, NullableValue>>
+    {
+        private final String columnName;
+        private final Number comparand;
+        private final Predicate<Integer> comparePredicate;
+
+        public TestRelationalNumberPredicate(String columnName, Number comparand, Predicate<Integer> comparePredicate)
+        {
+            this.columnName = columnName;
+            this.comparand = comparand;
+            this.comparePredicate = comparePredicate;
+        }
+
+        @Override
+        public boolean test(Map<ColumnHandle, NullableValue> nullableValues)
+        {
+            for (Map.Entry<ColumnHandle, NullableValue> entry : nullableValues.entrySet()) {
+                IcebergColumnHandle handle = (IcebergColumnHandle) entry.getKey();
+                if (columnName.equals(handle.getName())) {
+                    Object object = entry.getValue().getValue();
+                    if (object instanceof Long) {
+                        return comparePredicate.test(((Long) object).compareTo(comparand.longValue()));
+                    }
+                    if (object instanceof Double) {
+                        return comparePredicate.test(((Double) object).compareTo(comparand.doubleValue()));
+                    }
+                    throw new IllegalArgumentException(format("NullableValue is neither Long or Double, but %s", object));
+                }
+            }
+            return false;
+        }
     }
 }

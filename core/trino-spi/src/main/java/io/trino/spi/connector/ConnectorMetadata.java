@@ -282,6 +282,15 @@ public interface ConnectorMetadata
     }
 
     /**
+     * Gets all of the partition columns on the specified table, or an empty map if the columns cannot be enumerated.
+     * @throws RuntimeException if table handle is no longer valid
+     */
+    default Map<String, ColumnHandle> getPartitionColumnHandles(ConnectorSession session, ConnectorTableHandle tableHandle)
+    {
+        throw new TrinoException(GENERIC_INTERNAL_ERROR, "ConnectorMetadata getTableHandle() is implemented without getPartitionColumnHandles()");
+    }
+
+    /**
      * Gets the metadata for the specified table column.
      *
      * @throws RuntimeException if table or column handles are no longer valid
@@ -1445,5 +1454,16 @@ public interface ConnectorMetadata
     default boolean isSupportedVersionType(ConnectorSession session, SchemaTableName tableName, PointerType pointerType, Type versioning)
     {
         throw new TrinoException(NOT_SUPPORTED, "This connector does not support versioned tables");
+    }
+
+    /**
+     * Return true if the connector supports pruning partitions through an expression evaluator, otherwise false.
+     *
+     * Note: Prune partitions will utilize the expression interpreter to evaluate the predicate expression,
+     * therefore it's expensive for some scenarios.
+     */
+    default boolean supportsPruningWithPredicateExpression(ConnectorSession session, ConnectorTableHandle tableHandle)
+    {
+        return false;
     }
 }

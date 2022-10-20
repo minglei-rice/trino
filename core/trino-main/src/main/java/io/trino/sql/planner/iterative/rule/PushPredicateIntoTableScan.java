@@ -15,6 +15,7 @@ package io.trino.sql.planner.iterative.rule;
 
 import com.google.common.collect.ImmutableBiMap;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import io.trino.Session;
 import io.trino.cost.StatsProvider;
 import io.trino.matching.Capture;
@@ -29,11 +30,13 @@ import io.trino.spi.connector.ColumnHandle;
 import io.trino.spi.connector.Constraint;
 import io.trino.spi.connector.ConstraintApplicationResult;
 import io.trino.spi.predicate.TupleDomain;
+import io.trino.sql.DynamicFilters;
 import io.trino.sql.PlannerContext;
 import io.trino.sql.planner.DomainTranslator;
 import io.trino.sql.planner.LayoutConstraintEvaluator;
 import io.trino.sql.planner.Symbol;
 import io.trino.sql.planner.SymbolAllocator;
+import io.trino.sql.planner.SymbolsExtractor;
 import io.trino.sql.planner.TypeAnalyzer;
 import io.trino.sql.planner.iterative.Rule;
 import io.trino.sql.planner.plan.FilterNode;
@@ -45,13 +48,18 @@ import io.trino.sql.tree.Expression;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
+import java.util.function.Predicate;
+import java.util.function.Supplier;
 
 import static com.google.common.base.Verify.verify;
 import static com.google.common.collect.ImmutableSet.toImmutableSet;
 import static io.trino.SystemSessionProperties.isAllowPushdownIntoConnectors;
 import static io.trino.matching.Capture.newCapture;
 import static io.trino.metadata.TableLayoutResult.computeEnforced;
+import static io.trino.spi.connector.Constraint.alwaysTrue;
 import static io.trino.sql.ExpressionUtils.combineConjuncts;
+import static io.trino.sql.ExpressionUtils.filterConjuncts;
 import static io.trino.sql.ExpressionUtils.filterDeterministicConjuncts;
 import static io.trino.sql.ExpressionUtils.filterNonDeterministicConjuncts;
 import static io.trino.sql.planner.iterative.rule.Rules.deriveTableStatisticsForPushdown;
@@ -159,6 +167,7 @@ public class PushPredicateIntoTableScan
         Expression deterministicPredicate = filterDeterministicConjuncts(plannerContext.getMetadata(), predicate);
         Expression nonDeterministicPredicate = filterNonDeterministicConjuncts(plannerContext.getMetadata(), predicate);
 
+        // only the symbol reference or cast expressions could be extracted, others (except startsWith) will be the remaining.
         DomainTranslator.ExtractionResult decomposedPredicate = DomainTranslator.getExtractionResult(
                 plannerContext,
                 session,
@@ -194,6 +203,28 @@ public class PushPredicateIntoTableScan
             constraint = new Constraint(newDomain);
         }
 
+        // we are interested only in functional predicate here, so we set the summary to ALL.
+        Supplier<Constraint> constraintEvaluatorSupplier = () -> Optional.ofNullable(decomposedPredicate.getRemainingExpression())
+                .map(p -> filterConjuncts(plannerContext.getMetadata(), p, expression -> !DynamicFilters.isDynamicFilter(expression)))
+                .map(p -> new LayoutConstraintEvaluator(plannerContext, typeAnalyzer, session, symbolAllocator.getTypes(), node.getAssignments(), p))
+                .map(evaluator -> new Constraint(TupleDomain.all(), evaluator::isCandidate, evaluator.getArguments()))
+                .orElse(alwaysTrue());
+        // TODO: Verify the expression arguments more strictly instead using intersection.
+        Predicate<Expression> hasAnyPartitionSymbolInRemainingExpression = expression -> {
+            ImmutableSet.Builder<ColumnHandle> columnsInRemainingExpression = ImmutableSet.builder();
+            SymbolsExtractor.extractUnique(expression).forEach(symbol -> {
+                ColumnHandle col = node.getAssignments().get(symbol);
+                if (col != null) {
+                    columnsInRemainingExpression.add(col);
+                }
+            });
+            Map<String, ColumnHandle> partitionColumns = plannerContext.getMetadata().getPartitionColumnHandles(session, node.getTable());
+            Set<ColumnHandle> partitionColumnSet = partitionColumns.values().stream().collect(toImmutableSet());
+            return columnsInRemainingExpression.build().stream().anyMatch(partitionColumnSet::contains);
+        };
+        Predicate<Expression> pushdownConstraintEvaluatorPredicate = expression ->
+                plannerContext.getMetadata().supportsPruningPartitionsWithPredicateExpression(session, node.getTable()) && hasAnyPartitionSymbolInRemainingExpression.test(expression);
+
         TableHandle newTable;
         Optional<TablePartitioning> newTablePartitioning;
         TupleDomain<ColumnHandle> remainingFilter;
@@ -210,11 +241,28 @@ public class PushPredicateIntoTableScan
                         nonDeterministicPredicate,
                         decomposedPredicate.getRemainingExpression());
 
-                if (!TRUE_LITERAL.equals(resultingPredicate)) {
-                    return Optional.of(new FilterNode(filterNode.getId(), node, resultingPredicate));
+                TableScanNode newNode = node;
+                if (pushdownConstraintEvaluatorPredicate.test(decomposedPredicate.getRemainingExpression()) && !TRUE_LITERAL.equals(resultingPredicate)) {
+                    // TODO: To avoid repeatedly construct new table scan node if the remaining expression is equal to the previous applied.
+                    Optional<ConstraintApplicationResult<TableHandle>> evaluableTableHandle = plannerContext.getMetadata().applyFilter(session, node.getTable(), constraintEvaluatorSupplier.get());
+                    if (evaluableTableHandle.isPresent()) {
+                        newNode = new TableScanNode(
+                                node.getId(),
+                                evaluableTableHandle.get().getHandle(),
+                                node.getOutputSymbols(),
+                                node.getAssignments(),
+                                node.getEnforcedConstraint(),
+                                node.getStatistics(),
+                                node.isUpdateTarget(),
+                                node.getUseConnectorNodePartitioning());
+                    }
                 }
 
-                return Optional.of(node);
+                if (!TRUE_LITERAL.equals(resultingPredicate)) {
+                    return Optional.of(new FilterNode(filterNode.getId(), newNode, resultingPredicate));
+                }
+
+                return Optional.of(newNode);
             }
 
             if (newDomain.isNone()) {
@@ -224,7 +272,15 @@ public class PushPredicateIntoTableScan
                 return Optional.of(new ValuesNode(node.getId(), node.getOutputSymbols(), ImmutableList.of()));
             }
 
-            Optional<ConstraintApplicationResult<TableHandle>> result = plannerContext.getMetadata().applyFilter(session, node.getTable(), constraint);
+            if (pushdownConstraintEvaluatorPredicate.test(decomposedPredicate.getRemainingExpression())) {
+                constraint = new Constraint(constraint, constraintEvaluatorSupplier);
+            }
+
+            Optional<ConstraintApplicationResult<TableHandle>> result =
+                    plannerContext.getMetadata().applyFilter(
+                            session,
+                            node.getTable(),
+                            constraint);
 
             if (result.isEmpty()) {
                 return Optional.empty();

@@ -22,10 +22,13 @@ import io.trino.plugin.hive.metastore.HiveMetastore;
 import io.trino.plugin.iceberg.catalog.IcebergTableOperations;
 import io.trino.plugin.iceberg.catalog.IcebergTableOperationsProvider;
 import io.trino.spi.TrinoException;
+import io.trino.spi.connector.ColumnHandle;
 import io.trino.spi.connector.ColumnMetadata;
 import io.trino.spi.connector.ConnectorSession;
 import io.trino.spi.connector.ConnectorTableMetadata;
+import io.trino.spi.connector.Constraint;
 import io.trino.spi.connector.SchemaTableName;
+import io.trino.spi.predicate.NullableValue;
 import io.trino.spi.type.DecimalType;
 import io.trino.spi.type.Decimals;
 import io.trino.spi.type.Type;
@@ -61,14 +64,18 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Supplier;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
+import static com.google.common.base.Verify.verify;
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static com.google.common.collect.ImmutableMap.toImmutableMap;
 import static com.google.common.collect.Lists.reverse;
+import static com.google.common.collect.Sets.intersection;
 import static io.airlift.slice.Slices.utf8Slice;
 import static io.trino.plugin.hive.HiveMetadata.TABLE_COMMENT;
 import static io.trino.plugin.iceberg.ColumnIdentity.createColumnIdentity;
@@ -318,17 +325,10 @@ public final class IcebergUtil
         throw new TrinoException(GENERIC_INTERNAL_ERROR, "Invalid partition type " + type.toString());
     }
 
-    /**
-     * Returns a map from fieldId to serialized partition value containing entries for all identity partitions.
-     * {@code null} partition values are represented with {@link Optional#empty}.
-     */
-    public static Map<Integer, Optional<String>> getPartitionKeys(FileScanTask scanTask)
+    public static Map<Integer, Optional<String>> getIdentityPartitionKeys(PartitionSpec spec, StructLike partition)
     {
-        StructLike partition = scanTask.file().partition();
-        PartitionSpec spec = scanTask.spec();
         Map<PartitionField, Integer> fieldToIndex = getIdentityPartitions(spec);
         ImmutableMap.Builder<Integer, Optional<String>> partitionKeys = ImmutableMap.builder();
-
         fieldToIndex.forEach((field, index) -> {
             int id = field.sourceId();
             org.apache.iceberg.types.Type type = spec.schema().findType(id);
@@ -352,6 +352,32 @@ public final class IcebergUtil
         });
 
         return partitionKeys.build();
+    }
+
+    public static boolean partitionMatchesConstraint(
+            Set<IcebergColumnHandle> identityPartitionColumns,
+            Supplier<Map<ColumnHandle, NullableValue>> partitionValues,
+            Constraint constraint)
+    {
+        // We use Constraint just to pass functional predicate here from DistributedExecutionPlanner
+        verify(constraint.getSummary().isAll());
+
+        if (constraint.predicate().isEmpty() ||
+                intersection(constraint.getPredicateColumns().orElseThrow(), identityPartitionColumns).isEmpty()) {
+            return true;
+        }
+        return constraint.predicate().get().test(partitionValues.get());
+    }
+
+    /**
+     * Returns a map from fieldId to serialized partition value containing entries for all identity partitions.
+     * {@code null} partition values are represented with {@link Optional#empty}.
+     */
+    public static Map<Integer, Optional<String>> getPartitionKeys(FileScanTask scanTask)
+    {
+        StructLike partition = scanTask.file().partition();
+        PartitionSpec spec = scanTask.spec();
+        return getIdentityPartitionKeys(spec, partition);
     }
 
     public static LocationProvider getLocationProvider(SchemaTableName schemaTableName, String tableLocation, Map<String, String> storageProperties)
