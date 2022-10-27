@@ -6,7 +6,7 @@ FROM hub.bilibili.co/compile/olap-kerberos:java11
 ARG app_name=trino-adhoc
 
 ENV TRINO_BASE_DIR=/data/app/${app_name} TRINO_LOG_DIR=/data/log/${app_name} TRINO_DATA_DIR=/data/data/${app_name} \
-    TRINO_VERSION=trino-server-367-bili-0.2-SNAPSHOT APP_CONF_DIR=/data/conf
+    TRINO_VERSION=trino-server-367-bili-0.3-SNAPSHOT APP_CONF_DIR=/data/conf
 
 # Make `/data/log && /data/data` directories readable and writable, because Caster needs them.
 # Create new directory `/data/script`, because Caster should use it to bind POD to SLB.
