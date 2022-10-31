@@ -155,6 +155,7 @@ public final class SystemSessionProperties
     public static final String PUSHDOWN_CORR_COL_FILTERS = "pushdown_corr_col_filters";
     public static final String FORBID_CROSS_JOIN = "forbid_cross_join";
     public static final String ORDER_BY_FULL_TABLE = "order_by_full_table";
+    public static final String ALLOW_READ_AGG_INDEX_FILES = "allow_read_agg_index_files";
 
     private final List<PropertyMetadata<?>> sessionProperties;
 
@@ -716,6 +717,11 @@ public final class SystemSessionProperties
                         featuresConfig.isOptimizeQueryWithMetadata(),
                         false),
                 booleanProperty(
+                        ALLOW_READ_AGG_INDEX_FILES,
+                        "Allow read aggindex files",
+                        true,
+                        false),
+                booleanProperty(
                         PUSHDOWN_CORR_COL_FILTERS,
                         "Whether to pushdown filters on correlated columns",
                         true,
@@ -1153,6 +1159,11 @@ public final class SystemSessionProperties
     public static boolean isAllowPushdownIntoConnectors(Session session)
     {
         return session.getSystemProperty(ALLOW_PUSHDOWN_INTO_CONNECTORS, Boolean.class);
+    }
+
+    public static boolean isAllowReadAggIndexFiles(Session session)
+    {
+        return session.getSystemProperty(ALLOW_READ_AGG_INDEX_FILES, Boolean.class);
     }
 
     public static boolean isPredicatePushdownUseTableProperties(Session session)

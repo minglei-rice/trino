@@ -15,6 +15,7 @@ package io.trino.spi.connector;
 
 import io.airlift.slice.Slice;
 import io.trino.spi.TrinoException;
+import io.trino.spi.aggindex.AggIndex;
 import io.trino.spi.expression.ConnectorExpression;
 import io.trino.spi.expression.Constant;
 import io.trino.spi.expression.Variable;
@@ -80,6 +81,16 @@ public interface ConnectorMetadata
     default ConnectorTableHandle getTableHandle(ConnectorSession session, SchemaTableName tableName)
     {
         return null;
+    }
+
+    /**
+     * Return a group of AggregationIndex defined in the table. For a specific query, we only need to find one of the
+     * AggregationIndex to respond. If more than one AggregationIndex can be found answer the query, then we can
+     * choose an optimal AggregationIndex(example: the smallest size to respond).
+     */
+    default List<AggIndex> getAggregationIndices(ConnectorSession session, ConnectorTableHandle tableHandle)
+    {
+        return emptyList();
     }
 
     /**
@@ -1340,6 +1351,17 @@ public interface ConnectorMetadata
             long topNCount,
             List<SortItem> sortItems,
             Map<String, ColumnHandle> assignments)
+    {
+        return Optional.empty();
+    }
+
+    /**
+     * Push AggIndex down to Connector.
+     */
+    default Optional<AggIndexApplicationResult<ConnectorTableHandle>> applyAggIndex(
+            ConnectorSession session,
+            ConnectorTableHandle handle,
+            AggIndex aggIndex)
     {
         return Optional.empty();
     }

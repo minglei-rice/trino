@@ -34,8 +34,11 @@ import io.trino.operator.aggregation.AggregationMetadata;
 import io.trino.operator.window.WindowFunctionSupplier;
 import io.trino.spi.QueryId;
 import io.trino.spi.TrinoException;
+import io.trino.spi.aggindex.AggIndex;
+import io.trino.spi.aggindex.TableColumnIdentify;
 import io.trino.spi.block.Block;
 import io.trino.spi.block.BlockEncodingSerde;
+import io.trino.spi.connector.AggIndexApplicationResult;
 import io.trino.spi.connector.AggregateFunction;
 import io.trino.spi.connector.AggregationApplicationResult;
 import io.trino.spi.connector.Assignment;
@@ -563,6 +566,14 @@ public final class MetadataManager
         ConnectorTableSchema tableSchema = metadata.getTableSchema(session.toConnectorSession(catalogName), tableHandle.getConnectorHandle());
 
         return new TableSchema(catalogName, tableSchema);
+    }
+
+    @Override
+    public List<AggIndex> getAggregationIndices(Session session, TableHandle tableHandle)
+    {
+        CatalogName catalogName = tableHandle.getCatalogName();
+        ConnectorMetadata metadata = getMetadata(session, catalogName);
+        return metadata.getAggregationIndices(session.toConnectorSession(catalogName), tableHandle.getConnectorHandle());
     }
 
     @Override
@@ -1805,6 +1816,28 @@ public final class MetadataManager
                         new TableHandle(catalogName, result.getHandle(), table.getTransaction(), Optional.empty()),
                         result.isTopNGuaranteed(),
                         result.isPrecalculateStatistics()));
+    }
+
+    @Override
+    public Optional<AggIndexApplicationResult<TableHandle>> applyAggIndex(
+            Session session,
+            TableHandle table,
+            AggIndex aggIndex)
+    {
+        CatalogName catalogName = table.getCatalogName();
+        ConnectorMetadata metadata = getMetadata(session, catalogName);
+        ConnectorSession connectorSession = session.toConnectorSession(catalogName);
+
+        Optional<AggIndexApplicationResult<ConnectorTableHandle>> aggIndexResult =
+                metadata.applyAggIndex(connectorSession, table.getConnectorHandle(), aggIndex);
+        if (aggIndexResult.isEmpty()) {
+            return Optional.empty();
+        }
+        Map<String, TableColumnIdentify> aggIndexColumnNameToIdentify = aggIndexResult.get().getAggIndexColumnNameToIdentify();
+        return aggIndexResult.map(result ->
+                new AggIndexApplicationResult<>(
+                        new TableHandle(catalogName, result.getHandle(), table.getTransaction(), Optional.empty()),
+                        aggIndexColumnNameToIdentify));
     }
 
     private void verifyProjection(TableHandle table, List<ConnectorExpression> projections, List<Assignment> assignments, int expectedProjectionSize)

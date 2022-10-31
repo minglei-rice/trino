@@ -25,6 +25,8 @@ import io.trino.metadata.ResolvedFunction.ResolvedFunctionDecoder;
 import io.trino.operator.aggregation.AggregationMetadata;
 import io.trino.operator.window.WindowFunctionSupplier;
 import io.trino.spi.TrinoException;
+import io.trino.spi.aggindex.AggIndex;
+import io.trino.spi.connector.AggIndexApplicationResult;
 import io.trino.spi.connector.AggregateFunction;
 import io.trino.spi.connector.AggregationApplicationResult;
 import io.trino.spi.connector.BeginTableExecuteResult;
@@ -839,6 +841,12 @@ public abstract class AbstractMockMetadata
 
     @Override
     public Optional<TopNApplicationResult<TableHandle>> applyTopN(Session session, TableHandle handle, long topNFunctions, List<SortItem> sortItems, Map<String, ColumnHandle> assignments)
+    {
+        return Optional.empty();
+    }
+
+    @Override
+    public Optional<AggIndexApplicationResult<TableHandle>> applyAggIndex(Session session, TableHandle handle, AggIndex aggIndex)
     {
         return Optional.empty();
     }

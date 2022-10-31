@@ -259,7 +259,7 @@ public final class ExpressionUtils
      * Removes duplicate deterministic expressions. Preserves the relative order
      * of the expressions in the list.
      */
-    private static List<Expression> removeDuplicates(Metadata metadata, List<Expression> expressions)
+    public static List<Expression> removeDuplicates(Metadata metadata, List<Expression> expressions)
     {
         Set<Expression> seen = new HashSet<>();
 

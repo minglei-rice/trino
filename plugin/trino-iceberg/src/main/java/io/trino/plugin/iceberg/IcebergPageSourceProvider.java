@@ -187,7 +187,6 @@ public class IcebergPageSourceProvider
     {
         IcebergSplit split = (IcebergSplit) connectorSplit;
         IcebergTableHandle table = (IcebergTableHandle) connectorTable;
-
         HdfsContext hdfsContext = new HdfsContext(session);
         FileScanTask fileScanTask = split.decodeFileScanTask();
         if (fileScanTask != null) {
@@ -229,7 +228,8 @@ public class IcebergPageSourceProvider
                 split.getFileFormat(),
                 regularColumns,
                 effectivePredicate,
-                table.getNameMappingJson().map(NameMappingParser::fromJson));
+                table.getNameMappingJson().map(NameMappingParser::fromJson),
+                table);
 
         Optional<ReaderProjectionsAdapter> projectionsAdapter = dataPageSource.getReaderColumns().map(readerColumns ->
                 new ReaderProjectionsAdapter(
@@ -250,7 +250,8 @@ public class IcebergPageSourceProvider
             FileFormat fileFormat,
             List<IcebergColumnHandle> dataColumns,
             TupleDomain<IcebergColumnHandle> predicate,
-            Optional<NameMapping> nameMapping)
+            Optional<NameMapping> nameMapping,
+            IcebergTableHandle icebergTableHandle)
     {
         if (!isUseFileSizeFromMetadata(session)) {
             try {
@@ -301,7 +302,8 @@ public class IcebergPageSourceProvider
                                 .withMaxReadBlockSize(getParquetMaxReadBlockSize(session)),
                         predicate,
                         fileFormatDataSourceStats,
-                        nameMapping);
+                        nameMapping,
+                        icebergTableHandle);
             default:
                 throw new TrinoException(NOT_SUPPORTED, "File format not supported for Iceberg: " + fileFormat);
         }
@@ -632,7 +634,8 @@ public class IcebergPageSourceProvider
             ParquetReaderOptions options,
             TupleDomain<IcebergColumnHandle> effectivePredicate,
             FileFormatDataSourceStats fileFormatDataSourceStats,
-            Optional<NameMapping> nameMapping)
+            Optional<NameMapping> nameMapping,
+            IcebergTableHandle icebergTableHandle)
     {
         AggregatedMemoryContext systemMemoryContext = newSimpleAggregatedMemoryContext();
 
@@ -666,7 +669,7 @@ public class IcebergPageSourceProvider
 
             MessageType requestedSchema = new MessageType(fileSchema.getName(), parquetFields.stream().filter(Objects::nonNull).collect(toImmutableList()));
             Map<List<String>, RichColumnDescriptor> descriptorsByPath = getDescriptors(fileSchema, requestedSchema);
-            TupleDomain<ColumnDescriptor> parquetTupleDomain = getParquetTupleDomain(descriptorsByPath, effectivePredicate);
+            TupleDomain<ColumnDescriptor> parquetTupleDomain = getParquetTupleDomain(descriptorsByPath, effectivePredicate, icebergTableHandle);
             Predicate parquetPredicate = buildPredicate(requestedSchema, parquetTupleDomain, descriptorsByPath, UTC);
 
             List<BlockMetaData> blocks = new ArrayList<>();
@@ -837,7 +840,10 @@ public class IcebergPageSourceProvider
         return Optional.of(new ReaderColumns(projectedColumns.build(), outputColumnMapping.build()));
     }
 
-    private static TupleDomain<ColumnDescriptor> getParquetTupleDomain(Map<List<String>, RichColumnDescriptor> descriptorsByPath, TupleDomain<IcebergColumnHandle> effectivePredicate)
+    private static TupleDomain<ColumnDescriptor> getParquetTupleDomain(
+            Map<List<String>, RichColumnDescriptor> descriptorsByPath,
+            TupleDomain<IcebergColumnHandle> effectivePredicate,
+            IcebergTableHandle icebergTableHandle)
     {
         if (effectivePredicate.isNone()) {
             return TupleDomain.none();
@@ -849,7 +855,7 @@ public class IcebergPageSourceProvider
             // skip looking up predicates for complex types as Parquet only stores stats for primitives
             if (!baseType.equals(StandardTypes.MAP) && !baseType.equals(StandardTypes.ARRAY) && !baseType.equals(StandardTypes.ROW)) {
                 RichColumnDescriptor descriptor = descriptorsByPath.get(ImmutableList.of(columnHandle.getName()));
-                if (descriptor != null) {
+                if (descriptor != null && !predicate.build().containsKey(descriptor)) {
                     predicate.put(descriptor, domain);
                 }
             }

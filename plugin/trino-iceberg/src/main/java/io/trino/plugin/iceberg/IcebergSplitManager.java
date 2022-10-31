@@ -78,7 +78,6 @@ public class IcebergSplitManager
             Constraint constraint)
     {
         IcebergTableHandle table = (IcebergTableHandle) handle;
-
         if (table.getSnapshotId().isEmpty()) {
             return new FixedSplitSource(ImmutableList.of());
         }

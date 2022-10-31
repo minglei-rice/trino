@@ -115,7 +115,8 @@ public class TestIcebergSplitSource
                 TupleDomain.all(),
                 ImmutableSet.of(),
                 Optional.empty(),
-                TupleDomain.all());
+                TupleDomain.all(),
+                Optional.empty());
         Table nationTable = loadIcebergTable(metastore, operationsProvider, SESSION, schemaTableName);
 
         IcebergSplitSource splitSource = new IcebergSplitSource(
@@ -375,7 +376,8 @@ public class TestIcebergSplitSource
                 TupleDomain.all(),
                 ImmutableSet.of(),
                 Optional.empty(),
-                TupleDomain.all());
+                TupleDomain.all(),
+                Optional.empty());
         Table nationTable = loadIcebergTable(metastore, operationsProvider, SESSION, schemaTableName);
 
         IcebergSplitSource splitSource = new IcebergSplitSource(

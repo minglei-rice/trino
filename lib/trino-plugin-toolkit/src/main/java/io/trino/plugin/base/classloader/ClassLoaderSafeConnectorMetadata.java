@@ -14,7 +14,9 @@
 package io.trino.plugin.base.classloader;
 
 import io.airlift.slice.Slice;
+import io.trino.spi.aggindex.AggIndex;
 import io.trino.spi.classloader.ThreadContextClassLoader;
+import io.trino.spi.connector.AggIndexApplicationResult;
 import io.trino.spi.connector.AggregateFunction;
 import io.trino.spi.connector.AggregationApplicationResult;
 import io.trino.spi.connector.BeginTableExecuteResult;
@@ -212,6 +214,14 @@ public class ClassLoaderSafeConnectorMetadata
     {
         try (ThreadContextClassLoader ignored = new ThreadContextClassLoader(classLoader)) {
             return delegate.getTableHandle(session, tableName);
+        }
+    }
+
+    @Override
+    public List<AggIndex> getAggregationIndices(ConnectorSession session, ConnectorTableHandle tableHandle)
+    {
+        try (ThreadContextClassLoader ignored = new ThreadContextClassLoader(classLoader)) {
+            return delegate.getAggregationIndices(session, tableHandle);
         }
     }
 
@@ -960,6 +970,17 @@ public class ClassLoaderSafeConnectorMetadata
     {
         try (ThreadContextClassLoader ignored = new ThreadContextClassLoader(classLoader)) {
             return delegate.applyAggregation(session, table, aggregates, assignments, groupingSets);
+        }
+    }
+
+    @Override
+    public Optional<AggIndexApplicationResult<ConnectorTableHandle>> applyAggIndex(
+            ConnectorSession session,
+            ConnectorTableHandle handle,
+            AggIndex aggIndex)
+    {
+        try (ThreadContextClassLoader ignored = new ThreadContextClassLoader(classLoader)) {
+            return delegate.applyAggIndex(session, handle, aggIndex);
         }
     }
 

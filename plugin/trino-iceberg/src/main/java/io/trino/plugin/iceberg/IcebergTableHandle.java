@@ -16,6 +16,7 @@ package io.trino.plugin.iceberg;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.collect.ImmutableSet;
+import io.trino.spi.aggindex.AggIndex;
 import io.trino.spi.connector.ConnectorTableHandle;
 import io.trino.spi.connector.SchemaTableName;
 import io.trino.spi.predicate.TupleDomain;
@@ -30,6 +31,10 @@ import java.util.function.BiPredicate;
 
 import static java.util.Objects.requireNonNull;
 
+/**
+ * Can work in two modes, If there is an available AggIndex to answer, use AggIndexFile to response.
+ * If there is no AggIndex to find, use on site computation to response.
+ */
 public class IcebergTableHandle
         implements ConnectorTableHandle
 {
@@ -49,6 +54,7 @@ public class IcebergTableHandle
 
     private final Set<IcebergColumnHandle> projectedColumns;
     private final Optional<String> nameMappingJson;
+    private final Optional<AggIndex> aggIndex;
 
     private final TupleDomain<IcebergColumnHandle> corrColPredicate;
 
@@ -62,7 +68,8 @@ public class IcebergTableHandle
             @JsonProperty("enforcedPredicate") TupleDomain<IcebergColumnHandle> enforcedPredicate,
             @JsonProperty("projectedColumns") Set<IcebergColumnHandle> projectedColumns,
             @JsonProperty("nameMappingJson") Optional<String> nameMappingJson,
-            @JsonProperty("corrColPredicate") TupleDomain<IcebergColumnHandle> corrColPredicate)
+            @JsonProperty("corrColPredicate") TupleDomain<IcebergColumnHandle> corrColPredicate,
+            @JsonProperty("aggIndex") Optional<AggIndex> aggIndex)
     {
         this.schemaName = requireNonNull(schemaName, "schemaName is null");
         this.tableName = requireNonNull(tableName, "tableName is null");
@@ -73,6 +80,7 @@ public class IcebergTableHandle
         this.projectedColumns = ImmutableSet.copyOf(requireNonNull(projectedColumns, "projectedColumns is null"));
         this.nameMappingJson = requireNonNull(nameMappingJson, "nameMappingJson is null");
         this.corrColPredicate = requireNonNull(corrColPredicate, "corrColPredicate is null");
+        this.aggIndex = aggIndex;
     }
 
     public IcebergTableHandle(
@@ -85,9 +93,10 @@ public class IcebergTableHandle
             Set<IcebergColumnHandle> projectedColumns,
             Optional<String> nameMappingJson,
             TupleDomain<IcebergColumnHandle> corrColPredicate,
-            Optional<BiPredicate<PartitionSpec, StructLike>> enforcedEvaluator)
+            Optional<BiPredicate<PartitionSpec, StructLike>> enforcedEvaluator,
+            Optional<AggIndex> aggIndex)
     {
-        this(schemaName, tableName, tableType, snapshotId, unenforcedPredicate, enforcedPredicate, projectedColumns, nameMappingJson, corrColPredicate);
+        this(schemaName, tableName, tableType, snapshotId, unenforcedPredicate, enforcedPredicate, projectedColumns, nameMappingJson, corrColPredicate, aggIndex);
         this.enforcedEvaluator = requireNonNull(enforcedEvaluator, "evaluator is null");
     }
 
@@ -155,6 +164,11 @@ public class IcebergTableHandle
         return new SchemaTableName(schemaName, tableName + "$" + tableType.name().toLowerCase(Locale.ROOT));
     }
 
+    public Optional<AggIndex> getAggIndex()
+    {
+        return aggIndex;
+    }
+
     public IcebergTableHandle withProjectedColumns(Set<IcebergColumnHandle> projectedColumns)
     {
         return new IcebergTableHandle(
@@ -167,7 +181,8 @@ public class IcebergTableHandle
                 projectedColumns,
                 nameMappingJson,
                 corrColPredicate,
-                enforcedEvaluator);
+                enforcedEvaluator,
+                aggIndex);
     }
 
     @Override
@@ -188,19 +203,32 @@ public class IcebergTableHandle
                 Objects.equals(unenforcedPredicate, that.unenforcedPredicate) &&
                 Objects.equals(enforcedPredicate, that.enforcedPredicate) &&
                 Objects.equals(projectedColumns, that.projectedColumns) &&
-                Objects.equals(nameMappingJson, that.nameMappingJson);
+                Objects.equals(nameMappingJson, that.nameMappingJson) &&
+                Objects.equals(aggIndex, that.aggIndex);
     }
 
     @Override
     public int hashCode()
     {
-        return Objects.hash(schemaName, tableName, tableType, snapshotId, unenforcedPredicate, enforcedPredicate, projectedColumns, nameMappingJson);
+        return Objects.hash(schemaName, tableName, tableType, snapshotId, unenforcedPredicate, enforcedPredicate, projectedColumns, nameMappingJson, aggIndex);
     }
 
     @Override
     public String toString()
     {
-        return getSchemaTableNameWithType() + snapshotId.map(v -> "@" + v).orElse("");
+        if (getAggIndex().isPresent()) {
+            return getSchemaTableNameWithType()
+                    + getAggIndex().get().toString()
+                    + getUnenforcedPredicate().toString()
+                    + getEnforcedPredicate().toString()
+                    + snapshotId.map(v -> "@" + v).orElse("");
+        }
+        else {
+            return getSchemaTableNameWithType()
+                    + getUnenforcedPredicate().toString()
+                    + getEnforcedPredicate().toString()
+                    + snapshotId.map(v -> "@" + v).orElse("");
+        }
     }
 
     public Optional<BiPredicate<PartitionSpec, StructLike>> getEnforcedEvaluator()

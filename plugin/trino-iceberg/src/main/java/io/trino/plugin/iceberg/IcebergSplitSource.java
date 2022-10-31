@@ -36,7 +36,9 @@ import io.trino.spi.predicate.NullableValue;
 import io.trino.spi.predicate.Range;
 import io.trino.spi.predicate.TupleDomain;
 import io.trino.spi.predicate.ValueSet;
+import org.apache.iceberg.AggIndexFile;
 import org.apache.iceberg.CombinedScanTask;
+import org.apache.iceberg.DataFiles;
 import org.apache.iceberg.FileScanTask;
 import org.apache.iceberg.FilterMetrics;
 import org.apache.iceberg.IndexField;
@@ -81,6 +83,7 @@ import static io.trino.plugin.iceberg.IcebergUtil.getPartitionKeys;
 import static io.trino.plugin.iceberg.IcebergUtil.partitionMatchesConstraint;
 import static io.trino.plugin.iceberg.IcebergUtil.primitiveFieldTypes;
 import static io.trino.plugin.iceberg.TypeConverter.toIcebergType;
+import static io.trino.spi.StandardErrorCode.AGG_INDEX_FILE_NOT_FOUND;
 import static io.trino.spi.StandardErrorCode.NOT_SUPPORTED;
 import static java.util.Objects.requireNonNull;
 import static java.util.concurrent.CompletableFuture.completedFuture;
@@ -200,24 +203,37 @@ public class IcebergSplitSource
                 }
             }
 
-            TableScan refinedScan = tableScan
-                    .filter(filterExpression)
-                    .partEvaluator(tableHandle.getEnforcedEvaluator().orElse(null))
-                    .includeColumnStats()
-                    .option(SystemProperties.SCAN_FILTER_METRICS_ENABLED, "true")
-                    .withThreadName(threadNamePrefix + "producer");
-
-            scanLock.writeLock().lock();
-            try {
-                this.combinedScanIterable = refinedScan.planTasks();
-                this.filterMetrics = refinedScan.filterMetrics();
-                this.fileScanIterator = Streams.stream(combinedScanIterable)
-                        .map(CombinedScanTask::files)
-                        .flatMap(Collection::stream)
-                        .iterator();
+            if (tableHandle.getAggIndex().isPresent()) {
+                this.fileScanIterator = tableScan
+                        .filter(filterExpression)
+                        .includeColumnStats()
+                        .includeAggIndexStats()
+                        .includeIndexStats()
+                        .option(SystemProperties.SCAN_FILTER_METRICS_ENABLED, "true")
+                        .withThreadName(threadNamePrefix + "producer")
+                        .planFiles().iterator();
+                this.combinedScanIterable = CloseableIterable.empty();
             }
-            finally {
-                scanLock.writeLock().unlock();
+            else {
+                TableScan refinedScan = tableScan
+                        .filter(filterExpression)
+                        .partEvaluator(tableHandle.getEnforcedEvaluator().orElse(null))
+                        .includeColumnStats()
+                        .option(SystemProperties.SCAN_FILTER_METRICS_ENABLED, "true")
+                        .withThreadName(threadNamePrefix + "producer");
+
+                scanLock.writeLock().lock();
+                try {
+                    this.combinedScanIterable = refinedScan.planTasks();
+                    this.filterMetrics = refinedScan.filterMetrics();
+                    this.fileScanIterator = Streams.stream(combinedScanIterable)
+                            .map(CombinedScanTask::files)
+                            .flatMap(Collection::stream)
+                            .iterator();
+                }
+                finally {
+                    scanLock.writeLock().unlock();
+                }
             }
         }
 
@@ -251,7 +267,7 @@ public class IcebergSplitSource
                 throw new TrinoException(NOT_SUPPORTED, "Iceberg tables with delete files are not supported: " + tableHandle.getSchemaTableName());
             }
 
-            IcebergSplit icebergSplit = toIcebergSplit(scanTask, includeIndex);
+            IcebergSplit icebergSplit = toIcebergSplit(scanTask, includeIndex, tableHandle);
 
             Supplier<Map<ColumnHandle, NullableValue>> partitionValues = memoize(() -> {
                 Map<ColumnHandle, NullableValue> bindings = new HashMap<>();
@@ -470,7 +486,7 @@ public class IcebergSplitSource
         return true;
     }
 
-    private static IcebergSplit toIcebergSplit(FileScanTask task, boolean includeIndexInSplit)
+    private static IcebergSplit toIcebergSplit(FileScanTask task, boolean includeIndexInSplit, IcebergTableHandle tableHandle)
     {
         String fileScanTaskEncode = null;
         if (includeIndexInSplit && task.file().indices() != null && !task.file().indices().isEmpty()) {
@@ -483,14 +499,33 @@ public class IcebergSplitSource
             }
         }
 
-        return new IcebergSplit(
-                task.file().path().toString(),
-                task.start(),
-                task.length(),
-                task.file().fileSizeInBytes(),
-                task.file().format(),
-                ImmutableList.of(),
-                getPartitionKeys(task),
-                fileScanTaskEncode);
+        // TODO do not judge every time
+        if (tableHandle.getAggIndex().isEmpty()) {
+            // split for DataFile
+            return new IcebergSplit(
+                    task.file().path().toString(),
+                    task.start(),
+                    task.length(),
+                    task.file().fileSizeInBytes(),
+                    task.file().format(),
+                    ImmutableList.of(),
+                    getPartitionKeys(task),
+                    fileScanTaskEncode);
+        }
+        else {
+            // split for AggIndex file
+            AggIndexFile aggIndexFile = DataFiles.getAggIndexFiles(task.file()).stream()
+                    .filter(x -> x.getAggIndexId() == tableHandle.getAggIndex().get().getAggIndexId()).findAny()
+                    .orElseThrow(() -> new TrinoException(AGG_INDEX_FILE_NOT_FOUND, "Can not find an agg index file for data file: " + task.file().toString()));
+            return new IcebergSplit(
+                    aggIndexFile.getAggIndexFilePath(),
+                    0,
+                    aggIndexFile.getAggIndexFileLength(),
+                    aggIndexFile.getAggIndexFileLength(),
+                    task.file().format(),
+                    ImmutableList.of(),
+                    getPartitionKeys(task),
+                    fileScanTaskEncode);
+        }
     }
 }

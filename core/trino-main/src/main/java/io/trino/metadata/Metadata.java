@@ -20,6 +20,8 @@ import io.trino.connector.CatalogName;
 import io.trino.operator.aggregation.AggregationMetadata;
 import io.trino.operator.window.WindowFunctionSupplier;
 import io.trino.spi.TrinoException;
+import io.trino.spi.aggindex.AggIndex;
+import io.trino.spi.connector.AggIndexApplicationResult;
 import io.trino.spi.connector.AggregateFunction;
 import io.trino.spi.connector.AggregationApplicationResult;
 import io.trino.spi.connector.BeginTableExecuteResult;
@@ -134,6 +136,11 @@ public interface Metadata
      * @see {@link #getTableMetadata(Session, TableHandle)}
      */
     TableSchema getTableSchema(Session session, TableHandle tableHandle);
+
+    default List<AggIndex> getAggregationIndices(Session session, TableHandle tableHandle)
+    {
+        return List.of();
+    }
 
     /**
      * Return the metadata for the specified table handle.
@@ -500,6 +507,11 @@ public interface Metadata
             long topNCount,
             List<SortItem> sortItems,
             Map<String, ColumnHandle> assignments);
+
+    Optional<AggIndexApplicationResult<TableHandle>> applyAggIndex(
+             Session session,
+             TableHandle handle,
+             AggIndex aggIndex);
 
     default void validateScan(Session session, TableHandle table) {}
 
