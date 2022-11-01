@@ -104,6 +104,7 @@ import io.trino.sql.tree.Call;
 import io.trino.sql.tree.CallArgument;
 import io.trino.sql.tree.Comment;
 import io.trino.sql.tree.Commit;
+import io.trino.sql.tree.ComparisonExpression;
 import io.trino.sql.tree.CreateMaterializedView;
 import io.trino.sql.tree.CreateSchema;
 import io.trino.sql.tree.CreateTable;
@@ -233,6 +234,7 @@ import static com.google.common.collect.ImmutableMap.toImmutableMap;
 import static com.google.common.collect.ImmutableSet.toImmutableSet;
 import static com.google.common.collect.Iterables.getLast;
 import static com.google.common.collect.Iterables.getOnlyElement;
+import static io.trino.SystemSessionProperties.analyzeAliasInHavingClauseWithoutRestriction;
 import static io.trino.SystemSessionProperties.getMaxGroupingSets;
 import static io.trino.metadata.FunctionKind.AGGREGATE;
 import static io.trino.metadata.FunctionKind.WINDOW;
@@ -2889,6 +2891,34 @@ class StatementAnalyzer
         {
             if (node.getHaving().isPresent()) {
                 Expression predicate = node.getHaving().get();
+
+                if (analyzeAliasInHavingClauseWithoutRestriction(session)) {
+                    Iterator<Field> fieldIterator = scope.getRelationType().getAllFields().iterator();
+                    Set<String> fieldSet = new HashSet<>();
+                    while (fieldIterator.hasNext()) {
+                        fieldSet.add(fieldIterator.next().getName().get());
+                    }
+
+                    Map<String, Object> columnAliasMap = new HashMap<>();
+                    List<SelectItem> selectItemList = node.getSelect().getSelectItems();
+                    if (selectItemList.size() > 0) {
+                        for (SelectItem si : selectItemList) {
+                            if (si instanceof SingleColumn && (((SingleColumn) si).getAlias().isPresent())) {
+                                Expression ex = ((SingleColumn) si).getExpression();
+                                columnAliasMap.put(((SingleColumn) si).getAlias().get().getValue(), ex);
+                            }
+                        }
+                    }
+                    if (predicate instanceof ComparisonExpression) {
+                        if (((ComparisonExpression) predicate).getLeft() instanceof Identifier && !fieldSet.contains(((Identifier) ((ComparisonExpression) predicate).getLeft()).getValue())) {
+                            Expression leftExpr = (Expression) columnAliasMap.get(((Identifier) ((ComparisonExpression) predicate).getLeft()).getValue());
+                            if (leftExpr != null) {
+                                predicate = new ComparisonExpression(((ComparisonExpression) predicate).getLocation().get(),
+                                        ((ComparisonExpression) predicate).getOperator(), leftExpr, ((ComparisonExpression) predicate).getRight());
+                            }
+                        }
+                    }
+                }
 
                 List<Expression> windowExpressions = extractWindowExpressions(ImmutableList.of(predicate));
                 if (!windowExpressions.isEmpty()) {

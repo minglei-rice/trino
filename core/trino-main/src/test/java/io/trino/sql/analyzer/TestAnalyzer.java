@@ -341,6 +341,23 @@ public class TestAnalyzer
     {
         assertFails("SELECT sum(a) x FROM t1 HAVING x > 5")
                 .hasErrorCode(COLUMN_NOT_FOUND);
+
+        Session newSession = Session.builder(CLIENT_SESSION)
+                .setSystemProperty("analyze_alias_in_having_clause_without_restriction", "true")
+                .build();
+        analyze(newSession, "SELECT sum(a) x FROM t1 HAVING x > 5");
+        analyze(newSession, "SELECT t1.a as a1, count(b) total FROM t1  group by a HAVING a1 > 2");
+        analyze(newSession, "SELECT a, count(b) total FROM t1 group by a HAVING total > 2");
+        analyze(newSession, "WITH t(a, total) AS (" +
+                "    VALUES " +
+                "       (1, 100)," +
+                "       (2, 200)," +
+                "       (3, 300)" +
+                " ) " +
+                "SELECT count(a) total " +
+                "FROM t " +
+                "GROUP BY total " +
+                "HAVING total > 50 ");
     }
 
     @Test

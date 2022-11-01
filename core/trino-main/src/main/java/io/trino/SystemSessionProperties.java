@@ -156,6 +156,7 @@ public final class SystemSessionProperties
     public static final String FORBID_CROSS_JOIN = "forbid_cross_join";
     public static final String ORDER_BY_FULL_TABLE = "order_by_full_table";
     public static final String ALLOW_READ_AGG_INDEX_FILES = "allow_read_agg_index_files";
+    public static final String ANALYZE_ALIAS_IN_HAVING_CLAUSE_WITHOUT_RESTRICTION = "analyze_alias_in_having_clause_without_restriction";
 
     private final List<PropertyMetadata<?>> sessionProperties;
 
@@ -734,6 +735,11 @@ public final class SystemSessionProperties
                 booleanProperty(
                         ORDER_BY_FULL_TABLE,
                         "whether forbid order by full table.",
+                        false,
+                        false),
+                booleanProperty(
+                        ANALYZE_ALIAS_IN_HAVING_CLAUSE_WITHOUT_RESTRICTION,
+                        "If enabled, the alias in Having clause will be analyzed without the restriction of must being in GROUP BY.",
                         false,
                         false));
     }
@@ -1320,5 +1326,10 @@ public final class SystemSessionProperties
     public static boolean orderByFullTable(Session session)
     {
         return session.getSystemProperty(ORDER_BY_FULL_TABLE, Boolean.class);
+    }
+
+    public static boolean analyzeAliasInHavingClauseWithoutRestriction(Session session)
+    {
+        return session.getSystemProperty(ANALYZE_ALIAS_IN_HAVING_CLAUSE_WITHOUT_RESTRICTION, Boolean.class);
     }
 }
