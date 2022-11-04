@@ -15,7 +15,6 @@ package io.trino.sql.planner.iterative.rule.cube;
 
 import io.airlift.log.Logger;
 import io.trino.Session;
-import io.trino.matching.Capture;
 import io.trino.matching.Captures;
 import io.trino.matching.Pattern;
 import io.trino.metadata.Metadata;
@@ -58,12 +57,9 @@ import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 import static io.trino.SystemSessionProperties.isAllowReadAggIndexFiles;
-import static io.trino.matching.Capture.newCapture;
 import static io.trino.spi.type.BooleanType.BOOLEAN;
 import static io.trino.sql.planner.plan.Patterns.Aggregation.step;
 import static io.trino.sql.planner.plan.Patterns.aggregation;
-import static io.trino.sql.planner.plan.Patterns.join;
-import static io.trino.sql.planner.plan.Patterns.source;
 
 /**
  * Query can use cube data to query only when the query pattern matches the cube definition.
@@ -77,14 +73,11 @@ public class RewriteAggregationByAggIndex
 {
     private static final Logger LOG = Logger.get(RewriteAggregationByAggIndex.class);
 
-    private static final Capture<JoinNode> JOIN = newCapture();
-
     private final Metadata metadata;
 
     private static final Pattern<AggregationNode> PATTERN = aggregation()
             .with(step().equalTo(AggregationNode.Step.SINGLE))
-            .matching(RewriteAggregationByAggIndex::preCheck)
-            .with(source().matching(join().capturedAs(JOIN)));
+            .matching(RewriteAggregationByAggIndex::preCheck);
 
     public RewriteAggregationByAggIndex(Metadata metadata)
     {
@@ -312,6 +305,15 @@ public class RewriteAggregationByAggIndex
         @Override
         public Void visitJoin(JoinNode node, RewriteUtil context)
         {
+            node.getLeft().accept(this, context);
+            if (!context.canRewrite()) {
+                return null;
+            }
+            node.getRight().accept(this, context);
+            if (!context.canRewrite()) {
+                return null;
+            }
+
             BiPredicate<JoinNode, Lookup> notStarSchema = (joinNode, lookUp) -> {
                 PlanNode left = joinNode.getLeft();
                 if (left instanceof GroupReference) {
@@ -363,15 +365,6 @@ public class RewriteAggregationByAggIndex
                         TableColumnIdentify.NONE,
                         TableColumnIdentify.NONE,
                         "Left join right input has a filter is not supported now.");
-                return null;
-            }
-
-            node.getLeft().accept(this, context);
-            if (!context.canRewrite()) {
-                return null;
-            }
-            node.getRight().accept(this, context);
-            if (!context.canRewrite()) {
                 return null;
             }
 
@@ -532,8 +525,8 @@ public class RewriteAggregationByAggIndex
             this.canRewrite = canRewrite;
             this.symbolToTableColumnIdent = new HashMap<>();
             this.columnIdentifyToSymbol = new HashMap<>();
-            this.filterCollector = new ArrayList<>();
             this.nameToSymbol = new HashMap<>();
+            this.filterCollector = new ArrayList<>();
         }
 
         public Map<String, Symbol> getNameToSymbol()
