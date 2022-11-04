@@ -4,115 +4,193 @@ rules:
   - pattern: java.lang<type=OperatingSystem><>SystemLoadAverage
     type: GAUGE
     name: trino_system_load_average
+    labels:
+      role: trino-coordinator
+      trino_cluster: {TRINO_CLUSTER_NAME}
   - pattern: java.lang<type=Memory><HeapMemoryUsage>(used|max)
     type: GAUGE
     name: trino_heap_memory_usage_$1
+    labels:
+      role: trino-coordinator
+      trino_cluster: {TRINO_CLUSTER_NAME}
   - pattern: java.lang<type=Memory><NonHeapMemoryUsage>used
     type: GAUGE
     name: trino_non_heap_memory_usage_used
+    labels:
+      role: trino-coordinator
+      trino_cluster: {TRINO_CLUSTER_NAME}
   - pattern: java.lang<type=Threading><>ThreadCount
     type: GAUGE
     name: trino_thread_count
+    labels:
+      role: trino-coordinator
+      trino_cluster: {TRINO_CLUSTER_NAME}
   - pattern: java.lang<type=Threading><>PeakThreadCount
     type: GAUGE
     name: trino_peak_thread_count
+    labels:
+      role: trino-coordinator
+      trino_cluster: {TRINO_CLUSTER_NAME}
   - pattern: java.lang<name=(.+), type=GarbageCollector><>Collection(Time|Count)
     type: GAUGE
     name: trino_gc_$1_collection_$2
+    labels:
+      role: trino-coordinator
+      trino_cluster: {TRINO_CLUSTER_NAME}
   - pattern: io.airlift.stats<name=PauseMeter><>(\w+)Pauses
     type: COUNTER
     name: trino_jvm_pause_total_count
     labels:
+      role: trino-coordinator
+      trino_cluster: {TRINO_CLUSTER_NAME}
       period: $1
   - pattern: io.airlift.stats<name=PauseMeter><>TotalPauseSeconds
     type: COUNTER
     name: trino_jvm_pause_total_seconds
+    labels:
+      role: trino-coordinator
+      trino_cluster: {TRINO_CLUSTER_NAME}
   - pattern: io.airlift.http.client<type=HttpClient, name=(\w+)><>ConnectionStats.OpenConnectionCount
     type: GAUGE
     name: trino_http_client_open_connection_count
     labels:
+      role: trino-coordinator
+      trino_cluster: {TRINO_CLUSTER_NAME}
       client_type: $1
   - pattern: io.airlift.http.client<type=HttpClient, name=(\w+)><>ConnectionStats.MaxOpenConnections
     type: GAUGE
     name: trino_http_client_max_open_connection_count
     labels:
+      role: trino-coordinator
+      trino_cluster: {TRINO_CLUSTER_NAME}
       client_type: $1
   - pattern: io.airlift.http.client<type=HttpClient, name=(\w+)><>RequestFailed.TotalCount
     type: COUNTER
     name: trino_http_client_request_failed_total_count
     labels:
+      role: trino-coordinator
+      trino_cluster: {TRINO_CLUSTER_NAME}
       client_type: $1
   - pattern: io.airlift.http.client<type=HttpClient, name=(\w+)><>(Request|Response)Time.OneMinute.Avg
     type: GAUGE
     name: trino_http_client_$2_time_one_minute_avg
     labels:
+      role: trino-coordinator
+      trino_cluster: {TRINO_CLUSTER_NAME}
       client_type: $1
   - pattern: io.airlift.http.client<type=HttpClient, name=(\w+)><>(Request|Response)Time.OneMinute.P(\d+)
     type: GAUGE
     name: trino_http_client_$2_time_one_minute
     labels:
+      role: trino-coordinator
+      trino_cluster: {TRINO_CLUSTER_NAME}
       client_type: $1
       quantile: "0.$3"
   - pattern: io.airlift.http.client<type=HttpClient, name=(\w+)><>ThreadPool.(Busy|Idle)Threads
     type: GAUGE
     name: trino_http_client_$2_thread_count
     labels:
+      role: trino-coordinator
+      trino_cluster: {TRINO_CLUSTER_NAME}
       client_type: $1
   - pattern: io.airlift.http.server<name=HttpServer><>HttpConnectionStats.OpenConnectionCount
     type: GAUGE
     name: trino_http_server_open_connection_count
+    labels:
+      role: trino-coordinator
+      trino_cluster: {TRINO_CLUSTER_NAME}
   - pattern: io.airlift.http.server<name=HttpServer><>HttpConnectionStats.MaxOpenConnections
     type: GAUGE
     name: trino_http_server_max_open_connection_count
+    labels:
+      role: trino-coordinator
+      trino_cluster: {TRINO_CLUSTER_NAME}
   - pattern: io.airlift.http.server<name=RequestStats><>TotalCount
     type: COUNTER
     name: trino_http_server_request_total_count
+    labels:
+      role: trino-coordinator
+      trino_cluster: {TRINO_CLUSTER_NAME}
   - pattern: io.airlift.http.server<name=RequestStats><>RequestTime.OneMinute.Avg
     type: GAUGE
     name: trino_http_server_request_time_one_minute_avg
+    labels:
+      role: trino-coordinator
+      trino_cluster: {TRINO_CLUSTER_NAME}
   - pattern: io.airlift.http.server<name=RequestStats><>RequestTime.OneMinute.P(\d+)
     type: GAUGE
     name: trino_http_server_request_time_one_minute
     labels:
+      role: trino-coordinator
+      trino_cluster: {TRINO_CLUSTER_NAME}
       quantile: "0.$1"
   - pattern: trino.memory<type=ClusterMemoryPool, name=general><>(Total|Free)DistributedBytes
     type: GAUGE
     name: trino_cluster_memory_pool_$1_distributed_bytes
+    labels:
+      role: trino-coordinator
+      trino_cluster: {TRINO_CLUSTER_NAME}
   - pattern: trino.metadata<name=DiscoveryNodeManager><>(Active|Inactive)NodeCount
     type: GAUGE
     name: trino_$1_nodes
+    labels:
+      role: trino-coordinator
+      trino_cluster: {TRINO_CLUSTER_NAME}
   - pattern: trino.execution<name=QueryManager><>ConsumedInputBytes.TotalCount
     type: COUNTER
     name: trino_read_bytes_total_count
+    labels:
+      role: trino-coordinator
+      trino_cluster: {TRINO_CLUSTER_NAME}
   - pattern: trino.execution<name=QueryManager><>(\w+)Failures.TotalCount
     type: COUNTER
     name: trino_$1_failures_total_count
+    labels:
+      role: trino-coordinator
+      trino_cluster: {TRINO_CLUSTER_NAME}
   - pattern: trino.execution<name=QueryManager><>(\w+)Queries.TotalCount
     type: COUNTER
     name: trino_$1_queries_total_count
+    labels:
+      role: trino-coordinator
+      trino_cluster: {TRINO_CLUSTER_NAME}
   - pattern: trino.execution<name=QueryManager><>(Queued|Running)Queries
     type: GAUGE
     name: trino_$1_queries
+    labels:
+      role: trino-coordinator
+      trino_cluster: {TRINO_CLUSTER_NAME}
   - pattern: trino.execution<name=QueryManager><>(\w+)Time.OneMinute.Avg
     type: GAUGE
     name: trino_$1_time_one_minute_avg
+    labels:
+      role: trino-coordinator
+      trino_cluster: {TRINO_CLUSTER_NAME}
   - pattern: trino.execution<name=QueryManager><>(\w+)Time.OneMinute.P(\d+)
     type: GAUGE
     name: trino_$1_time_one_minute
     labels:
+      role: trino-coordinator
+      trino_cluster: {TRINO_CLUSTER_NAME}
       quantile: "0.$2"
   - pattern: trino.execution.resourcegroups<type=InternalResourceGroup, name=(.+)><>(Queued|Running)Queries
     type: GAUGE
     name: trino_resource_group_$2_queries
     labels:
+      role: trino-coordinator
+      trino_cluster: {TRINO_CLUSTER_NAME}
       group_name: $1
   - pattern: trino.execution.resourcegroups<type=InternalResourceGroup, name=(.+)><>MaxQueuedQueries
     type: GAUGE
     name: trino_resource_group_max_queued_queries
     labels:
+      role: trino-coordinator
+      trino_cluster: {TRINO_CLUSTER_NAME}
       group_name: $1
   - pattern: trino.execution.resourcegroups<type=InternalResourceGroup, name=(.+)><>HardConcurrencyLimit
     type: GAUGE
     name: trino_resource_group_hard_concurrency_limit
     labels:
+      role: trino-coordinator
+      trino_cluster: {TRINO_CLUSTER_NAME}
       group_name: $1

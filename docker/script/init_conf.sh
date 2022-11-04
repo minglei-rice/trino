@@ -26,7 +26,7 @@ sed --in-place "s/{TASK_MAX_WORKER_THREADS}/${TASK_MAX_WORKER_THREADS:-32}/" ${T
 sed --in-place "s/{TASK_CONCURRENCY}/${TASK_CONCURRENCY:-16}/" ${TRINO_ETC_DIR}/config.properties
 sed --in-place "s/{SCHEDULER_INCLUDE_COORDINATOR}/${SCHEDULER_INCLUDE_COORDINATOR:-false}/" ${TRINO_ETC_DIR}/config.properties
 sed --in-place "s/{QUERY_MAX_SCAN_PHYSICAL_BYTES}/${QUERY_MAX_SCAN_PHYSICAL_BYTES:-10TB}/" ${TRINO_ETC_DIR}/config.properties
-
+sed --in-place "s/{TRINO_CLUSTER_NAME}/${TRINO_CLUSTER_NAME:-default}/" ${TRINO_ETC_DIR}/jmx_exporter_config.yaml
 
 ## reset catalog confs from env
 sed -i "s#{TRINO_BASE_DIR}#${TRINO_BASE_DIR}#g" ${TRINO_ETC_DIR}/catalog/iceberg.properties
