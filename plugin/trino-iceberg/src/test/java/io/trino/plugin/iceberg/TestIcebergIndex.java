@@ -28,6 +28,7 @@ import io.trino.plugin.hive.metastore.HiveMetastore;
 import io.trino.plugin.iceberg.catalog.file.FileMetastoreTableOperationsProvider;
 import io.trino.spi.QueryId;
 import io.trino.spi.connector.SchemaTableName;
+import io.trino.spi.metrics.DataSkippingMetrics;
 import io.trino.sql.planner.optimizations.PlanNodeSearcher;
 import io.trino.sql.planner.plan.PlanNode;
 import io.trino.sql.planner.plan.TableScanNode;
@@ -73,6 +74,7 @@ import static io.trino.plugin.hive.metastore.file.FileHiveMetastore.createTestin
 import static io.trino.plugin.iceberg.IcebergQueryRunner.createIcebergQueryRunner;
 import static io.trino.testing.TestingConnectorSession.SESSION;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 
 /**
@@ -141,13 +143,79 @@ public class TestIcebergIndex
     }
 
     @Test
+    public void testTokenBF()
+            throws Exception
+    {
+        getQueryRunner().execute("create table test(x int,y varchar, z varchar)");
+        getQueryRunner().execute("insert into test values (1,'Spring is warm','春天来了'),(3,'Summer is hot','夏天来了'),(5,'Winter is cold','冬天来了')");
+        Table table = loadIcebergTable("test");
+        // define token bf on y
+        table.updateIndexSpec().addIndex("y_tokenbf", IndexType.TOKENBF, "y", Collections.emptyMap()).commit();
+        table.updateIndexSpec().addIndex("z_ngrambf", IndexType.NGRAMBF, "z", Collections.emptyMap()).commit();
+        // generate index files
+        List<FileScanTask> tasks = new ArrayList<>();
+        try (CloseableIterable<FileScanTask> taskIterable = table.newScan().caseSensitive(false).ignoreResiduals().includeIndexStats().planFiles()) {
+            taskIterable.iterator().forEachRemaining(tasks::add);
+        }
+        assertEquals(tasks.size(), 1, "Can only handle a single task");
+        generateIndexFiles(
+                table,
+                tasks.get(0),
+                new Object[][] {
+                        new Object[] {1, "Spring is warm", "春天来了"},
+                        new Object[] {3, "Summer is hot", "夏天来了"},
+                        new Object[] {5, "Winter is cold", "冬天来了"}
+                });
+
+        // test ngrambf data skipping
+        ResultWithQueryId<MaterializedResult> resultWithId = getDistributedQueryRunner().executeWithQueryId(
+                getSession(), "select y from test where z LIKE '%秋天来了%'");
+        assertEquals(resultWithId.getResult().getMaterializedRows().size(), 0);
+        QueryId queryId = resultWithId.getQueryId();
+        List<OperatorStats> operatorStats = getTableScanStats(queryId, "test");
+        assertEquals(operatorStats.size(), 1);
+        DataSkippingMetrics dataSkippingMetrics = (DataSkippingMetrics) operatorStats.get(0).getConnectorMetrics().getMetrics().get("iceberg_data_skipping_metrics");
+        assertEquals(dataSkippingMetrics.getMetricMap().get(DataSkippingMetrics.MetricType.SKIPPED_BY_INDEX_IN_WORKER).getSplitCount(), 1L);
+
+        // test tokenbf data skipping
+        resultWithId = getDistributedQueryRunner().executeWithQueryId(
+                getSession(), "select y from test where starts_with(y, 'Autumn is cool')");
+        assertEquals(resultWithId.getResult().getMaterializedRows().size(), 0);
+        queryId = resultWithId.getQueryId();
+        operatorStats = getTableScanStats(queryId, "test");
+        assertEquals(operatorStats.size(), 1);
+        dataSkippingMetrics = (DataSkippingMetrics) operatorStats.get(0).getConnectorMetrics().getMetrics().get("iceberg_data_skipping_metrics");
+        assertEquals(dataSkippingMetrics.getMetricMap().get(DataSkippingMetrics.MetricType.SKIPPED_BY_INDEX_IN_WORKER).getSplitCount(), 1L);
+
+        // test tokenbf data skipping by has_token
+        resultWithId = getDistributedQueryRunner().executeWithQueryId(
+                getSession(), "select y from test where has_token(y, 'Autumn')");
+        assertEquals(resultWithId.getResult().getMaterializedRows().size(), 0);
+        queryId = resultWithId.getQueryId();
+        operatorStats = getTableScanStats(queryId, "test");
+        assertEquals(operatorStats.size(), 1);
+        dataSkippingMetrics = (DataSkippingMetrics) operatorStats.get(0).getConnectorMetrics().getMetrics().get("iceberg_data_skipping_metrics");
+        assertEquals(dataSkippingMetrics.getMetricMap().get(DataSkippingMetrics.MetricType.SKIPPED_BY_INDEX_IN_WORKER).getSplitCount(), 1L);
+
+        // test no data skipping
+        resultWithId = getDistributedQueryRunner().executeWithQueryId(
+                getSession(), "select y from test where starts_with(y, 'Spring is warm') and z LIKE '%春天来了%'");
+        assertEquals(resultWithId.getResult().getMaterializedRows().size(), 1);
+        queryId = resultWithId.getQueryId();
+        operatorStats = getTableScanStats(queryId, "test");
+        assertEquals(operatorStats.size(), 1);
+        dataSkippingMetrics = (DataSkippingMetrics) operatorStats.get(0).getConnectorMetrics().getMetrics().get("iceberg_data_skipping_metrics");
+        assertFalse(dataSkippingMetrics.getMetricMap().containsKey(DataSkippingMetrics.MetricType.SKIPPED_BY_INDEX_IN_WORKER));
+    }
+
+    @Test
     public void testCorrColFilter()
             throws Exception
     {
         getQueryRunner().execute("create table fact(f_k int,v int)");
-        getQueryRunner().execute("create table dim(d_k int,v double)");
+        getQueryRunner().execute("create table dim(d_k int,v double, data varchar)");
         getQueryRunner().execute("insert into fact values (1,1),(1,2),(3,3)");
-        getQueryRunner().execute("insert into dim values (1,1.0),(2,2.0),(3,3.0),(4,4.0)");
+        getQueryRunner().execute("insert into dim values (1,1.0,'a'),(2,2.0,'b'),(3,3.0,'c'),(4,4.0,'d')");
         Table fact = loadIcebergTable("fact");
         // alter table fact add correlated column (v as dim_v) from inner join dim on f_k=d_k with pk_fk
         CorrelatedColumns.Builder corrColBuilder = new CorrelatedColumns.Builder(fact.schema(), false)

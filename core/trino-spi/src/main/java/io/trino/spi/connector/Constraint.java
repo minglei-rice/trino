@@ -14,6 +14,7 @@
 package io.trino.spi.connector;
 
 import io.trino.spi.predicate.NullableValue;
+import io.trino.spi.predicate.StringPredicate;
 import io.trino.spi.predicate.TupleDomain;
 
 import java.util.Map;
@@ -31,6 +32,8 @@ public class Constraint
     private final Optional<Set<ColumnHandle>> predicateColumns;
     private final Optional<Supplier<Constraint>> evaluator;
 
+    private final Optional<Set<StringPredicate>> stringPredicates;
+
     public static Constraint alwaysTrue()
     {
         return new Constraint(TupleDomain.all());
@@ -43,30 +46,48 @@ public class Constraint
 
     public Constraint(TupleDomain<ColumnHandle> summary)
     {
-        this(summary, Optional.empty(), Optional.empty());
+        this(summary, Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty());
     }
 
     public Constraint(TupleDomain<ColumnHandle> summary, Predicate<Map<ColumnHandle, NullableValue>> predicate, Set<ColumnHandle> predicateColumns)
     {
-        this(summary, Optional.of(predicate), Optional.of(predicateColumns));
+        this(summary, Optional.of(predicate), Optional.of(predicateColumns), Optional.empty(), Optional.empty());
+    }
+
+    public Constraint(TupleDomain<ColumnHandle> summary, Predicate<Map<ColumnHandle, NullableValue>> predicate, Set<ColumnHandle> predicateColumns,
+                      Set<StringPredicate> stringPredicates)
+    {
+        this(summary, Optional.of(predicate), Optional.of(predicateColumns), Optional.of(stringPredicates), Optional.empty());
+    }
+
+    public Constraint(TupleDomain<ColumnHandle> summary, Set<StringPredicate> stringPredicates)
+    {
+        this(summary, Optional.empty(), Optional.empty(), Optional.of(stringPredicates), Optional.empty());
     }
 
     public Constraint(Constraint constraint, Supplier<Constraint> evaluator)
     {
-        this(constraint.getSummary(), constraint.predicate(), constraint.getPredicateColumns(), Optional.of(evaluator));
+        this(constraint.getSummary(), constraint.predicate(), constraint.getPredicateColumns(), constraint.getStringPredicates(), Optional.of(evaluator));
     }
 
-    private Constraint(TupleDomain<ColumnHandle> summary, Optional<Predicate<Map<ColumnHandle, NullableValue>>> predicate, Optional<Set<ColumnHandle>> predicateColumns)
+    private Constraint(TupleDomain<ColumnHandle> summary, Optional<Predicate<Map<ColumnHandle, NullableValue>>> predicate, Optional<Set<ColumnHandle>> predicateColumns,
+                       Set<StringPredicate> stringPredicates, Supplier<Constraint> evaluator)
     {
-        this(summary, predicate, predicateColumns, Optional.empty());
+        this(summary, predicate, predicateColumns, Optional.of(stringPredicates), Optional.of(evaluator));
     }
 
-    private Constraint(TupleDomain<ColumnHandle> summary, Optional<Predicate<Map<ColumnHandle, NullableValue>>> predicate, Optional<Set<ColumnHandle>> predicateColumns, Optional<Supplier<Constraint>> evaluator)
+    private Constraint(
+            TupleDomain<ColumnHandle> summary,
+            Optional<Predicate<Map<ColumnHandle, NullableValue>>> predicate,
+            Optional<Set<ColumnHandle>> predicateColumns,
+            Optional<Set<StringPredicate>> stringPredicates,
+            Optional<Supplier<Constraint>> evaluator)
     {
         this.summary = requireNonNull(summary, "summary is null");
         this.predicate = requireNonNull(predicate, "predicate is null");
         this.predicateColumns = requireNonNull(predicateColumns, "predicateColumns is null");
         this.evaluator = requireNonNull(evaluator, "evaluator is null");
+        this.stringPredicates = requireNonNull(stringPredicates, "stringPredicates is null");
 
         if (predicateColumns.isPresent() && predicate.isEmpty()) {
             throw new IllegalArgumentException("predicateColumns cannot be present when predicate is not present");
@@ -105,5 +126,13 @@ public class Constraint
     public Optional<Supplier<Constraint>> getEvaluator()
     {
         return evaluator;
+    }
+
+    /**
+     * Set of StringPredicates which could be used by Iceberg to skip file with text index.
+     */
+    public Optional<Set<StringPredicate>> getStringPredicates()
+    {
+        return stringPredicates;
     }
 }

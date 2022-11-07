@@ -934,4 +934,10 @@ public abstract class AbstractMockMetadata
     {
         return false;
     }
+
+    @Override
+    public boolean supportsPruningStringPredicate(Session session, TableHandle tableHandle)
+    {
+        return false;
+    }
 }

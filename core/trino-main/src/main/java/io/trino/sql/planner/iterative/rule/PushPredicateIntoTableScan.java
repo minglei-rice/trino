@@ -29,11 +29,13 @@ import io.trino.metadata.TableProperties.TablePartitioning;
 import io.trino.spi.connector.ColumnHandle;
 import io.trino.spi.connector.Constraint;
 import io.trino.spi.connector.ConstraintApplicationResult;
+import io.trino.spi.predicate.StringPredicate;
 import io.trino.spi.predicate.TupleDomain;
 import io.trino.sql.DynamicFilters;
 import io.trino.sql.PlannerContext;
 import io.trino.sql.planner.DomainTranslator;
 import io.trino.sql.planner.LayoutConstraintEvaluator;
+import io.trino.sql.planner.StringPredicateTranslator;
 import io.trino.sql.planner.Symbol;
 import io.trino.sql.planner.SymbolAllocator;
 import io.trino.sql.planner.SymbolsExtractor;
@@ -174,6 +176,9 @@ public class PushPredicateIntoTableScan
                 deterministicPredicate,
                 symbolAllocator.getTypes());
 
+        Set<StringPredicate> stringPredicates = StringPredicateTranslator
+                .extractConjunctStringPredicates(deterministicPredicate);
+
         TupleDomain<ColumnHandle> newDomain = decomposedPredicate.getTupleDomain()
                 .transformKeys(node.getAssignments()::get)
                 .intersect(node.getEnforcedConstraint());
@@ -195,12 +200,12 @@ public class PushPredicateIntoTableScan
                             // Simplify the tuple domain to avoid creating an expression with too many nodes,
                             // which would be expensive to evaluate in the call to isCandidate below.
                             domainTranslator.toPredicate(session, newDomain.simplify().transformKeys(assignments::get))));
-            constraint = new Constraint(newDomain, evaluator::isCandidate, evaluator.getArguments());
+            constraint = new Constraint(newDomain, evaluator::isCandidate, evaluator.getArguments(), stringPredicates);
         }
         else {
             // Currently, invoking the expression interpreter is very expensive.
             // TODO invoke the interpreter unconditionally when the interpreter becomes cheap enough.
-            constraint = new Constraint(newDomain);
+            constraint = new Constraint(newDomain, stringPredicates);
         }
 
         // we are interested only in functional predicate here, so we set the summary to ALL.
@@ -224,6 +229,7 @@ public class PushPredicateIntoTableScan
         };
         Predicate<Expression> pushdownConstraintEvaluatorPredicate = expression ->
                 plannerContext.getMetadata().supportsPruningPartitionsWithPredicateExpression(session, node.getTable()) && hasAnyPartitionSymbolInRemainingExpression.test(expression);
+        boolean supportPruningStringPredicate = plannerContext.getMetadata().supportsPruningStringPredicate(session, node.getTable());
 
         TableHandle newTable;
         Optional<TablePartitioning> newTablePartitioning;
@@ -231,7 +237,8 @@ public class PushPredicateIntoTableScan
         boolean precalculateStatistics;
         if (!plannerContext.getMetadata().usesLegacyTableLayouts(session, node.getTable())) {
             // check if new domain is wider than domain already provided by table scan
-            if (constraint.predicate().isEmpty() && newDomain.contains(node.getEnforcedConstraint())) {
+            if (constraint.predicate().isEmpty() && newDomain.contains(node.getEnforcedConstraint()) &&
+                    (!supportPruningStringPredicate || stringPredicates.isEmpty())) {
                 Expression resultingPredicate = createResultingPredicate(
                         plannerContext,
                         session,

@@ -260,6 +260,8 @@ public class TestIcebergPushCorrColFilter
         // won't push down because filter is on right table of a LEFT join
         assertPlan(format("select * from %s left join %s on %s.x=%s.k and %s.y>0", foo, baz, foo, baz, baz), matchFooTS);
 
+        assertPlan("select * from " + bar + " where s like '%hello%' OR s = 'haha' OR starts_with(s, 'what')", matchFooTS);
+
         QualifiedObjectName completeBaz = new QualifiedObjectName(CATALOG, SCHEMA, baz);
         IcebergColumnHandle yHandle = (IcebergColumnHandle) getColumnHandles(getQueryRunner().getDefaultSession(), completeBaz).get("y");
         CorrelatedColumns.CorrelatedColumn yCorrCol = fooTable.correlatedColumnsSpec().getCorrelatedColumnsForAlias("corr_y").flatMap(c -> c.getColumnByAlias("corr_y")).get();

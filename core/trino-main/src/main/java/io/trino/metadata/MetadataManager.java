@@ -1899,6 +1899,15 @@ public final class MetadataManager
     }
 
     @Override
+    public boolean supportsPruningStringPredicate(Session session, TableHandle table)
+    {
+        CatalogName catalogName = table.getCatalogName();
+        ConnectorMetadata metadata = getMetadata(session, catalogName);
+        ConnectorSession connectorSession = session.toConnectorSession(catalogName);
+        return metadata.supportsPruningStringPredicate(connectorSession, table.getConnectorHandle());
+    }
+
+    @Override
     public Optional<CorrColFilterApplicationResult<TableHandle>> applyCorrColFilter(
             Session session,
             TableHandle table,

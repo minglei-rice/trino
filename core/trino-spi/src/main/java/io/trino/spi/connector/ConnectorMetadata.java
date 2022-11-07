@@ -1488,4 +1488,13 @@ public interface ConnectorMetadata
     {
         return false;
     }
+
+    /**
+     * Return true if the connector supports pruning StringPredicate, StringPredicate could be used to skip file
+     * by connector on specified indices(such as tokenbf/ngrambf), only supported by IcebergConnector now.
+     */
+    default boolean supportsPruningStringPredicate(ConnectorSession session, ConnectorTableHandle tableHandle)
+    {
+        return false;
+    }
 }

@@ -1140,4 +1140,12 @@ public class ClassLoaderSafeConnectorMetadata
             return delegate.supportsPruningWithPredicateExpression(session, tableHandle);
         }
     }
+
+    @Override
+    public boolean supportsPruningStringPredicate(ConnectorSession session, ConnectorTableHandle tableHandle)
+    {
+        try (ThreadContextClassLoader ignored = new ThreadContextClassLoader(classLoader)) {
+            return delegate.supportsPruningStringPredicate(session, tableHandle);
+        }
+    }
 }

@@ -166,6 +166,7 @@ public class TestIcebergNodeLocalDynamicSplitPruning
                         ImmutableSet.of(KEY_ICEBERG_COLUMN_HANDLE),
                         Optional.empty(),
                         TupleDomain.all(),
+                        Optional.empty(),
                         Optional.empty()),
                 transaction,
                 Optional.empty());

@@ -19,6 +19,7 @@ import com.google.common.collect.ImmutableSet;
 import io.trino.spi.aggindex.AggIndex;
 import io.trino.spi.connector.ConnectorTableHandle;
 import io.trino.spi.connector.SchemaTableName;
+import io.trino.spi.predicate.StringPredicate;
 import io.trino.spi.predicate.TupleDomain;
 import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.StructLike;
@@ -58,6 +59,8 @@ public class IcebergTableHandle
 
     private final TupleDomain<IcebergColumnHandle> corrColPredicate;
 
+    private final Optional<Set<StringPredicate>> stringPredicates;
+
     @JsonCreator
     public IcebergTableHandle(
             @JsonProperty("schemaName") String schemaName,
@@ -69,6 +72,7 @@ public class IcebergTableHandle
             @JsonProperty("projectedColumns") Set<IcebergColumnHandle> projectedColumns,
             @JsonProperty("nameMappingJson") Optional<String> nameMappingJson,
             @JsonProperty("corrColPredicate") TupleDomain<IcebergColumnHandle> corrColPredicate,
+            @JsonProperty("stringPredicate") Optional<Set<StringPredicate>> stringPredicates,
             @JsonProperty("aggIndex") Optional<AggIndex> aggIndex)
     {
         this.schemaName = requireNonNull(schemaName, "schemaName is null");
@@ -80,6 +84,7 @@ public class IcebergTableHandle
         this.projectedColumns = ImmutableSet.copyOf(requireNonNull(projectedColumns, "projectedColumns is null"));
         this.nameMappingJson = requireNonNull(nameMappingJson, "nameMappingJson is null");
         this.corrColPredicate = requireNonNull(corrColPredicate, "corrColPredicate is null");
+        this.stringPredicates = requireNonNull(stringPredicates, "stringPredicate is null");
         this.aggIndex = aggIndex;
     }
 
@@ -94,9 +99,10 @@ public class IcebergTableHandle
             Optional<String> nameMappingJson,
             TupleDomain<IcebergColumnHandle> corrColPredicate,
             Optional<BiPredicate<PartitionSpec, StructLike>> enforcedEvaluator,
+            Optional<Set<StringPredicate>> stringPredicates,
             Optional<AggIndex> aggIndex)
     {
-        this(schemaName, tableName, tableType, snapshotId, unenforcedPredicate, enforcedPredicate, projectedColumns, nameMappingJson, corrColPredicate, aggIndex);
+        this(schemaName, tableName, tableType, snapshotId, unenforcedPredicate, enforcedPredicate, projectedColumns, nameMappingJson, corrColPredicate, stringPredicates, aggIndex);
         this.enforcedEvaluator = requireNonNull(enforcedEvaluator, "evaluator is null");
     }
 
@@ -154,6 +160,12 @@ public class IcebergTableHandle
         return corrColPredicate;
     }
 
+    @JsonProperty
+    public Optional<Set<StringPredicate>> getStringPredicates()
+    {
+        return stringPredicates;
+    }
+
     public SchemaTableName getSchemaTableName()
     {
         return new SchemaTableName(schemaName, tableName);
@@ -182,6 +194,7 @@ public class IcebergTableHandle
                 nameMappingJson,
                 corrColPredicate,
                 enforcedEvaluator,
+                stringPredicates,
                 aggIndex);
     }
 

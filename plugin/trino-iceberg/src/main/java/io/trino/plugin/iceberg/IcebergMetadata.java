@@ -131,6 +131,7 @@ import static io.trino.plugin.iceberg.ExpressionConverter.toIcebergExpression;
 import static io.trino.plugin.iceberg.IcebergErrorCode.ICEBERG_INVALID_METADATA;
 import static io.trino.plugin.iceberg.IcebergSessionProperties.isComplexExpressionsOnPartitionKeysPushdownEnabled;
 import static io.trino.plugin.iceberg.IcebergSessionProperties.isProjectionPushdownEnabled;
+import static io.trino.plugin.iceberg.IcebergSessionProperties.isReadIndicesSwitchOn;
 import static io.trino.plugin.iceberg.IcebergSessionProperties.isStatisticsEnabled;
 import static io.trino.plugin.iceberg.IcebergTableProperties.FILE_FORMAT_PROPERTY;
 import static io.trino.plugin.iceberg.IcebergTableProperties.PARTITIONING_PROPERTY;
@@ -226,6 +227,7 @@ public class IcebergMetadata
                 ImmutableSet.of(),
                 Optional.ofNullable(nameMappingJson),
                 TupleDomain.all(),
+                Optional.empty(),
                 Optional.empty());
     }
 
@@ -275,6 +277,7 @@ public class IcebergMetadata
                 icebergTableHandle.getProjectedColumns(),
                 icebergTableHandle.getNameMappingJson(),
                 icebergTableHandle.getCorrColPredicate(),
+                icebergTableHandle.getStringPredicates(),
                 Optional.of(aggIndex));
 
         Map<String, TableColumnIdentify> aggIndexFileColumnNameToColumnIdent = new HashMap<>();
@@ -1001,7 +1004,8 @@ public class IcebergMetadata
                 .intersect(table.getUnenforcedPredicate());
 
         if (constraint.getEvaluator().isEmpty() && newEnforcedConstraint.equals(table.getEnforcedPredicate())
-                && newUnenforcedConstraint.equals(table.getUnenforcedPredicate())) {
+                && newUnenforcedConstraint.equals(table.getUnenforcedPredicate())
+                && constraint.getStringPredicates().equals(table.getStringPredicates())) {
             return Optional.empty();
         }
 
@@ -1027,6 +1031,7 @@ public class IcebergMetadata
                         table.getNameMappingJson(),
                         table.getCorrColPredicate(),
                         enforcedEvaluator,
+                        constraint.getStringPredicates(),
                         table.getAggIndex()),
                 remainingConstraint.transformKeys(ColumnHandle.class::cast),
                 false));
@@ -1148,6 +1153,7 @@ public class IcebergMetadata
                         icebergTableHandle.getProjectedColumns(),
                         icebergTableHandle.getNameMappingJson(),
                         pushableDomain,
+                        icebergTableHandle.getStringPredicates(),
                         icebergTableHandle.getAggIndex())));
     }
 
@@ -1480,6 +1486,12 @@ public class IcebergMetadata
             throw new TrinoException(NOT_SUPPORTED, "Materialized View rename across schemas is not supported");
         }
         catalog.renameMaterializedView(session, source, target);
+    }
+
+    @Override
+    public boolean supportsPruningStringPredicate(ConnectorSession session, ConnectorTableHandle tableHandle)
+    {
+        return isReadIndicesSwitchOn(session);
     }
 
     public Optional<TableToken> getTableToken(ConnectorSession session, ConnectorTableHandle tableHandle)

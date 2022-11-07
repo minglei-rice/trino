@@ -756,4 +756,6 @@ public interface Metadata
      * therefore it's expensive for some scenarios.
      */
     boolean supportsPruningPartitionsWithPredicateExpression(Session session, TableHandle tableHandle);
+
+    boolean supportsPruningStringPredicate(Session session, TableHandle tableHandle);
 }

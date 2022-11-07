@@ -34,6 +34,7 @@ import io.trino.spi.metrics.Metrics;
 import io.trino.spi.predicate.Domain;
 import io.trino.spi.predicate.NullableValue;
 import io.trino.spi.predicate.Range;
+import io.trino.spi.predicate.StringPredicate;
 import io.trino.spi.predicate.TupleDomain;
 import io.trino.spi.predicate.ValueSet;
 import org.apache.iceberg.AggIndexFile;
@@ -47,6 +48,7 @@ import org.apache.iceberg.SystemProperties;
 import org.apache.iceberg.TableScan;
 import org.apache.iceberg.expressions.Expression;
 import org.apache.iceberg.expressions.ExpressionVisitors;
+import org.apache.iceberg.expressions.Expressions;
 import org.apache.iceberg.index.util.UsableIndicesVisitor;
 import org.apache.iceberg.io.CloseableIterable;
 import org.apache.iceberg.types.Type;
@@ -191,15 +193,26 @@ public class IcebergSplitSource
             }
 
             Expression filterExpression = toIcebergExpression(effectivePredicate);
+            Optional<Set<StringPredicate>> optionalStringPredicates = tableHandle.getStringPredicates();
+            if (optionalStringPredicates.isPresent()) {
+                Expression stringFilterExpression = toIcebergExpression(optionalStringPredicates.get());
+                filterExpression = Expressions.and(filterExpression, stringFilterExpression);
+            }
             if (indicesEnable) {
-                IndexSpec indexSpec = tableScan.table().indexSpec();
-                UsableIndicesVisitor visitor = new UsableIndicesVisitor(
-                        CorrelationUtils.schemaWithCorrCols(tableScan.table().schema(), tableScan.table().correlatedColumnsSpec()).asStruct(),
-                        indexSpec.fields());
-                Set<IndexField> usableIndices = ExpressionVisitors.visit(filterExpression, visitor);
-                includeIndex = usableIndices != null && !usableIndices.isEmpty();
-                if (includeIndex) {
-                    log.info("Found usable indices %s", usableIndices);
+                try {
+                    IndexSpec indexSpec = tableScan.table().indexSpec();
+                    UsableIndicesVisitor visitor = new UsableIndicesVisitor(
+                            CorrelationUtils.schemaWithCorrCols(tableScan.table().schema(), tableScan.table().correlatedColumnsSpec()).asStruct(),
+                            indexSpec.fields());
+                    Set<IndexField> usableIndices = ExpressionVisitors.visit(filterExpression, visitor);
+                    includeIndex = usableIndices != null && !usableIndices.isEmpty();
+                    if (includeIndex) {
+                        log.info("Found usable indices %s", usableIndices);
+                    }
+                }
+                catch (Throwable e) {
+                    includeIndex = false;
+                    log.error("Failed to found suitable indices.", e);
                 }
             }
 

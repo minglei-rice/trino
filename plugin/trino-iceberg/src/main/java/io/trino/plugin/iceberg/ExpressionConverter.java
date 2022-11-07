@@ -17,6 +17,7 @@ import com.google.common.base.VerifyException;
 import io.airlift.slice.Slice;
 import io.trino.spi.predicate.Domain;
 import io.trino.spi.predicate.Range;
+import io.trino.spi.predicate.StringPredicate;
 import io.trino.spi.predicate.TupleDomain;
 import io.trino.spi.type.ArrayType;
 import io.trino.spi.type.BigintType;
@@ -42,6 +43,7 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static com.google.common.collect.Iterables.getOnlyElement;
 import static io.trino.plugin.iceberg.util.Timestamps.timestampTzToMicros;
@@ -60,11 +62,14 @@ import static org.apache.iceberg.expressions.Expressions.and;
 import static org.apache.iceberg.expressions.Expressions.equal;
 import static org.apache.iceberg.expressions.Expressions.greaterThan;
 import static org.apache.iceberg.expressions.Expressions.greaterThanOrEqual;
+import static org.apache.iceberg.expressions.Expressions.hasTerm;
 import static org.apache.iceberg.expressions.Expressions.in;
 import static org.apache.iceberg.expressions.Expressions.isNull;
 import static org.apache.iceberg.expressions.Expressions.lessThan;
 import static org.apache.iceberg.expressions.Expressions.lessThanOrEqual;
+import static org.apache.iceberg.expressions.Expressions.like;
 import static org.apache.iceberg.expressions.Expressions.not;
+import static org.apache.iceberg.expressions.Expressions.startsWith;
 
 public final class ExpressionConverter
 {
@@ -84,6 +89,31 @@ public final class ExpressionConverter
             IcebergColumnHandle columnHandle = entry.getKey();
             Domain domain = entry.getValue();
             expression = and(expression, toIcebergExpression(columnHandle.getQualifiedName(), columnHandle.getType(), domain));
+        }
+        return expression;
+    }
+
+    public static Expression toIcebergExpression(Set<StringPredicate> stringPredicates)
+    {
+        if (stringPredicates == null || stringPredicates.size() == 0) {
+            return alwaysTrue();
+        }
+        Expression expression = alwaysTrue();
+        for (StringPredicate stringPredicate : stringPredicates) {
+            switch (stringPredicate.getOperator()) {
+                case EQUALS:
+                    expression = and(expression, equal(stringPredicate.getField(), stringPredicate.getVariable()));
+                    break;
+                case LIKE:
+                    expression = and(expression, like(stringPredicate.getField(), stringPredicate.getVariable()));
+                    break;
+                case STARTS_WITH:
+                    expression = and(expression, startsWith(stringPredicate.getField(), stringPredicate.getVariable()));
+                    break;
+                case HAS_TOKEN:
+                    expression = and(expression, hasTerm(stringPredicate.getField(), stringPredicate.getVariable()));
+                    break;
+            }
         }
         return expression;
     }
