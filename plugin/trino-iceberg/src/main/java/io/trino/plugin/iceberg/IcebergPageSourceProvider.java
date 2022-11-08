@@ -192,7 +192,7 @@ public class IcebergPageSourceProvider
         if (fileScanTask != null) {
             long start = System.currentTimeMillis();
             HdfsFileIo hdfsFileIo = new HdfsFileIo(hdfsEnvironment, hdfsContext);
-            split.setIsSkippedByIndex(!fileScanTask.isRequired(hdfsFileIo, false));
+            split.setIsSkippedByIndex(!fileScanTask.isRequired(hdfsFileIo, false).result());
             split.setIndexReadTime(System.currentTimeMillis() - start);
             if (split.isSkippedByIndex()) {
                 log.info("Indices hit for file : %s, split skipped, time spent : %s ms", fileScanTask.file().path(), split.getIndexReadTime());
