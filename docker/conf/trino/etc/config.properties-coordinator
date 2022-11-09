@@ -1,6 +1,7 @@
 coordinator=true
 node.environment=production
 node-scheduler.include-coordinator={SCHEDULER_INCLUDE_COORDINATOR}
+query.max-scan-physical-bytes={QUERY_MAX_SCAN_PHYSICAL_BYTES}
 http-server.http.port={SERVER_HTTP_PORT}
 discovery-server.enabled=true
 #need to change worknum*pernode
