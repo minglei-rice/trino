@@ -11,10 +11,16 @@
 -XX:+PrintGCDetails
 -XX:+ExplicitGCInvokesConcurrent
 -XX:OnOutOfMemoryError=kill -9 %p
--XX:NativeMemoryTracking=summary
+# 开启这个选项会降低5%~10%性能
+# -XX:NativeMemoryTracking=summary
 -XX:+ExplicitGCInvokesConcurrent
-# logging gc details into this file with time
--Xlog:gc*:{TRINO_LOG_DIR}/garbage-collection.log:time
+-XX:MetaspaceSize=1024M
+-XX:MaxMetaspaceSize=1024M
+# 最小空闲比，GC之后，如果metaspace的空闲空间比小于这个值，则触发扩容
+-XX:MinMetaspaceFreeRatio=0
+# 最大空闲比，GC之后，如果metaspace的空闲空间比大于这个值，则会触发缩容
+-XX:MaxMetaspaceFreeRatio=100
+-Xlog:gc*:{TRINO_LOG_DIR}/garbage-collection.log:time,level,tags,tid
 -Dcom.sun.management.jmxremote.port=40010
 -Dcom.sun.management.jmxremote.authenticate=false
 -Dcom.sun.management.jmxremote.ssl=false
