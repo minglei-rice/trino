@@ -18,6 +18,7 @@ import io.trino.metadata.ResolvedFunction;
 import io.trino.sql.tree.DefaultExpressionTraversalVisitor;
 import io.trino.sql.tree.Expression;
 import io.trino.sql.tree.FunctionCall;
+import io.trino.sql.tree.IndexedExpression;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
@@ -54,6 +55,12 @@ public final class DeterminismEvaluator
         public Visitor(Function<FunctionCall, ResolvedFunction> resolvedFunctionSupplier)
         {
             this.resolvedFunctionSupplier = resolvedFunctionSupplier;
+        }
+
+        @Override
+        protected Void visitIndexedExpression(IndexedExpression node, AtomicBoolean context)
+        {
+            return process(node.getOriginExpression(), context);
         }
 
         @Override

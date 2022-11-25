@@ -32,6 +32,7 @@ import io.trino.spi.expression.ConnectorExpression;
 import io.trino.spi.predicate.Domain;
 import io.trino.spi.predicate.TupleDomain;
 import io.trino.spi.type.Type;
+import io.trino.sql.ExpressionUtils;
 import io.trino.sql.PlannerContext;
 import io.trino.sql.planner.ConnectorExpressionTranslator;
 import io.trino.sql.planner.ConnectorExpressionTranslator.ConnectorExpressionTranslation;
@@ -49,9 +50,11 @@ import io.trino.sql.planner.plan.PlanNode;
 import io.trino.sql.planner.plan.TableScanNode;
 import io.trino.sql.planner.plan.ValuesNode;
 import io.trino.sql.tree.Expression;
+import io.trino.sql.tree.IndexedExpression;
 import io.trino.sql.tree.NodeRef;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -66,7 +69,10 @@ import static io.trino.matching.Capture.newCapture;
 import static io.trino.spi.expression.Constant.TRUE;
 import static io.trino.sql.DynamicFilters.isDynamicFilter;
 import static io.trino.sql.ExpressionUtils.combineConjuncts;
+import static io.trino.sql.ExpressionUtils.combineIndexedConjuncts;
 import static io.trino.sql.ExpressionUtils.extractConjuncts;
+import static io.trino.sql.ExpressionUtils.extractIndexedConjuncts;
+import static io.trino.sql.ExpressionUtils.unwrapIndexedConjuncts;
 import static io.trino.sql.planner.DeterminismEvaluator.isDeterministic;
 import static io.trino.sql.planner.iterative.rule.Rules.deriveTableStatisticsForPushdown;
 import static io.trino.sql.planner.plan.Patterns.filter;
@@ -172,16 +178,18 @@ public class PushPredicateIntoTableScan
         DomainTranslator.ExtractionResult decomposedPredicate = DomainTranslator.getExtractionResult(
                 plannerContext,
                 session,
-                splitExpression.getDeterministicPredicate(),
+                combineIndexedConjuncts(plannerContext.getMetadata(), splitExpression.getDeterministicPredicates()),
                 symbolAllocator.getTypes());
 
         TupleDomain<ColumnHandle> newDomain = decomposedPredicate.getTupleDomain()
                 .transformKeys(node.getAssignments()::get)
                 .intersect(node.getEnforcedConstraint());
 
+        Expression unwrappedRemainingExpr = unwrapIndexedConjuncts(plannerContext.getMetadata(), decomposedPredicate.getRemainingExpression());
+        List<IndexedExpression> indexedRemainingExpressions = extractIndexedConjuncts(decomposedPredicate.getRemainingExpression());
         ConnectorExpressionTranslation expressionTranslation = ConnectorExpressionTranslator.translateConjuncts(
                 session,
-                decomposedPredicate.getRemainingExpression(),
+                unwrappedRemainingExpr,
                 symbolAllocator.getTypes(),
                 plannerContext,
                 typeAnalyzer);
@@ -193,7 +201,7 @@ public class PushPredicateIntoTableScan
 
         Constraint constraint;
         // use evaluator only when there is some predicate which could not be translated into tuple domain
-        if (pruneWithPredicateExpression && !TRUE_LITERAL.equals(decomposedPredicate.getRemainingExpression())) {
+        if (pruneWithPredicateExpression && !TRUE_LITERAL.equals(unwrappedRemainingExpr)) {
             LayoutConstraintEvaluator evaluator = new LayoutConstraintEvaluator(
                     plannerContext,
                     typeAnalyzer,
@@ -202,7 +210,7 @@ public class PushPredicateIntoTableScan
                     node.getAssignments(),
                     combineConjuncts(
                             plannerContext.getMetadata(),
-                            splitExpression.getDeterministicPredicate(),
+                            ExpressionUtils.unwrapIndexedConjuncts(plannerContext.getMetadata(), splitExpression.getDeterministicPredicates()),
                             // Simplify the tuple domain to avoid creating an expression with too many nodes,
                             // which would be expensive to evaluate in the call to isCandidate below.
                             domainTranslator.toPredicate(session, newDomain.simplify().transformKeys(assignments::get))));
@@ -226,8 +234,9 @@ public class PushPredicateIntoTableScan
                     typeAnalyzer,
                     splitExpression.getDynamicFilter(),
                     TRUE_LITERAL,
-                    splitExpression.getNonDeterministicPredicate(),
-                    decomposedPredicate.getRemainingExpression());
+                    splitExpression.getNonDeterministicPredicates(),
+                    indexedRemainingExpressions,
+                    TRUE_LITERAL);
 
             if (!TRUE_LITERAL.equals(resultingPredicate)) {
                 return Optional.of(new FilterNode(filterNode.getId(), node, resultingPredicate));
@@ -276,7 +285,7 @@ public class PushPredicateIntoTableScan
 
         Expression remainingDecomposedPredicate;
         if (remainingConnectorExpression.isEmpty() || remainingConnectorExpression.get().equals(expressionTranslation.connectorExpression())) {
-            remainingDecomposedPredicate = decomposedPredicate.getRemainingExpression();
+            remainingDecomposedPredicate = TRUE_LITERAL;
         }
         else {
             Map<String, Symbol> variableMappings = assignments.values().stream()
@@ -292,6 +301,7 @@ public class PushPredicateIntoTableScan
                             .optimize(NoOpSymbolResolver.INSTANCE),
                     translatedExpressionTypes.get(NodeRef.of(translatedExpression)));
             remainingDecomposedPredicate = combineConjuncts(plannerContext.getMetadata(), translatedExpression, expressionTranslation.remainingExpression());
+            indexedRemainingExpressions = Collections.emptyList();
         }
 
         Expression resultingPredicate = createResultingPredicate(
@@ -301,7 +311,8 @@ public class PushPredicateIntoTableScan
                 typeAnalyzer,
                 splitExpression.getDynamicFilter(),
                 domainTranslator.toPredicate(session, remainingFilter.transformKeys(assignments::get)),
-                splitExpression.getNonDeterministicPredicate(),
+                splitExpression.getNonDeterministicPredicates(),
+                indexedRemainingExpressions,
                 remainingDecomposedPredicate);
 
         if (!TRUE_LITERAL.equals(resultingPredicate)) {
@@ -334,8 +345,9 @@ public class PushPredicateIntoTableScan
         Metadata metadata = plannerContext.getMetadata();
 
         List<Expression> dynamicFilters = new ArrayList<>();
-        List<Expression> deterministicPredicates = new ArrayList<>();
-        List<Expression> nonDeterministicPredicate = new ArrayList<>();
+        List<IndexedExpression> deterministicPredicates = new ArrayList<>();
+        List<IndexedExpression> nonDeterministicPredicate = new ArrayList<>();
+        int index = 0;
 
         for (Expression conjunct : extractConjuncts(predicate)) {
             if (isDynamicFilter(conjunct)) {
@@ -343,40 +355,43 @@ public class PushPredicateIntoTableScan
                 dynamicFilters.add(conjunct);
             }
             else if (isDeterministic(conjunct, metadata)) {
-                deterministicPredicates.add(conjunct);
+                deterministicPredicates.add(new IndexedExpression(conjunct, ++index));
             }
             else {
                 // don't include non-deterministic predicates
-                nonDeterministicPredicate.add(conjunct);
+                nonDeterministicPredicate.add(new IndexedExpression(conjunct, ++index));
             }
         }
 
         return new SplitExpression(
                 combineConjuncts(metadata, dynamicFilters),
-                combineConjuncts(metadata, deterministicPredicates),
-                combineConjuncts(metadata, nonDeterministicPredicate));
+                deterministicPredicates,
+                nonDeterministicPredicate);
     }
 
-    static Expression createResultingPredicate(
+    private static Expression createResultingPredicate(
             PlannerContext plannerContext,
             Session session,
             SymbolAllocator symbolAllocator,
             TypeAnalyzer typeAnalyzer,
             Expression dynamicFilter,
             Expression unenforcedConstraints,
-            Expression nonDeterministicPredicate,
+            List<IndexedExpression> nonDeterministicPredicates,
+            List<IndexedExpression> indexedRemainingPredicates,
             Expression remainingDecomposedPredicate)
     {
-        // The order of the arguments to combineConjuncts matters:
-        // * Dynamic filters go first because they cannot fail,
-        // * Unenforced constraints go next because they can only be simple column references,
-        //   which are not prone to logic errors such as out-of-bound access, div-by-zero, etc.
-        // * Conjuncts in non-deterministic expressions and non-TupleDomain-expressible expressions should
-        //   retain their original (maybe intermixed) order from the input predicate. However, this is not implemented yet.
-        // * Short of implementing the previous bullet point, the current order of non-deterministic expressions
-        //   and non-TupleDomain-expressible expressions should be retained. Changing the order can lead
-        //   to failures of previously successful queries.
-        Expression expression = combineConjuncts(plannerContext.getMetadata(), dynamicFilter, unenforcedConstraints, nonDeterministicPredicate, remainingDecomposedPredicate);
+        List<Expression> conjuncts = new ArrayList<>();
+        conjuncts.add(dynamicFilter);
+        conjuncts.add(unenforcedConstraints);
+
+        // best effort to restore the order of indexed expressions
+        List<IndexedExpression> indexedExpressions = new ArrayList<>(nonDeterministicPredicates);
+        indexedExpressions.addAll(indexedRemainingPredicates);
+        conjuncts.add(ExpressionUtils.unwrapIndexedConjuncts(plannerContext.getMetadata(), indexedExpressions));
+
+        conjuncts.add(remainingDecomposedPredicate);
+
+        Expression expression = combineConjuncts(plannerContext.getMetadata(), conjuncts);
 
         // Make sure we produce an expression whose terms are consistent with the canonical form used in other optimizations
         // Otherwise, we'll end up ping-ponging among rules
@@ -422,14 +437,14 @@ public class PushPredicateIntoTableScan
     private static class SplitExpression
     {
         private final Expression dynamicFilter;
-        private final Expression deterministicPredicate;
-        private final Expression nonDeterministicPredicate;
+        private final List<IndexedExpression> deterministicPredicates;
+        private final List<IndexedExpression> nonDeterministicPredicates;
 
-        public SplitExpression(Expression dynamicFilter, Expression deterministicPredicate, Expression nonDeterministicPredicate)
+        public SplitExpression(Expression dynamicFilter, List<IndexedExpression> deterministicPredicates, List<IndexedExpression> nonDeterministicPredicates)
         {
             this.dynamicFilter = requireNonNull(dynamicFilter, "dynamicFilter is null");
-            this.deterministicPredicate = requireNonNull(deterministicPredicate, "deterministicPredicate is null");
-            this.nonDeterministicPredicate = requireNonNull(nonDeterministicPredicate, "nonDeterministicPredicate is null");
+            this.deterministicPredicates = requireNonNull(deterministicPredicates, "deterministicPredicate is null");
+            this.nonDeterministicPredicates = requireNonNull(nonDeterministicPredicates, "nonDeterministicPredicate is null");
         }
 
         public Expression getDynamicFilter()
@@ -437,14 +452,14 @@ public class PushPredicateIntoTableScan
             return dynamicFilter;
         }
 
-        public Expression getDeterministicPredicate()
+        public List<IndexedExpression> getDeterministicPredicates()
         {
-            return deterministicPredicate;
+            return deterministicPredicates;
         }
 
-        public Expression getNonDeterministicPredicate()
+        public List<IndexedExpression> getNonDeterministicPredicates()
         {
-            return nonDeterministicPredicate;
+            return nonDeterministicPredicates;
         }
     }
 }

@@ -27,6 +27,7 @@ import io.trino.sql.PlannerContext;
 import io.trino.sql.planner.DomainTranslator;
 import io.trino.sql.planner.DomainTranslator.ExtractionResult;
 import io.trino.sql.planner.Symbol;
+import io.trino.sql.planner.SymbolAllocator;
 import io.trino.sql.planner.TypeAnalyzer;
 import io.trino.sql.planner.TypeProvider;
 import io.trino.sql.planner.iterative.Rule;
@@ -46,7 +47,6 @@ import static io.trino.sql.ExpressionUtils.combineConjuncts;
 import static io.trino.sql.ExpressionUtils.extractConjuncts;
 import static io.trino.sql.ExpressionUtils.filterDeterministicConjuncts;
 import static io.trino.sql.ExpressionUtils.filterNonDeterministicConjuncts;
-import static io.trino.sql.planner.iterative.rule.PushPredicateIntoTableScan.createResultingPredicate;
 import static io.trino.sql.planner.plan.Patterns.filter;
 import static io.trino.sql.planner.plan.Patterns.source;
 import static io.trino.sql.planner.plan.Patterns.tableScan;
@@ -167,5 +167,33 @@ public class RemoveRedundantPredicateAboveTableScan
                         extractedPredicates.getOrDefault(FALSE, ImmutableList.of()).stream()
                                 .map(ExtractionResult::getRemainingExpression)
                                 .collect(toImmutableList())));
+    }
+
+    private static Expression createResultingPredicate(
+            PlannerContext plannerContext,
+            Session session,
+            SymbolAllocator symbolAllocator,
+            TypeAnalyzer typeAnalyzer,
+            Expression dynamicFilter,
+            Expression unenforcedConstraints,
+            Expression nonDeterministicPredicate,
+            Expression remainingDecomposedPredicate)
+    {
+        // The order of the arguments to combineConjuncts matters:
+        // * Dynamic filters go first because they cannot fail,
+        // * Unenforced constraints go next because they can only be simple column references,
+        //   which are not prone to logic errors such as out-of-bound access, div-by-zero, etc.
+        // * Conjuncts in non-deterministic expressions and non-TupleDomain-expressible expressions should
+        //   retain their original (maybe intermixed) order from the input predicate. However, this is not implemented yet.
+        // * Short of implementing the previous bullet point, the current order of non-deterministic expressions
+        //   and non-TupleDomain-expressible expressions should be retained. Changing the order can lead
+        //   to failures of previously successful queries.
+        Expression expression = combineConjuncts(plannerContext.getMetadata(), dynamicFilter, unenforcedConstraints, nonDeterministicPredicate, remainingDecomposedPredicate);
+
+        // Make sure we produce an expression whose terms are consistent with the canonical form used in other optimizations
+        // Otherwise, we'll end up ping-ponging among rules
+        expression = SimplifyExpressions.rewrite(expression, session, symbolAllocator, plannerContext, typeAnalyzer);
+
+        return expression;
     }
 }

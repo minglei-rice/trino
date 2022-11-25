@@ -15,6 +15,7 @@ package io.trino.plugin.hive;
 
 import com.google.common.collect.ImmutableMap;
 import io.trino.testing.QueryRunner;
+import org.testng.annotations.Test;
 
 public class TestHiveConnectorTest
         extends BaseHiveConnectorTest
@@ -24,5 +25,27 @@ public class TestHiveConnectorTest
             throws Exception
     {
         return BaseHiveConnectorTest.createHiveQueryRunner(ImmutableMap.of(), runner -> {});
+    }
+
+    @Test
+    public void testDependentFilters()
+    {
+        String tableName = "bad_optimized_table";
+        assertUpdate("CREATE TABLE " + tableName + " (keys ARRAY(VARCHAR), mvalues map(VARCHAR, ARRAY(BIGINT)))");
+        assertUpdate("INSERT INTO " + tableName + " VALUES (ARRAY['consented', 'a'], MAP(ARRAY['consented`a`1'], ARRAY[ARRAY[10, 1]]))", 1);
+        assertUpdate("INSERT INTO " + tableName + " VALUES (ARRAY['bad', 'a'], MAP(ARRAY['bad`a`1'], ARRAY[ARRAY[10, 1]]))", 1);
+        query("select *\n" +
+                "from\n" +
+                "(\n" +
+                "  select keys, mvalues\n" +
+                "  FROM " + tableName +
+                "  where array_position(keys, 'consented') > 0\n" +
+                ") t1\n" +
+                "WHERE cardinality (map_filter(mvalues, (key, value) -> CASE\n" +
+                "WHEN split(key, '`') [array_position(keys,'consented')] = 'consented'\n" +
+                "     AND cardinality(value) > 0 THEN TRUE\n" +
+                "     ELSE FALSE\n" +
+                "     END)) > 0");
+        assertUpdate("DROP TABLE " + tableName);
     }
 }

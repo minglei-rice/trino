@@ -57,6 +57,7 @@ import io.trino.sql.tree.Expression;
 import io.trino.sql.tree.FunctionCall;
 import io.trino.sql.tree.InListExpression;
 import io.trino.sql.tree.InPredicate;
+import io.trino.sql.tree.IndexedExpression;
 import io.trino.sql.tree.IsNotNullPredicate;
 import io.trino.sql.tree.IsNullPredicate;
 import io.trino.sql.tree.LikePredicate;
@@ -378,6 +379,13 @@ public final class DomainTranslator
         {
             // If we don't know how to process this node, the default response is to say that the TupleDomain is "all"
             return new ExtractionResult(TupleDomain.all(), complementIfNecessary(node, complement));
+        }
+
+        @Override
+        protected ExtractionResult visitIndexedExpression(IndexedExpression node, Boolean context)
+        {
+            ExtractionResult result = process(node.getOriginExpression(), context);
+            return new ExtractionResult(result.getTupleDomain(), new IndexedExpression(result.getRemainingExpression(), node.getId()));
         }
 
         @Override

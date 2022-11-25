@@ -38,6 +38,7 @@ import io.trino.sql.tree.ExpressionTreeRewriter;
 import io.trino.sql.tree.FunctionCall;
 import io.trino.sql.tree.GenericDataType;
 import io.trino.sql.tree.Identifier;
+import io.trino.sql.tree.IndexedExpression;
 import io.trino.sql.tree.IsNullPredicate;
 import io.trino.sql.tree.LambdaExpression;
 import io.trino.sql.tree.Literal;
@@ -50,6 +51,7 @@ import io.trino.sql.tree.SymbolReference;
 
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -57,6 +59,7 @@ import java.util.Set;
 import java.util.function.Function;
 import java.util.function.Predicate;
 
+import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Predicates.not;
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static io.trino.metadata.LiteralFunction.LITERAL_FUNCTION_NAME;
@@ -83,6 +86,49 @@ public final class ExpressionUtils
     public static List<Expression> extractPredicates(LogicalExpression expression)
     {
         return extractPredicates(expression.getOperator(), expression);
+    }
+
+    public static Expression combineIndexedConjuncts(Metadata metadata, Collection<IndexedExpression> expressions)
+    {
+        Set<Expression> seen = new HashSet<>();
+        ImmutableList.Builder<IndexedExpression> result = ImmutableList.builder();
+        for (IndexedExpression expression : expressions) {
+            if (expression.getOriginExpression().equals(TRUE_LITERAL)) {
+                continue;
+            }
+            if (expression.getOriginExpression().equals(FALSE_LITERAL)) {
+                return expression;
+            }
+            if (!DeterminismEvaluator.isDeterministic(expression.getOriginExpression(), metadata)) {
+                result.add(expression);
+            }
+            else if (!seen.contains(expression.getOriginExpression())) {
+                seen.add(expression.getOriginExpression());
+                result.add(expression);
+            }
+        }
+        List<IndexedExpression> deduplicatedExpressions = result.build();
+        return deduplicatedExpressions.isEmpty() ? IndexedExpression.TRUE_EXPRESSION : and(deduplicatedExpressions.toArray(new Expression[0]));
+    }
+
+    public static List<IndexedExpression> extractIndexedConjuncts(Expression expression)
+    {
+        List<Expression> conjuncts = extractConjuncts(expression);
+        checkArgument(conjuncts.stream().allMatch(e -> e instanceof IndexedExpression));
+        return conjuncts.stream().map(e -> (IndexedExpression) e).collect(toList());
+    }
+
+    public static Expression unwrapIndexedConjuncts(Metadata metadata, List<IndexedExpression> indexedExpressions)
+    {
+        return combineConjuncts(metadata, indexedExpressions.stream()
+                .sorted(Comparator.comparingInt(IndexedExpression::getId))
+                .map(IndexedExpression::getOriginExpression)
+                .toArray(Expression[]::new));
+    }
+
+    public static Expression unwrapIndexedConjuncts(Metadata metadata, Expression expression)
+    {
+        return unwrapIndexedConjuncts(metadata, extractIndexedConjuncts(expression));
     }
 
     public static List<Expression> extractPredicates(LogicalExpression.Operator operator, Expression expression)
