@@ -13,10 +13,12 @@
  */
 package com.bilibili.olap.functions.scalar;
 
+import com.bilibili.olap.functions.ClickHouseBitmapSerializer;
 import com.bilibili.olap.functions.aggregation.BitmapStateSerializer;
 import com.bilibili.olap.functions.type.BitmapType;
 import com.bilibili.olap.functions.type.ClickHouseBitmapType;
 import io.airlift.slice.Slice;
+import io.airlift.slice.Slices;
 import io.trino.spi.function.ScalarOperator;
 import io.trino.spi.function.SqlType;
 import io.trino.spi.type.StandardTypes;
@@ -25,6 +27,8 @@ import static io.trino.spi.function.OperatorType.CAST;
 
 public final class BitmapOperators
 {
+    private static final BitmapStateSerializer SERIALIZER = new BitmapStateSerializer();
+
     private BitmapOperators() {}
 
     @ScalarOperator(CAST)
@@ -45,6 +49,6 @@ public final class BitmapOperators
     @SqlType(ClickHouseBitmapType.NAME)
     public static Slice castToCKBitmapFromBitmap(@SqlType(BitmapType.NAME) Slice slice)
     {
-        return slice.slice(BitmapStateSerializer.HEADER_SIZE_IN_BYTES, slice.length() - BitmapStateSerializer.HEADER_SIZE_IN_BYTES);
+        return Slices.wrappedBuffer(ClickHouseBitmapSerializer.serialize(SERIALIZER.deserialize(slice)));
     }
 }

@@ -26,11 +26,10 @@ import io.trino.operator.scalar.AbstractTestFunctions;
 import io.trino.spi.block.Block;
 import io.trino.spi.block.BlockBuilder;
 import io.trino.spi.type.SqlVarbinary;
+import io.trino.spi.type.Type;
 import io.trino.sql.tree.QualifiedName;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
-import ru.yandex.clickhouse.domain.ClickHouseDataType;
-import ru.yandex.clickhouse.util.ClickHouseBitmap;
 
 import java.io.IOException;
 import java.util.Arrays;
@@ -79,8 +78,8 @@ public class TestClickhouseFunctions
             values[i] = i;
         }
 
-        byte[] serializedData = readAsBytes(true, INT64, values).getBytes();
-        assertEquals(serializedData, readAsBytes(true, INT64, values).getBytes());
+        byte[] serializedData = toSlice(true, makeBitmap(BitmapType.BITMAP_TYPE, INT64, values)).getBytes();
+        assertEquals(serializedData, toSlice(true, makeBitmap(BitmapType.BITMAP_TYPE, INT64, values)).getBytes());
 
         assertAggregation(functionAssertions.getFunctionResolution(),
                 QualifiedName.of("groupBitmap"),
@@ -108,20 +107,25 @@ public class TestClickhouseFunctions
         String castToSmallSet = String.format("CAST(X'%s' AS %s)", BaseEncoding.base16().encode(serializedSlice16.getBytes()), BitmapType.NAME);
         assertFunction("cardinality(" + castToSmallSet + ")", BIGINT, (long) shortValues.length);
         Slice serializedCKSlice16 = readAsBytes(false, INT16, shortValues);
-        assertEquals(ClickHouseBitmap.deserialize(serializedCKSlice16.getBytes(), ClickHouseDataType.Int16).getCardinality(), (long) shortValues.length);
+        assertEquals(ClickHouseBitmapSerializer.deserialize(serializedCKSlice16.getBytes(), INT16).getCardinality(), (long) shortValues.length);
 
+        // 33 elements in 2 containers
         long cardinality = 33;
         long[] longValues = new long[(int) cardinality];
-        for (int i = 0; i < longValues.length; i++) {
+        for (int i = 1; i <= longValues.length - 1; i++) {
             longValues[i] = i;
         }
+        longValues[longValues.length - 1] = 4294967296L;
 
-        Slice serializedSlice = readAsBytes(true, INT64, longValues);
+        Slice serializedSlice = toSlice(true, makeBitmap(BitmapType.BITMAP_TYPE, INT64, longValues));
         String castToBitmap = String.format("CAST(X'%s' AS %s)", BaseEncoding.base16().encode(serializedSlice.getBytes()), BitmapType.NAME);
         assertFunction(castToBitmap, BitmapType.BITMAP_TYPE, new SqlVarbinary(serializedSlice.getBytes()));
         assertFunction("cardinality(" + castToBitmap + ")", BIGINT, cardinality);
 
-        byte[] serializedCKSlice = readAsBytes(false, INT64, longValues).getBytes();
+        byte[] serializedCKSlice = toSlice(false, makeBitmap(ClickHouseBitmapType.CLICK_HOUSE_BITMAP_TYPE, INT64, longValues)).getBytes();
+        String expectedBytesInBase16 = "01720200000000000000000000003A3000000100000000001F001000000000000100020003000400050006000700080009000A000B000C000D000E000F0010001100120013001400150016001700180019001A001B001C001D001E001F00010000003A3000000100000000000000100000000000";
+        assertEquals(BaseEncoding.base16().encode(serializedCKSlice), expectedBytesInBase16);
+
         String castToCKBitmap = String.format("CAST(X'%s' AS %s)", BaseEncoding.base16().encode(serializedSlice.getBytes()), ClickHouseBitmapType.NAME);
         assertFunction(castToCKBitmap, ClickHouseBitmapType.CLICK_HOUSE_BITMAP_TYPE, new SqlVarbinary(serializedCKSlice));
 
@@ -131,7 +135,7 @@ public class TestClickhouseFunctions
                 ClickHouseBitmapType.NAME);
         assertFunction(castFromBitmap, ClickHouseBitmapType.CLICK_HOUSE_BITMAP_TYPE, new SqlVarbinary(serializedCKSlice));
 
-        assertEquals(ClickHouseBitmap.deserialize(serializedCKSlice, ClickHouseDataType.Int64).getCardinality(), cardinality);
+        assertEquals(ClickHouseBitmapSerializer.deserialize(serializedCKSlice, INT64).getCardinality(), cardinality);
     }
 
     private Slice readAsBytes(boolean needHeader, ClickHouseDataTypeMapping dataType, short... values)
@@ -140,19 +144,23 @@ public class TestClickhouseFunctions
         for (short v : values) {
             bitmap.add(v);
         }
-        BitmapStateSerializer serializer = new BitmapStateSerializer();
-        BlockBuilder blockBuilder = ClickHouseBitmapType.CLICK_HOUSE_BITMAP_TYPE.createBlockBuilder(null, values.length);
-        serializer.serialize(bitmap, blockBuilder, needHeader);
-        Block expectedBlock = blockBuilder.build();
-        return expectedBlock.getSlice(0, 0, expectedBlock.getSliceLength(0));
+        return toSlice(needHeader, bitmap);
     }
 
-    private Slice readAsBytes(boolean needHeader, ClickHouseDataTypeMapping dataType, long... values)
+    private BitmapWithSmallSet makeBitmap(Type bitmapType, ClickHouseDataTypeMapping dataType, long... values)
     {
         LongRoaringBitmapData longRoaringBitmapData = new LongRoaringBitmapData(values);
         BitmapWithSmallSet bitmap = new BitmapWithSmallSet(longRoaringBitmapData, dataType);
+        if (bitmapType == ClickHouseBitmapType.CLICK_HOUSE_BITMAP_TYPE) {
+            return ClickHouseBitmapAdapter.toClickHouseBitmap(bitmap);
+        }
+        return bitmap;
+    }
+
+    private Slice toSlice(boolean needHeader, BitmapWithSmallSet bitmap)
+    {
         BitmapStateSerializer serializer = new BitmapStateSerializer();
-        BlockBuilder blockBuilder = ClickHouseBitmapType.CLICK_HOUSE_BITMAP_TYPE.createBlockBuilder(null, values.length);
+        BlockBuilder blockBuilder = ClickHouseBitmapType.CLICK_HOUSE_BITMAP_TYPE.createBlockBuilder(null, 1);
         serializer.serialize(bitmap, blockBuilder, needHeader);
         Block expectedBlock = blockBuilder.build();
         return expectedBlock.getSlice(0, 0, expectedBlock.getSliceLength(0));
