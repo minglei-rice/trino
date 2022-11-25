@@ -57,6 +57,7 @@ import io.trino.sql.tree.Identifier;
 import io.trino.sql.tree.IfExpression;
 import io.trino.sql.tree.InListExpression;
 import io.trino.sql.tree.InPredicate;
+import io.trino.sql.tree.IndexedExpression;
 import io.trino.sql.tree.IntervalDayTimeDataType;
 import io.trino.sql.tree.IntervalLiteral;
 import io.trino.sql.tree.IsNotNullPredicate;
@@ -156,6 +157,12 @@ public final class ExpressionFormatter
         protected String visitExpression(Expression node, Void context)
         {
             throw new UnsupportedOperationException(format("not yet implemented: %s.visit%s", getClass().getName(), node.getClass().getSimpleName()));
+        }
+
+        @Override
+        protected String visitIndexedExpression(IndexedExpression node, Void context)
+        {
+            return IndexedExpression.class.getSimpleName() + "[" + node.getId() + "]" + process(node.getOriginExpression(), context);
         }
 
         @Override

@@ -37,6 +37,11 @@ public abstract class AstVisitor<R, C>
         return visitNode(node, context);
     }
 
+    protected R visitIndexedExpression(IndexedExpression node, C context)
+    {
+        return visitExpression(node, context);
+    }
+
     protected R visitCurrentTime(CurrentTime node, C context)
     {
         return visitExpression(node, context);

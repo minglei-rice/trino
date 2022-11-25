@@ -41,9 +41,9 @@ import java.util.Objects;
 import java.util.Optional;
 
 import static io.trino.matching.Capture.newCapture;
-import static io.trino.sql.ExpressionUtils.filterDeterministicConjuncts;
-import static io.trino.sql.ExpressionUtils.filterNonDeterministicConjuncts;
-import static io.trino.sql.planner.iterative.rule.PushPredicateIntoTableScan.createResultingPredicate;
+import static io.trino.sql.ExpressionUtils.SplitExpression;
+import static io.trino.sql.ExpressionUtils.transferToIndexedConjuncts;
+import static io.trino.sql.planner.iterative.rule.PushPredicateIntoTableScan.createResultingPredicateInOrder;
 import static io.trino.sql.planner.plan.Patterns.filter;
 import static io.trino.sql.planner.plan.Patterns.source;
 import static io.trino.sql.planner.plan.Patterns.tableScan;
@@ -101,16 +101,14 @@ public class RemoveRedundantTableScanPredicate
             SymbolAllocator symbolAllocator,
             PlanNodeIdAllocator idAllocator)
     {
-        Expression deterministicPredicate = filterDeterministicConjuncts(plannerContext.getMetadata(), predicate);
-        Expression nonDeterministicPredicate = filterNonDeterministicConjuncts(plannerContext.getMetadata(), predicate);
-
-        DomainTranslator.ExtractionResult decomposedPredicate = DomainTranslator.getExtractionResult(
+        SplitExpression splitExpression = new SplitExpression(plannerContext.getMetadata(), transferToIndexedConjuncts(predicate));
+        DomainTranslator.ExtractionResult decomposedOrderedPredicate = DomainTranslator.getExtractionResult(
                 plannerContext,
                 session,
-                deterministicPredicate,
+                splitExpression.getOrderedDeterministicPredicate(),
                 symbolAllocator.getTypes());
 
-        TupleDomain<ColumnHandle> predicateDomain = decomposedPredicate.getTupleDomain()
+        TupleDomain<ColumnHandle> predicateDomain = decomposedOrderedPredicate.getTupleDomain()
                 .transformKeys(node.getAssignments()::get);
 
         if (predicateDomain.isNone()) {
@@ -138,14 +136,14 @@ public class RemoveRedundantTableScanPredicate
         });
 
         Map<ColumnHandle, Symbol> assignments = ImmutableBiMap.copyOf(node.getAssignments()).inverse();
-        Expression resultingPredicate = createResultingPredicate(
+        Expression resultingPredicate = createResultingPredicateInOrder(
                 plannerContext,
                 session,
                 symbolAllocator,
                 typeAnalyzer,
                 new DomainTranslator(plannerContext).toPredicate(session, unenforcedDomain.transformKeys(assignments::get)),
-                nonDeterministicPredicate,
-                decomposedPredicate.getRemainingExpression());
+                splitExpression.getIndexedNonDeterministicPredicate(),
+                decomposedOrderedPredicate.getRemainingExpression());
 
         if (!TRUE_LITERAL.equals(resultingPredicate)) {
             return new FilterNode(idAllocator.getNextId(), node, resultingPredicate);

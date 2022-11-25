@@ -24,6 +24,7 @@ import io.trino.sql.tree.ExpressionRewriter;
 import io.trino.sql.tree.ExpressionTreeRewriter;
 import io.trino.sql.tree.GenericDataType;
 import io.trino.sql.tree.Identifier;
+import io.trino.sql.tree.IndexedExpression;
 import io.trino.sql.tree.IsNullPredicate;
 import io.trino.sql.tree.LambdaExpression;
 import io.trino.sql.tree.LogicalExpression;
@@ -36,9 +37,11 @@ import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.function.Predicate;
 
+import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Predicates.not;
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static io.trino.sql.tree.BooleanLiteral.FALSE_LITERAL;
@@ -63,6 +66,50 @@ public final class ExpressionUtils
     public static List<Expression> extractPredicates(LogicalExpression expression)
     {
         return extractPredicates(expression.getOperator(), expression);
+    }
+
+    public static List<IndexedExpression> extractIndexedConjuncts(Expression expression)
+    {
+        return extractIndexedPredicates(LogicalExpression.Operator.AND, expression);
+    }
+
+    public static List<IndexedExpression> extractIndexedPredicates(LogicalExpression.Operator operator, Expression expression)
+    {
+        ImmutableList.Builder<IndexedExpression> resultBuilder = ImmutableList.builder();
+        extractIndexedPredicates(null, operator, expression, resultBuilder);
+        return resultBuilder.build();
+    }
+
+    public static List<IndexedExpression> transferToIndexedConjuncts(Expression expression)
+    {
+        return transferToIndexedPredicates(LogicalExpression.Operator.AND, expression);
+    }
+
+    public static List<IndexedExpression> transferToIndexedPredicates(LogicalExpression.Operator operator, Expression expression)
+    {
+        ImmutableList.Builder<IndexedExpression> resultBuilder = ImmutableList.builder();
+        extractIndexedPredicates(new AtomicInteger(0), operator, expression, resultBuilder);
+        return resultBuilder.build();
+    }
+
+    private static void extractIndexedPredicates(AtomicInteger idx, LogicalExpression.Operator operator, Expression expression, ImmutableList.Builder<IndexedExpression> resultBuilder)
+    {
+        if (expression instanceof LogicalExpression && ((LogicalExpression) expression).getOperator() == operator) {
+            LogicalExpression logicalExpression = (LogicalExpression) expression;
+            for (Expression term : logicalExpression.getTerms()) {
+                extractIndexedPredicates(idx, operator, term, resultBuilder);
+            }
+        }
+        else {
+            if (idx == null) {
+                checkArgument(expression instanceof IndexedExpression, "expression is not an IndexedExpression");
+                resultBuilder.add((IndexedExpression) expression);
+            }
+            else {
+                checkArgument(!(expression instanceof IndexedExpression), "expression is an IndexedExpression");
+                resultBuilder.add(new IndexedExpression(expression, idx.incrementAndGet()));
+            }
+        }
     }
 
     public static List<Expression> extractPredicates(LogicalExpression.Operator operator, Expression expression)
@@ -307,5 +354,82 @@ public final class ExpressionUtils
                 return node;
             }
         }, expression);
+    }
+
+    public static Expression combineConjunctsInOrder(Metadata metadata, Collection<IndexedExpression> expressions)
+    {
+        Set<Expression> seen = new HashSet<>();
+        ImmutableList.Builder<Expression> result = ImmutableList.builder();
+        for (IndexedExpression expression : expressions) {
+            if (expression.getOriginExpression().equals(TRUE_LITERAL)) {
+                continue;
+            }
+            if (expression.getOriginExpression().equals(FALSE_LITERAL)) {
+                return expression;
+            }
+            if (!DeterminismEvaluator.isDeterministic(expression.getOriginExpression(), metadata)) {
+                result.add(expression);
+            }
+            else if (!seen.contains(expression.getOriginExpression())) {
+                seen.add(expression.getOriginExpression());
+                result.add(expression);
+            }
+        }
+        List<Expression> deduplicatedExpressions = result.build();
+        return deduplicatedExpressions.isEmpty() ? IndexedExpression.TRUE_EXPRESSION : and(deduplicatedExpressions);
+    }
+
+    public static class SplitExpression
+    {
+        private final Metadata metadata;
+        private final List<IndexedExpression> deterministicPredicate;
+        private final List<IndexedExpression> nonDeterministicPredicate;
+
+        public SplitExpression(Metadata metadata, List<IndexedExpression> conjuncts)
+        {
+            this.metadata = metadata;
+            ImmutableList.Builder<IndexedExpression> deterministicPredicateBuilder = ImmutableList.builder();
+            ImmutableList.Builder<IndexedExpression> nonDeterministicPredicateBuilder = ImmutableList.builder();
+            for (IndexedExpression expression : conjuncts) {
+                if (DeterminismEvaluator.isDeterministic(expression, metadata)) {
+                    deterministicPredicateBuilder.add(expression);
+                }
+                else {
+                    nonDeterministicPredicateBuilder.add(expression);
+                }
+            }
+            this.deterministicPredicate = deterministicPredicateBuilder.build();
+            this.nonDeterministicPredicate = nonDeterministicPredicateBuilder.build();
+        }
+
+        public List<IndexedExpression> getIndexedDeterministicPredicate()
+        {
+            return deterministicPredicate;
+        }
+
+        public List<IndexedExpression> getIndexedNonDeterministicPredicate()
+        {
+            return nonDeterministicPredicate;
+        }
+
+        public List<Expression> getDeterministicPredicate()
+        {
+            return deterministicPredicate.stream().map(IndexedExpression::getOriginExpression).collect(toImmutableList());
+        }
+
+        public Expression getOrderedDeterministicPredicate()
+        {
+            return combineConjunctsInOrder(metadata, deterministicPredicate);
+        }
+
+        public List<Expression> getNonDeterministicPredicate()
+        {
+            return nonDeterministicPredicate.stream().map(IndexedExpression::getOriginExpression).collect(toImmutableList());
+        }
+
+        public Expression getOrderedNonDeterministicPredicate()
+        {
+            return combineConjunctsInOrder(metadata, nonDeterministicPredicate);
+        }
     }
 }
