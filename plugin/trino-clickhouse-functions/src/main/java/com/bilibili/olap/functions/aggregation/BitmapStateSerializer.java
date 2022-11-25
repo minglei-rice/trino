@@ -13,6 +13,7 @@
  */
 package com.bilibili.olap.functions.aggregation;
 
+import com.bilibili.olap.functions.BufferUtils;
 import com.bilibili.olap.functions.type.BitmapType;
 import io.airlift.slice.Slice;
 import io.airlift.slice.Slices;
@@ -109,12 +110,12 @@ public class BitmapStateSerializer
         out.writeByte(bitmap.getDataTypeMapping().getIndex());
     }
 
-    private static void writeBitmap(BlockBuilder out, BitmapWithSmallSet bitmap)
+    public static ByteBuffer writeBitmap(BitmapWithSmallSet bitmap, BufferUtils.BufferMaker byteBufferMaker)
     {
         int byteLength = bitmap.getDataTypeMapping().byteLength();
         ByteBuffer serialized;
         if (bitmap.isSmall()) {
-            serialized = newBuffer((int) (2 + bitmap.cardinality() * byteLength));
+            serialized = byteBufferMaker.newBuffer((int) (2 + bitmap.cardinality() * byteLength));
             serialized.put((byte) 0);
             serialized.put((byte) bitmap.cardinality());
             if (bitmap.getDataTypeMapping().byteLength() == 1) {
@@ -157,12 +158,13 @@ public class BitmapStateSerializer
                         .toByteBuffer();
             }
         }
-        Slice buf = Slices.wrappedBuffer(serialized);
-        out.writeBytes(buf, 0, buf.length()).closeEntry();
+        return serialized;
     }
 
-    private static ByteBuffer newBuffer(int capacity)
+    private static void writeBitmap(BlockBuilder out, BitmapWithSmallSet bitmap)
     {
-        return ByteBuffer.allocate(capacity);
+        ByteBuffer serialized = writeBitmap(bitmap, BufferUtils::newBuffer);
+        Slice buf = Slices.wrappedBuffer(serialized);
+        out.writeBytes(buf, 0, buf.length()).closeEntry();
     }
 }
