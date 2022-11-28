@@ -35,6 +35,7 @@ import org.apache.hadoop.hive.serde2.Serializer;
 import org.apache.hadoop.hive.serde2.objectinspector.SettableStructObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.StructField;
 import org.apache.hadoop.io.Writable;
+import org.roaringbitmap.RoaringBitmap;
 import org.testng.annotations.Test;
 
 import java.io.File;
@@ -42,6 +43,7 @@ import java.io.IOException;
 import java.lang.reflect.Field;
 import java.nio.ByteBuffer;
 import java.util.Map;
+import java.util.Optional;
 
 import static io.trino.hadoop.ConfigurationInstantiator.newEmptyConfiguration;
 import static io.trino.orc.OrcReader.BATCH_SIZE_GROWTH_FACTOR;
@@ -138,6 +140,57 @@ public class TestOrcReaderPositions
     }
 
     @Test
+    public void testStripeSkippingByRowSetPredicate()
+            throws Exception
+    {
+        try (TempFile tempFile = new TempFile()) {
+            createMultiStripeFile(tempFile.getFile());
+            int[] rowset = new int[]{32, 85, 93};
+            OrcRowSetPredicate rowSetPredicate = new OrcRowValueSetPredicate(rowset);
+
+            checkStripes(tempFile, rowSetPredicate);
+
+            RoaringBitmap bitmap = new RoaringBitmap();
+            bitmap.add(32);
+            bitmap.add(85);
+            bitmap.add(93);
+            rowSetPredicate = new OrcRowBitmapSetPredicate(bitmap);
+
+            checkStripes(tempFile, rowSetPredicate);
+        }
+    }
+
+    private void checkStripes(TempFile tempFile, OrcRowSetPredicate rowSetPredicate)
+            throws IOException
+    {
+        try (OrcRecordReader reader = createCustomOrcRecordReader(tempFile, OrcPredicate.TRUE, BIGINT, MAX_BATCH_SIZE, Optional.of(rowSetPredicate))) {
+            assertEquals(reader.getFileRowCount(), 100);
+            assertEquals(reader.getReaderRowCount(), 100);
+            assertEquals(reader.getFilePosition(), 0);
+            assertEquals(reader.getReaderPosition(), 0);
+
+            // second stripe
+            Page page = reader.nextPage().getLoadedPage();
+            assertEquals(page.getPositionCount(), 20);
+            assertEquals(reader.getReaderPosition(), 20);
+            assertEquals(reader.getFilePosition(), 20);
+            assertCurrentBatch(page, 1);
+
+            // fifth stripe
+            page = reader.nextPage().getLoadedPage();
+            assertEquals(page.getPositionCount(), 20);
+            assertEquals(reader.getReaderPosition(), 80);
+            assertEquals(reader.getFilePosition(), 80);
+            assertCurrentBatch(page, 4);
+
+            page = reader.nextPage();
+            assertNull(page);
+            assertEquals(reader.getReaderPosition(), 100);
+            assertEquals(reader.getFilePosition(), 100);
+        }
+    }
+
+    @Test
     public void testRowGroupSkipping()
             throws Exception
     {
@@ -155,34 +208,65 @@ public class TestOrcReaderPositions
                 return (stats.getMin() == 50_000) || (stats.getMin() == 60_000);
             };
 
-            try (OrcRecordReader reader = createCustomOrcRecordReader(tempFile, predicate, BIGINT, MAX_BATCH_SIZE)) {
-                assertEquals(reader.getFileRowCount(), rowCount);
-                assertEquals(reader.getReaderRowCount(), rowCount);
-                assertEquals(reader.getFilePosition(), 0);
-                assertEquals(reader.getReaderPosition(), 0);
+            checkRowGroups(tempFile, rowCount, predicate, Optional.empty());
+        }
+    }
 
-                long position = 50_000;
-                while (true) {
-                    Page page = reader.nextPage();
-                    if (page == null) {
-                        break;
-                    }
-                    page = page.getLoadedPage();
+    @Test
+    public void testRowGroupSkippingWitRowSet()
+            throws Exception
+    {
+        try (TempFile tempFile = new TempFile()) {
+            // create single strip file with multiple row groups
+            int rowCount = 142_000;
+            createSequentialFile(tempFile.getFile(), rowCount);
 
-                    Block block = page.getBlock(0);
-                    for (int i = 0; i < block.getPositionCount(); i++) {
-                        assertEquals(BIGINT.getLong(block, i), position + i);
-                    }
+            OrcPredicate predicate = OrcPredicate.TRUE;
+            int[] rowset = new int[]{50_001, 60_101, 66_001};
+            OrcRowSetPredicate rowSetPredicate = new OrcRowValueSetPredicate(rowset);
 
-                    assertEquals(reader.getFilePosition(), position);
-                    assertEquals(reader.getReaderPosition(), position);
-                    position += page.getPositionCount();
+            checkRowGroups(tempFile, rowCount, predicate, Optional.of(rowSetPredicate));
+
+            RoaringBitmap bitmap = new RoaringBitmap();
+            bitmap.add(50_001);
+            bitmap.add(60_101);
+            bitmap.add(66_001);
+            rowSetPredicate = new OrcRowBitmapSetPredicate(bitmap);
+
+            checkRowGroups(tempFile, rowCount, predicate, Optional.of(rowSetPredicate));
+        }
+    }
+
+    private void checkRowGroups(TempFile tempFile, int rowCount, OrcPredicate predicate, Optional<OrcRowSetPredicate> rowSetPredicate)
+            throws IOException
+    {
+        try (OrcRecordReader reader = createCustomOrcRecordReader(tempFile, predicate, BIGINT, MAX_BATCH_SIZE, rowSetPredicate)) {
+            assertEquals(reader.getFileRowCount(), rowCount);
+            assertEquals(reader.getReaderRowCount(), rowCount);
+            assertEquals(reader.getFilePosition(), 0);
+            assertEquals(reader.getReaderPosition(), 0);
+
+            long position = 50_000;
+            while (true) {
+                Page page = reader.nextPage();
+                if (page == null) {
+                    break;
+                }
+                page = page.getLoadedPage();
+
+                Block block = page.getBlock(0);
+                for (int i = 0; i < block.getPositionCount(); i++) {
+                    assertEquals(BIGINT.getLong(block, i), position + i);
                 }
 
-                assertEquals(position, 70_000);
-                assertEquals(reader.getFilePosition(), rowCount);
-                assertEquals(reader.getReaderPosition(), rowCount);
+                assertEquals(reader.getFilePosition(), position);
+                assertEquals(reader.getReaderPosition(), position);
+                position += page.getPositionCount();
             }
+
+            assertEquals(position, 70_000);
+            assertEquals(reader.getFilePosition(), rowCount);
+            assertEquals(reader.getReaderPosition(), rowCount);
         }
     }
 

@@ -595,6 +595,12 @@ public class OrcTester
     static OrcRecordReader createCustomOrcRecordReader(TempFile tempFile, OrcPredicate predicate, Type type, int initialBatchSize)
             throws IOException
     {
+        return createCustomOrcRecordReader(tempFile, predicate, type, initialBatchSize, Optional.empty());
+    }
+
+    static OrcRecordReader createCustomOrcRecordReader(TempFile tempFile, OrcPredicate predicate, Type type, int initialBatchSize, Optional<OrcRowSetPredicate> rowSetPredicate)
+            throws IOException
+    {
         OrcDataSource orcDataSource = new FileOrcDataSource(tempFile.getFile(), READER_OPTIONS);
         OrcReader orcReader = OrcReader.createOrcReader(orcDataSource, READER_OPTIONS)
                 .orElseThrow(() -> new RuntimeException("File is empty"));
@@ -609,7 +615,8 @@ public class OrcTester
                 HIVE_STORAGE_TIME_ZONE,
                 newSimpleAggregatedMemoryContext(),
                 initialBatchSize,
-                RuntimeException::new);
+                RuntimeException::new,
+                rowSetPredicate);
     }
 
     public static void writeOrcPages(File outputFile, CompressionKind compression, List<Type> types, Iterator<Page> pages, OrcWriterStats stats)

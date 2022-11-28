@@ -159,7 +159,8 @@ public class OrcDeleteDeltaPageSource
                 memoryContext,
                 MAX_BATCH_SIZE,
                 exception -> handleException(orcDataSource.getId(), exception),
-                NameBasedFieldMapper::create);
+                NameBasedFieldMapper::create,
+                Optional.empty());
     }
 
     @Override

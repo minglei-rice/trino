@@ -36,6 +36,9 @@ import io.trino.orc.OrcDataSourceId;
 import io.trino.orc.OrcReader;
 import io.trino.orc.OrcReaderOptions;
 import io.trino.orc.OrcRecordReader;
+import io.trino.orc.OrcRowBitmapSetPredicate;
+import io.trino.orc.OrcRowSetPredicate;
+import io.trino.orc.OrcRowValueSetPredicate;
 import io.trino.orc.TupleDomainOrcPredicate;
 import io.trino.orc.TupleDomainOrcPredicate.TupleDomainOrcPredicateBuilder;
 import io.trino.orc.metadata.OrcType;
@@ -94,9 +97,12 @@ import org.apache.iceberg.MatchResult;
 import org.apache.iceberg.MetadataColumns;
 import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.PartitionSpecParser;
+import org.apache.iceberg.RowSet;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.SchemaParser;
 import org.apache.iceberg.avro.AvroSchemaUtil;
+import org.apache.iceberg.index.rowset.RowBitmapSet;
+import org.apache.iceberg.index.rowset.RowValueSet;
 import org.apache.iceberg.io.InputFile;
 import org.apache.iceberg.io.LocationProvider;
 import org.apache.iceberg.mapping.MappedField;
@@ -250,6 +256,7 @@ public class IcebergPageSourceProvider
         IcebergSplit split = (IcebergSplit) connectorSplit;
         IcebergTableHandle table = (IcebergTableHandle) connectorTable;
 
+        Optional<RowSet> rowSet = Optional.empty();
         if (fileSystemFactory instanceof HdfsFileSystemFactory fs) {
             HdfsContext hdfsContext = new HdfsContext(session);
             FileScanTask fileScanTask = split.decodeFileScanTask();
@@ -259,6 +266,7 @@ public class IcebergPageSourceProvider
                 MatchResult indexMatchResult = fileScanTask.isRequired(hdfsFileSystem.toFileIo(), false);
                 split.setIsSkippedByIndex(!indexMatchResult.result());
                 split.setIndexReadTime(System.currentTimeMillis() - start);
+                rowSet = indexMatchResult.getRowSet();
                 if (split.isSkippedByIndex()) {
                     log.info("Indices hit for file : %s, split skipped, time spent : %s ms", fileScanTask.file().path(), split.getIndexReadTime());
                     return new EmptyPageSource();
@@ -345,7 +353,8 @@ public class IcebergPageSourceProvider
                 requiredColumns,
                 effectivePredicate,
                 table.getNameMappingJson().map(NameMappingParser::fromJson),
-                partitionKeys);
+                partitionKeys,
+                rowSet);
         ReaderPageSource dataPageSource = readerPageSourceWithRowPositions.getReaderPageSource();
 
         Optional<ReaderProjectionsAdapter> projectionsAdapter = dataPageSource.getReaderColumns().map(readerColumns ->
@@ -551,8 +560,44 @@ public class IcebergPageSourceProvider
             Optional<NameMapping> nameMapping,
             Map<Integer, Optional<String>> partitionKeys)
     {
+        return createDataPageSource(
+                session,
+                fileSystem,
+                inputFile,
+                start,
+                length,
+                fileRecordCount,
+                partitionSpecId,
+                partitionData,
+                fileFormat,
+                fileSchema,
+                dataColumns,
+                predicate,
+                nameMapping,
+                partitionKeys,
+                Optional.empty());
+    }
+
+    private ReaderPageSourceWithRowPositions createDataPageSource(
+            ConnectorSession session,
+            TrinoFileSystem fileSystem,
+            TrinoInputFile inputFile,
+            long start,
+            long length,
+            long fileRecordCount,
+            int partitionSpecId,
+            String partitionData,
+            IcebergFileFormat fileFormat,
+            Schema fileSchema,
+            List<IcebergColumnHandle> dataColumns,
+            TupleDomain<IcebergColumnHandle> predicate,
+            Optional<NameMapping> nameMapping,
+            Map<Integer, Optional<String>> partitionKeys,
+            Optional<RowSet> rowSet)
+    {
         switch (fileFormat) {
             case ORC:
+                Optional<OrcRowSetPredicate> orcRowSetPredicate = rowSet.map(IcebergPageSourceProvider::toOrcRowSetPredicate);
                 return createOrcPageSource(
                         inputFile,
                         start,
@@ -574,7 +619,8 @@ public class IcebergPageSourceProvider
                         fileFormatDataSourceStats,
                         typeManager,
                         nameMapping,
-                        partitionKeys);
+                        partitionKeys,
+                        orcRowSetPredicate);
             case PARQUET:
                 return createParquetPageSource(
                         inputFile,
@@ -620,7 +666,8 @@ public class IcebergPageSourceProvider
             FileFormatDataSourceStats stats,
             TypeManager typeManager,
             Optional<NameMapping> nameMapping,
-            Map<Integer, Optional<String>> partitionKeys)
+            Map<Integer, Optional<String>> partitionKeys,
+            Optional<OrcRowSetPredicate> orcRowSetPredicate)
     {
         OrcDataSource orcDataSource = null;
         try {
@@ -734,7 +781,8 @@ public class IcebergPageSourceProvider
                     memoryUsage,
                     INITIAL_BATCH_SIZE,
                     exception -> handleException(orcDataSourceId, exception),
-                    new IdBasedFieldMapperFactory(readColumns));
+                    new IdBasedFieldMapperFactory(readColumns),
+                    orcRowSetPredicate);
 
             return new ReaderPageSourceWithRowPositions(
                     new ReaderPageSource(
@@ -1405,6 +1453,19 @@ public class IcebergPageSourceProvider
             return new TrinoException(ICEBERG_BAD_DATA, exception);
         }
         return new TrinoException(ICEBERG_CURSOR_ERROR, format("Failed to read Parquet file: %s", dataSourceId), exception);
+    }
+
+    private static OrcRowSetPredicate toOrcRowSetPredicate(RowSet rowSet)
+    {
+        if (rowSet instanceof RowValueSet) {
+            return new OrcRowValueSetPredicate(((RowValueSet) rowSet).getValues());
+        }
+        else if (rowSet instanceof RowBitmapSet) {
+            return new OrcRowBitmapSetPredicate(((RowBitmapSet) rowSet).getValues());
+        }
+        else {
+            return null;
+        }
     }
 
     public static final class ReaderPageSourceWithRowPositions

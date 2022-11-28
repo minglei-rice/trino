@@ -122,6 +122,8 @@ public class OrcRecordReader
     private final Optional<StatisticsValidation> stripeStatisticsValidation;
     private final Optional<StatisticsValidation> fileStatisticsValidation;
 
+    private final Optional<OrcRowSetPredicate> rowSetPredicate;
+
     public OrcRecordReader(
             List<OrcColumn> readColumns,
             List<Type> readTypes,
@@ -146,7 +148,8 @@ public class OrcRecordReader
             Optional<OrcWriteValidation> writeValidation,
             int initialBatchSize,
             Function<Exception, RuntimeException> exceptionTransform,
-            FieldMapperFactory fieldMapperFactory)
+            FieldMapperFactory fieldMapperFactory,
+            Optional<OrcRowSetPredicate> rowSetPredicate)
             throws OrcCorruptionException
     {
         requireNonNull(readColumns, "readColumns is null");
@@ -165,6 +168,7 @@ public class OrcRecordReader
         requireNonNull(userMetadata, "userMetadata is null");
         requireNonNull(memoryUsage, "memoryUsage is null");
         requireNonNull(exceptionTransform, "exceptionTransform is null");
+        requireNonNull(rowSetPredicate, "rowSetPredicate is null");
 
         this.writeValidation = requireNonNull(writeValidation, "writeValidation is null");
         this.writeChecksumBuilder = writeValidation.map(validation -> createWriteChecksumBuilder(orcTypes, readTypes));
@@ -173,6 +177,7 @@ public class OrcRecordReader
         this.fileStatisticsValidation = writeValidation.map(validation -> validation.createWriteStatisticsBuilder(orcTypes, readTypes));
         this.memoryUsage = memoryUsage.newAggregatedMemoryContext();
         this.blockFactory = new OrcBlockFactory(exceptionTransform, options.isNestedLazy());
+        this.rowSetPredicate = rowSetPredicate;
 
         requireNonNull(options, "options is null");
         this.maxBlockBytes = options.getMaxBlockSize().toBytes();
@@ -274,6 +279,16 @@ public class OrcRecordReader
                 .map(StripeStatistics::getColumnStatistics)
                 .map(columnStats -> predicate.matches(stripe.getNumberOfRows(), columnStats))
                 .orElse(true);
+    }
+
+    private boolean isSegmentNeedRead(long offset, long length)
+    {
+        if (offset > Integer.MAX_VALUE || length > Integer.MAX_VALUE) {
+            return true;
+        }
+        else {
+            return rowSetPredicate.map(pd -> pd.matches(toIntExact(offset), toIntExact(length))).orElse(true);
+        }
     }
 
     @VisibleForTesting
@@ -491,15 +506,20 @@ public class OrcRecordReader
         currentPosition = currentStripePosition + currentRowGroup.getRowOffset();
         filePosition = stripeFilePositions.get(currentStripe) + currentRowGroup.getRowOffset();
 
-        // give reader data streams from row group
-        InputStreamSources rowGroupStreamSources = currentRowGroup.getStreamSources();
-        for (ColumnReader column : columnReaders) {
-            if (column != null) {
-                column.startRowGroup(rowGroupStreamSources);
-            }
+        if (!isSegmentNeedRead(filePosition, currentGroupRowCount)) {
+            return advanceToNextRowGroup();
         }
+        else {
+            // give reader data streams from row group
+            InputStreamSources rowGroupStreamSources = currentRowGroup.getStreamSources();
+            for (ColumnReader column : columnReaders) {
+                if (column != null) {
+                    column.startRowGroup(rowGroupStreamSources);
+                }
+            }
 
-        return true;
+            return true;
+        }
     }
 
     private void advanceToNextStripe()
@@ -527,24 +547,29 @@ public class OrcRecordReader
             currentStripePosition += stripes.get(currentStripe - 1).getNumberOfRows();
         }
 
-        StripeInformation stripeInformation = stripes.get(currentStripe);
-        validateWriteStripe(stripeInformation.getNumberOfRows());
-
-        Stripe stripe = stripeReader.readStripe(stripeInformation, currentStripeMemoryContext);
-        if (stripe != null) {
-            // Give readers access to dictionary streams
-            InputStreamSources dictionaryStreamSources = stripe.getDictionaryStreamSources();
-            ColumnMetadata<ColumnEncoding> columnEncodings = stripe.getColumnEncodings();
-            ZoneId fileTimeZone = stripe.getFileTimeZone();
-            for (ColumnReader column : columnReaders) {
-                if (column != null) {
-                    column.startStripe(fileTimeZone, dictionaryStreamSources, columnEncodings);
-                }
-            }
-
-            rowGroups = stripe.getRowGroups().iterator();
+        if (!isSegmentNeedRead(stripeFilePositions.get(currentStripe), stripes.get(currentStripe).getNumberOfRows())) {
+            advanceToNextStripe();
         }
-        orcDataSourceMemoryUsage.setBytes(orcDataSource.getRetainedSize());
+        else {
+            StripeInformation stripeInformation = stripes.get(currentStripe);
+            validateWriteStripe(stripeInformation.getNumberOfRows());
+
+            Stripe stripe = stripeReader.readStripe(stripeInformation, currentStripeMemoryContext);
+            if (stripe != null) {
+                // Give readers access to dictionary streams
+                InputStreamSources dictionaryStreamSources = stripe.getDictionaryStreamSources();
+                ColumnMetadata<ColumnEncoding> columnEncodings = stripe.getColumnEncodings();
+                ZoneId fileTimeZone = stripe.getFileTimeZone();
+                for (ColumnReader column : columnReaders) {
+                    if (column != null) {
+                        column.startStripe(fileTimeZone, dictionaryStreamSources, columnEncodings);
+                    }
+
+                    rowGroups = stripe.getRowGroups().iterator();
+                }
+                orcDataSourceMemoryUsage.setBytes(orcDataSource.getRetainedSize());
+            }
+        }
     }
 
     private void validateWrite(Predicate<OrcWriteValidation> test, String messageFormat, Object... args)
