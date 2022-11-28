@@ -1551,6 +1551,12 @@
             </dependency>
 
             <dependency>
+                <groupId>org.roaringbitmap</groupId>
+                <artifactId>RoaringBitmap</artifactId>
+                <version>0.9.15</version>
+            </dependency>
+
+            <dependency>
                 <groupId>org.sonatype.aether</groupId>
                 <artifactId>aether-api</artifactId>
                 <version>1.13.1</version>

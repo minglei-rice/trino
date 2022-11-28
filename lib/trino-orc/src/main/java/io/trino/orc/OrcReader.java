@@ -269,7 +269,34 @@ public class OrcReader
                 systemMemoryUsage,
                 initialBatchSize,
                 exceptionTransform,
-                NameBasedFieldMapper::create);
+                NameBasedFieldMapper::create,
+                Optional.empty());
+    }
+
+    public OrcRecordReader createRecordReader(
+            List<OrcColumn> readColumns,
+            List<Type> readTypes,
+            OrcPredicate predicate,
+            DateTimeZone legacyFileTimeZone,
+            AggregatedMemoryContext systemMemoryUsage,
+            int initialBatchSize,
+            Function<Exception, RuntimeException> exceptionTransform,
+            Optional<OrcRowSetPredicate> rowSetPredicate)
+            throws OrcCorruptionException
+    {
+        return createRecordReader(
+                readColumns,
+                readTypes,
+                Collections.nCopies(readColumns.size(), fullyProjectedLayout()),
+                predicate,
+                0,
+                orcDataSource.getEstimatedSize(),
+                legacyFileTimeZone,
+                systemMemoryUsage,
+                initialBatchSize,
+                exceptionTransform,
+                NameBasedFieldMapper::create,
+                rowSetPredicate);
     }
 
     public OrcRecordReader createRecordReader(
@@ -283,7 +310,8 @@ public class OrcReader
             AggregatedMemoryContext systemMemoryUsage,
             int initialBatchSize,
             Function<Exception, RuntimeException> exceptionTransform,
-            FieldMapperFactory fieldMapperFactory)
+            FieldMapperFactory fieldMapperFactory,
+            Optional<OrcRowSetPredicate> rowSetPredicate)
             throws OrcCorruptionException
     {
         return new OrcRecordReader(
@@ -310,7 +338,8 @@ public class OrcReader
                 writeValidation,
                 initialBatchSize,
                 exceptionTransform,
-                fieldMapperFactory);
+                fieldMapperFactory,
+                rowSetPredicate);
     }
 
     private static OrcDataSource wrapWithCacheIfTiny(OrcDataSource dataSource, DataSize maxCacheSize)

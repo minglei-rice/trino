@@ -372,7 +372,8 @@ public class OrcPageSourceFactory
                     systemMemoryUsage,
                     INITIAL_BATCH_SIZE,
                     exception -> handleException(orcDataSource.getId(), exception),
-                    NameBasedFieldMapper::create);
+                    NameBasedFieldMapper::create,
+                    Optional.empty());
 
             Optional<OrcDeletedRows> deletedRows = acidInfo.map(info ->
                     new OrcDeletedRows(
