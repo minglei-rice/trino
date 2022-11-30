@@ -110,6 +110,7 @@ public class JoinCompiler
             CacheBuilder.newBuilder()
                     .recordStats()
                     .maximumSize(1000)
+                    .softValues()
                     .expireAfterAccess(Duration.ofHours(1)),
             CacheLoader.from(key ->
                     internalCompileLookupSourceFactory(key.getTypes(), key.getOutputChannels(), key.getJoinChannels(), key.getSortChannel())));
@@ -118,6 +119,7 @@ public class JoinCompiler
             CacheBuilder.newBuilder()
                     .recordStats()
                     .maximumSize(1000)
+                    .softValues()
                     .expireAfterAccess(Duration.ofHours(1)),
             CacheLoader.from(key ->
                     internalCompileHashStrategy(key.getTypes(), key.getOutputChannels(), key.getJoinChannels(), key.getSortChannel())));

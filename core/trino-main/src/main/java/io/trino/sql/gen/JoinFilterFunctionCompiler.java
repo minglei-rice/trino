@@ -84,6 +84,7 @@ public class JoinFilterFunctionCompiler
             CacheBuilder.newBuilder()
                     .recordStats()
                     .maximumSize(1000)
+                    .softValues()
                     .expireAfterAccess(Duration.ofHours(1)),
             CacheLoader.from(key -> internalCompileFilterFunctionFactory(key.getFilter(), key.getLeftBlocksSize())));
 

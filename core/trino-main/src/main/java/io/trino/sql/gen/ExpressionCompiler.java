@@ -69,6 +69,7 @@ public class ExpressionCompiler
         this.cursorProcessors = buildNonEvictableCache(CacheBuilder.newBuilder()
                         .recordStats()
                         .maximumSize(1000)
+                        .softValues()
                         .expireAfterAccess(Duration.ofHours(1)),
                 CacheLoader.from(key -> compile(key.getFilter(), key.getProjections(), new CursorProcessorCompiler(functionManager), CursorProcessor.class)));
         this.cacheStatsMBean = new CacheStatsMBean(cursorProcessors);

@@ -126,7 +126,7 @@ public class PageFunctionCompiler
         this.functionManager = requireNonNull(functionManager, "functionManager is null");
 
         if (expressionCacheSize > 0) {
-            CacheBuilder<Object, Object> builder = CacheBuilder.newBuilder().recordStats().maximumSize(expressionCacheSize);
+            CacheBuilder<Object, Object> builder = CacheBuilder.newBuilder().recordStats().maximumSize(expressionCacheSize).softValues();
             if (expressionCacheTTL > 0) {
                 builder = builder.expireAfterAccess(Duration.ofSeconds(expressionCacheTTL));
             }
@@ -141,7 +141,7 @@ public class PageFunctionCompiler
         }
 
         if (expressionCacheSize > 0) {
-            CacheBuilder<Object, Object> builder = CacheBuilder.newBuilder().recordStats().maximumSize(expressionCacheSize);
+            CacheBuilder<Object, Object> builder = CacheBuilder.newBuilder().recordStats().maximumSize(expressionCacheSize).softValues();
             if (expressionCacheTTL > 0) {
                 builder = builder.expireAfterAccess(Duration.ofSeconds(expressionCacheTTL));
             }

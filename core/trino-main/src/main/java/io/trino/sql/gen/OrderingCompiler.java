@@ -77,6 +77,7 @@ public class OrderingCompiler
             CacheBuilder.newBuilder()
                     .recordStats()
                     .maximumSize(1000)
+                    .softValues()
                     .expireAfterAccess(Duration.ofHours(1)),
             CacheLoader.from(key -> internalCompilePagesIndexOrdering(key.getSortTypes(), key.getSortChannels(), key.getSortOrders())));
 
@@ -84,6 +85,7 @@ public class OrderingCompiler
             CacheBuilder.newBuilder()
                     .recordStats()
                     .maximumSize(1000)
+                    .softValues()
                     .expireAfterAccess(Duration.ofHours(1)),
             CacheLoader.from(key -> internalCompilePageWithPositionComparator(key.getSortTypes(), key.getSortChannels(), key.getSortOrders())));
 
