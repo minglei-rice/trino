@@ -122,6 +122,7 @@ public class PageFunctionCompiler
             projectionCache = CacheBuilder.newBuilder()
                     .recordStats()
                     .maximumSize(expressionCacheSize)
+                    .softValues()
                     .build(CacheLoader.from(projection -> compileProjectionInternal(projection, Optional.empty())));
             projectionCacheStats = new CacheStatsMBean(projectionCache);
         }
@@ -134,6 +135,7 @@ public class PageFunctionCompiler
             filterCache = CacheBuilder.newBuilder()
                     .recordStats()
                     .maximumSize(expressionCacheSize)
+                    .softValues()
                     .build(CacheLoader.from(filter -> compileFilterInternal(filter, Optional.empty())));
             filterCacheStats = new CacheStatsMBean(filterCache);
         }

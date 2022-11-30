@@ -81,6 +81,7 @@ public class JoinFilterFunctionCompiler
     private final LoadingCache<JoinFilterCacheKey, JoinFilterFunctionFactory> joinFilterFunctionFactories = CacheBuilder.newBuilder()
             .recordStats()
             .maximumSize(1000)
+            .softValues()
             .build(CacheLoader.from(key -> internalCompileFilterFunctionFactory(key.getFilter(), key.getLeftBlocksSize())));
 
     @Managed

@@ -98,12 +98,14 @@ public class JoinCompiler
     private final LoadingCache<CacheKey, LookupSourceSupplierFactory> lookupSourceFactories = CacheBuilder.newBuilder()
             .recordStats()
             .maximumSize(1000)
+            .softValues()
             .build(CacheLoader.from(key ->
                     internalCompileLookupSourceFactory(key.getTypes(), key.getOutputChannels(), key.getJoinChannels(), key.getSortChannel())));
 
     private final LoadingCache<CacheKey, Class<? extends PagesHashStrategy>> hashStrategies = CacheBuilder.newBuilder()
             .recordStats()
             .maximumSize(1000)
+            .softValues()
             .build(CacheLoader.from(key ->
                     internalCompileHashStrategy(key.getTypes(), key.getOutputChannels(), key.getJoinChannels(), key.getSortChannel())));
 

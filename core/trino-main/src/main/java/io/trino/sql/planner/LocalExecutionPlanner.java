@@ -396,11 +396,13 @@ public class LocalExecutionPlanner
 
     private final Cache<FunctionKey, AccumulatorFactory> accumulatorFactoryCache = CacheBuilder.newBuilder()
             .maximumSize(1000)
+            .softValues()
             .expireAfterWrite(1, HOURS)
             .build();
     private final Cache<FunctionKey, AggregationWindowFunctionSupplier> aggregationWindowFunctionSupplierCache =
             CacheBuilder.newBuilder()
             .maximumSize(1000)
+             .softValues()
             .expireAfterWrite(1, HOURS)
             .build();
 

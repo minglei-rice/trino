@@ -74,11 +74,13 @@ public class OrderingCompiler
     private final LoadingCache<PagesIndexComparatorCacheKey, PagesIndexOrdering> pagesIndexOrderings = CacheBuilder.newBuilder()
             .recordStats()
             .maximumSize(1000)
+            .softValues()
             .build(CacheLoader.from(key -> internalCompilePagesIndexOrdering(key.getSortTypes(), key.getSortChannels(), key.getSortOrders())));
 
     private final LoadingCache<PagesIndexComparatorCacheKey, PageWithPositionComparator> pageWithPositionComparators = CacheBuilder.newBuilder()
             .recordStats()
             .maximumSize(1000)
+            .softValues()
             .build(CacheLoader.from(key -> internalCompilePageWithPositionComparator(key.getSortTypes(), key.getSortChannels(), key.getSortOrders())));
 
     private final TypeOperators typeOperators;

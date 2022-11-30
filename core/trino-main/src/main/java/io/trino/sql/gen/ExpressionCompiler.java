@@ -67,6 +67,7 @@ public class ExpressionCompiler
         this.cursorProcessors = CacheBuilder.newBuilder()
                 .recordStats()
                 .maximumSize(1000)
+                .softValues()
                 .build(CacheLoader.from(key -> compile(key.getFilter(), key.getProjections(), new CursorProcessorCompiler(metadata), CursorProcessor.class)));
         this.cacheStatsMBean = new CacheStatsMBean(cursorProcessors);
     }
