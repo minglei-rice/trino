@@ -390,9 +390,8 @@ public class IcebergMetadata
             return new AggFunctionDesc(funcName, new TableColumnIdentify(icebergTableHandle.getTableName(), table.schema().findColumnName(sourceColumnId)));
         });
 
-        List<AggFunctionDesc> trinoAggFuncDesc = icebergAggIndex.getAggDesc().stream()
-                .map(toTrinoAggFunc)
-                .collect(toImmutableList());
+        Map<AggFunctionDesc, String> trinoAggFuncDescToName = icebergAggIndex.getAggDesc().stream()
+                .collect(Collectors.toMap(toTrinoAggFunc, aggDesc -> WriteAggIndexUtils.aggExprAlias(aggDesc, table.schema())));
 
         Function<CorrelatedColumns.Correlation, CorrColumns.Corr> toTrinoCorrelation = icebergCorrelation -> {
             CorrelatedColumns.JoinType icebergJoinType = icebergCorrelation.getJoinType();
@@ -438,7 +437,7 @@ public class IcebergMetadata
         List<CorrColumns> corrColumns = table.correlatedColumnsSpec().getCorrelatedColumns().stream()
                 .map(correlation -> new CorrColumns(toTrinoCorrelation.apply(correlation.getCorrelation())))
                 .collect(toImmutableList());
-        return new AggIndex(icebergAggIndex.getAggIndexId(), dimFields, trinoAggFuncDesc, corrColumns);
+        return new AggIndex(icebergAggIndex.getAggIndexId(), dimFields, trinoAggFuncDescToName, corrColumns);
     }
 
     @Override

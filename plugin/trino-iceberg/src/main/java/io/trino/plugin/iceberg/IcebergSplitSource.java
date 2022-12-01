@@ -16,6 +16,7 @@ package io.trino.plugin.iceberg;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Stopwatch;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Iterators;
 import com.google.common.collect.Streams;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
@@ -537,7 +538,7 @@ public class IcebergSplitSource
                     aggIndexFile.getAggIndexFileLength(),
                     task.file().format(),
                     ImmutableList.of(),
-                    getPartitionKeys(task),
+                    ImmutableMap.of(), // fix bug when partition field id overlap with cube field id
                     fileScanTaskEncode);
         }
     }

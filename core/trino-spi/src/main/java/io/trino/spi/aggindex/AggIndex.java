@@ -14,6 +14,7 @@
 package io.trino.spi.aggindex;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 public class AggIndex
@@ -23,19 +24,19 @@ public class AggIndex
 
     private final List<TableColumnIdentify> dimFields;
 
-    private final List<AggFunctionDesc> aggFunctionDescs;
+    private final Map<AggFunctionDesc, String> aggFunctionDescToName;
 
     private final List<CorrColumns> corrColumns;
 
     public AggIndex(
             int aggIndexId,
             List<TableColumnIdentify> dimFields,
-            List<AggFunctionDesc> aggFunctionDescs,
+            Map<AggFunctionDesc, String> aggFunctionDescToName,
             List<CorrColumns> corrColumns)
     {
         this.aggIndexId = aggIndexId;
         this.dimFields = dimFields;
-        this.aggFunctionDescs = aggFunctionDescs;
+        this.aggFunctionDescToName = aggFunctionDescToName;
         this.corrColumns = corrColumns;
     }
 
@@ -54,9 +55,9 @@ public class AggIndex
         return dimFields;
     }
 
-    public List<AggFunctionDesc> getAggFunctionDescs()
+    public Map<AggFunctionDesc, String> getAggFunctionDescToName()
     {
-        return aggFunctionDescs;
+        return aggFunctionDescToName;
     }
 
     @Override
@@ -70,13 +71,13 @@ public class AggIndex
         }
         AggIndex aggIndex = (AggIndex) o;
         return aggIndexId == aggIndex.aggIndexId && Objects.equals(dimFields, aggIndex.dimFields)
-                && Objects.equals(aggFunctionDescs, aggIndex.aggFunctionDescs);
+                && Objects.equals(aggFunctionDescToName, aggIndex.aggFunctionDescToName);
     }
 
     @Override
     public int hashCode()
     {
-        return Objects.hash(aggIndexId, dimFields, aggFunctionDescs);
+        return Objects.hash(aggIndexId, dimFields, aggFunctionDescToName);
     }
 
     @Override
@@ -85,8 +86,17 @@ public class AggIndex
         return "AggIndex{" +
                 "aggIndexId=" + aggIndexId +
                 ", dimFields=" + dimFields +
-                ", aggFunctionDescs=" + aggFunctionDescs +
+                ", aggFunctionDescToName=" + aggFunctionDescToName +
                 ", corrColumns=" + corrColumns +
                 '}';
+    }
+
+    public enum AggFunctionType
+    {
+        AVG,
+        TOP_N,
+        COUNT_DISTINCT,
+        APPROX_COUNT_DISTINCT,
+        PERCENTILE
     }
 }
