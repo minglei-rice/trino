@@ -152,7 +152,11 @@ public class TestIcebergSystemTables
                         "('upper_bounds', 'map(integer, varchar)', '', '')," +
                         "('key_metadata', 'varbinary', '', '')," +
                         "('split_offsets', 'array(bigint)', '', '')," +
-                        "('equality_ids', 'array(integer)', '', '')");
+                        "('equality_ids', 'array(integer)', '', '')," +
+                        "('index_files', 'array(varchar)', '', '')," +
+                        "('agg_index_files', 'array(varchar)', '', '')," +
+                        "('sort_id', 'integer', '', '')," +
+                        "('distribution_id', 'integer', '', '')");
         assertQuerySucceeds("SELECT * FROM test_schema.\"test_table$files\"");
     }
 }

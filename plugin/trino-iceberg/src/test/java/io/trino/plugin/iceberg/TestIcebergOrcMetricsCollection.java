@@ -306,7 +306,7 @@ public class TestIcebergOrcMetricsCollection
 
         public static DataFileRecord toDataFileRecord(MaterializedRow row)
         {
-            assertEquals(row.getFieldCount(), 14);
+            assertEquals(row.getFieldCount(), 18);
             return new DataFileRecord(
                     (int) row.getField(0),
                     (String) row.getField(1),
