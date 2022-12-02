@@ -29,7 +29,9 @@ import io.trino.spi.connector.SystemTable;
 import io.trino.spi.predicate.TupleDomain;
 import io.trino.spi.type.ArrayType;
 import io.trino.spi.type.TypeManager;
+import org.apache.iceberg.AggIndexFile;
 import org.apache.iceberg.DataFile;
+import org.apache.iceberg.IndexFile;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.Table;
 import org.apache.iceberg.TableScan;
@@ -42,6 +44,7 @@ import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 import static com.google.common.collect.ImmutableMap.toImmutableMap;
 import static io.trino.spi.type.BigintType.BIGINT;
@@ -78,6 +81,10 @@ public class FilesTable
                         .add(new ColumnMetadata("key_metadata", VARBINARY))
                         .add(new ColumnMetadata("split_offsets", new ArrayType(BIGINT)))
                         .add(new ColumnMetadata("equality_ids", new ArrayType(INTEGER)))
+                        .add(new ColumnMetadata("index_files", new ArrayType(VARCHAR)))
+                        .add(new ColumnMetadata("agg_index_files", new ArrayType(VARCHAR)))
+                        .add(new ColumnMetadata("sort_id", INTEGER))
+                        .add(new ColumnMetadata("distribution_id", INTEGER))
                         .build());
         this.snapshotId = requireNonNull(snapshotId, "snapshotId is null");
     }
@@ -110,7 +117,9 @@ public class FilesTable
 
         TableScan tableScan = icebergTable.newScan()
                 .useSnapshot(snapshotId)
-                .includeColumnStats();
+                .includeColumnStats()
+                .includeIndexStats()
+                .includeAggIndexStats();
 
         tableScan.planFiles().forEach(fileScanTask -> {
             DataFile dataFile = fileScanTask.file();
@@ -158,6 +167,20 @@ public class FilesTable
             if (checkNonNull(dataFile.equalityFieldIds(), pagesBuilder)) {
                 pagesBuilder.appendIntegerArray(dataFile.equalityFieldIds());
             }
+            if (checkNonNullOrEmpty(dataFile.indices(), pagesBuilder)) {
+                pagesBuilder.appendVarcharArray(dataFile.indices().stream().map(IndexFile::new).map(IndexFile::toString)
+                        .collect(Collectors.toList()));
+            }
+            if (checkNonNullOrEmpty(dataFile.aggIndexFiles(), pagesBuilder)) {
+                pagesBuilder.appendVarcharArray(dataFile.aggIndexFiles().stream().map(AggIndexFile::new)
+                        .map(AggIndexFile::toString).collect(Collectors.toList()));
+            }
+            if (checkNonNull(dataFile.sortOrderId(), pagesBuilder)) {
+                pagesBuilder.appendInteger(dataFile.sortOrderId());
+            }
+            if (checkNonNull(dataFile.distributionId(), pagesBuilder)) {
+                pagesBuilder.appendInteger(dataFile.distributionId());
+            }
             pagesBuilder.endRow();
         });
 
@@ -167,6 +190,15 @@ public class FilesTable
     private static boolean checkNonNull(Object object, PageListBuilder pagesBuilder)
     {
         if (object == null) {
+            pagesBuilder.appendNull();
+            return false;
+        }
+        return true;
+    }
+
+    private static boolean checkNonNullOrEmpty(List list, PageListBuilder pagesBuilder)
+    {
+        if (list == null || list.isEmpty()) {
             pagesBuilder.appendNull();
             return false;
         }
