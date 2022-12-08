@@ -49,7 +49,7 @@ import org.apache.iceberg.IndexWriterContext;
 import org.apache.iceberg.RewriteFiles;
 import org.apache.iceberg.Table;
 import org.apache.iceberg.catalog.TableIdentifier;
-import org.apache.iceberg.index.Index;
+import org.apache.iceberg.index.IndexBuilder;
 import org.apache.iceberg.index.IndexFactory;
 import org.apache.iceberg.index.IndexWriter;
 import org.apache.iceberg.index.IndexWriterResult;
@@ -299,8 +299,9 @@ public class TestIcebergIndex
         List<IndexFile> indexFiles = new ArrayList<>();
         for (IndexField indexField : indexSpec.fields()) {
             Path indexPath = IndexUtils.getIndexPath(new Path(sourceFile.path().toString()), new Path(table.location()), indexField, indexRootPath);
-            Index index = IndexFactory.createIndex(new IndexWriterContext<>(indexField.indexType(), table.schema().findType(indexField.sourceId()), indexField.properties()));
-            IndexWriter indexWriter = new IndexWriter(table.io(), indexPath.toString(), index, -1);
+            IndexBuilder indexBuilder = IndexFactory.createIndexBuilder(new IndexWriterContext<>(
+                    indexField.indexType(), table.schema().findType(indexField.sourceId()), indexField.properties()));
+            IndexWriter indexWriter = new IndexWriter(table.io(), indexPath.toString(), indexBuilder, -1);
             // just assume source id starts from 1
             final int ordinal = indexField.sourceId() - 1;
             for (Object[] row : rows) {
