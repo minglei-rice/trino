@@ -196,4 +196,24 @@ public class FunctionType
     {
         throw new UnsupportedOperationException();
     }
+
+    @Override
+    public boolean equals(Object o)
+    {
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
+
+        FunctionType that = (FunctionType) o;
+        return signature.equals(that.signature);
+    }
+
+    @Override
+    public int hashCode()
+    {
+        return signature.hashCode();
+    }
 }
