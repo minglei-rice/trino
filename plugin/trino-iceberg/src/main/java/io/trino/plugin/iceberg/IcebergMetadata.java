@@ -96,6 +96,7 @@ import org.apache.iceberg.actions.WriteAggIndexUtils;
 import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.cube.AggregationDesc;
 import org.apache.iceberg.cube.AggregationIndex;
+import org.apache.iceberg.cube.Functions;
 import org.apache.iceberg.io.CloseableIterable;
 import org.apache.iceberg.types.Type;
 import org.apache.iceberg.types.Types;
@@ -379,15 +380,15 @@ public class IcebergMetadata
         }
 
         // aggregation function
-        // TODO transform iceberg agg function to trino agg function
         final Function<AggregationDesc, AggFunctionDesc> toTrinoAggFunc = (icebergAggFunc -> {
             String funcName = icebergAggFunc.getFunction().functionId().toString();
             Integer sourceColumnId = icebergAggFunc.getSourceColumnId();
             // count(*)
             if (sourceColumnId == null) {
-                return new AggFunctionDesc(funcName, null);
+                return new AggFunctionDesc(funcName, null, new ArrayList<>());
             }
-            return new AggFunctionDesc(funcName, new TableColumnIdentify(icebergTableHandle.getTableName(), table.schema().findColumnName(sourceColumnId)));
+            return new AggFunctionDesc(funcName, new TableColumnIdentify(icebergTableHandle.getTableName(),
+                    table.schema().findColumnName(sourceColumnId)), getAggFunctionAttributes(icebergAggFunc.getFunction()));
         });
 
         Map<AggFunctionDesc, String> trinoAggFuncDescToName = icebergAggIndex.getAggDesc().stream()
@@ -438,6 +439,19 @@ public class IcebergMetadata
                 .map(correlation -> new CorrColumns(toTrinoCorrelation.apply(correlation.getCorrelation())))
                 .collect(toImmutableList());
         return new AggIndex(icebergAggIndex.getAggIndexId(), dimFields, trinoAggFuncDescToName, corrColumns);
+    }
+
+    private List<Object> getAggFunctionAttributes(org.apache.iceberg.cube.Function function)
+    {
+        List<Object> attributes = new ArrayList<>();
+        switch (function.functionId()) {
+            case PERCENTILE:
+                attributes.add(((Functions.Percentile) function).getWeight());
+                break;
+            default:
+                break;
+        }
+        return attributes;
     }
 
     @Override

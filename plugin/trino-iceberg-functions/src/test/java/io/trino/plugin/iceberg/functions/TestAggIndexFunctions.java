@@ -16,6 +16,7 @@ package io.trino.plugin.iceberg.functions;
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Lists;
 import io.trino.Session;
 import io.trino.plugin.hive.HdfsConfig;
 import io.trino.plugin.hive.HdfsConfiguration;
@@ -36,6 +37,7 @@ import io.trino.testing.AbstractTestQueryFramework;
 import io.trino.testing.MaterializedResult;
 import io.trino.testing.MaterializedRow;
 import io.trino.testing.QueryRunner;
+import io.trino.testing.assertions.Assert;
 import org.apache.iceberg.AggIndexFile;
 import org.apache.iceberg.CorrelatedColumns;
 import org.apache.iceberg.DataFile;
@@ -48,6 +50,8 @@ import org.apache.iceberg.cube.Functions;
 import org.apache.iceberg.types.Types;
 import org.assertj.core.api.AssertProvider;
 import org.testng.annotations.AfterClass;
+import org.testng.annotations.AfterMethod;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 import java.io.File;
@@ -61,6 +65,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import static com.google.common.io.MoreFiles.deleteRecursively;
 import static com.google.common.io.RecursiveDeleteOption.ALLOW_INSECURE;
@@ -68,6 +73,7 @@ import static io.trino.plugin.hive.metastore.file.FileHiveMetastore.createTestin
 import static io.trino.plugin.iceberg.functions.IcebergQueryRunner.createIcebergQueryRunner;
 import static io.trino.testing.TestingConnectorSession.SESSION;
 import static io.trino.testing.TestingSession.testSessionBuilder;
+import static java.lang.String.format;
 import static org.apache.iceberg.types.Types.NestedField.optional;
 
 @Test(singleThreaded = true)
@@ -94,6 +100,18 @@ public class TestAggIndexFunctions
         deleteRecursively(metastoreDir.getParentFile().toPath(), ALLOW_INSECURE);
     }
 
+    @BeforeMethod
+    public void startMethod()
+    {
+        createTables();
+    }
+
+    @AfterMethod
+    public void endMethod()
+    {
+        dropTables();
+    }
+
     @Override
     protected QueryRunner createQueryRunner()
             throws Exception
@@ -117,25 +135,30 @@ public class TestAggIndexFunctions
         // p_lineorder is a fact table
         queryRunner.execute(TEST_SESSION, "create table p_lineorder(v_revenue bigint, lo_orderdate bigint, lo_discount bigint, lo_quantity bigint, lo_custkey bigint, lo_suppkey bigint, lo_revenue bigint, lo_money decimal(10, 2))");
         queryRunner.execute(TEST_SESSION, "create table dates(d_datekey bigint, d_year bigint, d_yearmonth varchar)");
-        queryRunner.execute(TEST_SESSION, "create table customer(c_custkey bigint, c_city varchar)");
-        queryRunner.execute(TEST_SESSION, "create table supplier(s_city varchar, s_suppkey bigint)");
-
-        // t1 is a fact table
-        queryRunner.execute(TEST_SESSION, "create table t1(id bigint, id1 bigint, log_date varchar) with (partitioning = ARRAY['log_date'])");
-        queryRunner.execute(TEST_SESSION, "create table t2(id bigint, age bigint, flag bigint, miles bigint)");
-        queryRunner.execute(TEST_SESSION, "create table t3(id bigint, height bigint)");
+        //
+        queryRunner.execute(TEST_SESSION, "create table test(id bigint, m1 bigint, m2 double, m3 real, m4 varchar, dm1 bigint, dm2 bigint)");
     }
 
     private void dropTables()
     {
         queryRunner.execute(TEST_SESSION, "drop table p_lineorder");
         queryRunner.execute(TEST_SESSION, "drop table dates");
-        queryRunner.execute(TEST_SESSION, "drop table customer");
-        queryRunner.execute(TEST_SESSION, "drop table supplier");
+        queryRunner.execute(TEST_SESSION, "drop table test");
+    }
 
-        queryRunner.execute(TEST_SESSION, "drop table t1");
-        queryRunner.execute(TEST_SESSION, "drop table t2");
-        queryRunner.execute(TEST_SESSION, "drop table t3");
+    private void insertDataForTestTable()
+    {
+        Map<String, String> properties = ImmutableMap.of(
+                "allow_read_agg_index_files", "true",
+                "task_writer_count", "1");
+        Session testSession = testSessionBuilder()
+                .setCatalog("iceberg")
+                .setSchema("tpch")
+                .setSystemProperties(properties).build();
+        queryRunner.execute(testSession, "insert into test values (1, 1, 2.0, 3.0, 's1', 2, 3), " +
+                "(2, 2, 3.0, 4.0, 's2', 2, 3), (3, 4, 4.0, 5.0, 's3', 2, 3), (4, 4, 4.0, 5.0, 's3', 3, 4), " +
+                "(5, 4, 4.0, 5.0, 's3', 3, 4), (6, 5, 5.0, 6.0, 's4', 4, 5), (7, 6, 6.0, 7.0, 's5', 4, 5), " +
+                "(8, 7, 7.0, 8.0, 's6', 4, 5)");
     }
 
     private Schema buildFactTable()
@@ -179,7 +202,6 @@ public class TestAggIndexFunctions
     @Test
     public void testQueryRewriteForAvgWithRealData()
     {
-        createTables();
         Table table = loadIcebergTable("p_lineorder");
         AggregationHolder countAgg = new AggregationHolder(Functions.Count.get(), "*");
         AggregationHolder sumAgg = new AggregationHolder(Functions.Sum.get(), "v_revenue");
@@ -217,8 +239,128 @@ public class TestAggIndexFunctions
                 new MaterializedRow(Arrays.asList(1L, new BigDecimal("100.50"))),
                 new MaterializedRow(Arrays.asList(1L, new BigDecimal("400.54")))),
                 Arrays.asList(BigintType.BIGINT, DecimalType.createDecimalType(10, 2))));
+    }
 
-        dropTables();
+    @Test
+    public void testQueryRewriteForAggFunctions()
+    {
+        Table table = loadIcebergTable("p_lineorder");
+        AggregationHolder countAgg = new AggregationHolder(Functions.Count.get(), "v_revenue");
+        AggregationHolder sumAgg = new AggregationHolder(Functions.Sum.get(), "lo_money");
+        AggregationHolder countDistinctAgg = new AggregationHolder(Functions.COUNT_DISTINCT.get(), "v_revenue");
+        AggregationHolder approxDistinctAgg = new AggregationHolder(Functions.APPROX_COUNT_DISTINCT.get(), "lo_suppkey");
+        AggregationHolder percentileAgg = new AggregationHolder(Functions.Percentile.of(), "lo_suppkey");
+        List<AggregationHolder> measuresAgg = Lists.newArrayList(countAgg, countDistinctAgg, sumAgg, approxDistinctAgg, percentileAgg);
+        table.updateAggregationIndexSpec()
+                .addAggregationIndex("index1", Arrays.asList("lo_discount", "lo_quantity", "lo_orderdate"), measuresAgg)
+                .commit();
+        assertExplain(TEST_SESSION, "EXPLAIN select count(distinct v_revenue) from p_lineorder",
+                "\\Qiceberg:tpch.p_lineorder$dataAggIndex{aggIndexId=1");
+        assertExplain(TEST_SESSION, "EXPLAIN select approx_distinct(lo_suppkey), approx_percentile(lo_suppkey, 1.0, 0.5), count(distinct v_revenue) from p_lineorder",
+                "\\Qiceberg:tpch.p_lineorder$dataAggIndex{aggIndexId=1");
+        assertExplain(TEST_SESSION, "EXPLAIN select count(distinct v_revenue), count(v_revenue) as revenue from p_lineorder where lo_orderdate = 20221010",
+                "\\Qiceberg:tpch.p_lineorder$dataAggIndex{aggIndexId=1");
+        // approx_percentile with weight different from cube defined will not answered by cube
+        assertExplain(TEST_SESSION, "EXPLAIN select approx_percentile(lo_suppkey, 2.0, 0.02) from p_lineorder",
+                "\\Qiceberg:tpch.p_lineorder$dataALLALL");
+        // approx_percentile with accuracy is not supported by cube
+        assertExplain(TEST_SESSION, "EXPLAIN select approx_percentile(lo_suppkey, 0.5, 1, 0.01) from p_lineorder",
+                "\\Qiceberg:tpch.p_lineorder$dataALLALL");
+        // approx_distinct with maxStandardError is not supported by cube
+        assertExplain(TEST_SESSION, "EXPLAIN select approx_distinct(lo_suppkey, 0.05) from p_lineorder",
+                "\\Qiceberg:tpch.p_lineorder$dataALLALL");
+    }
+
+    @Test
+    public void testSpecialCases()
+    {
+        getQueryRunner().execute("create table foo(x int,d1 int,d2 int)");
+        Table table = loadIcebergTable("foo");
+        table.updateAggregationIndexSpec().addAggregationIndex("index1", Arrays.asList("d1", "d2"),
+                Collections.singletonList(new AggregationHolder(Functions.Count.get(), "*"))).commit();
+        // should not be rewrite
+        assertExplain(TEST_SESSION, "explain select count(*) from (select count(*) from foo group by d1) a",
+                "\\Qiceberg:tpch.foo$dataALLALL");
+
+        table.updateAggregationIndexSpec().removeAggregationIndex("index1").commit();
+        table.updateAggregationIndexSpec().addAggregationIndex("index2", Arrays.asList("d2"),
+                Collections.singletonList(new AggregationHolder(Functions.COUNT_DISTINCT.get(), "d1"))).commit();
+        assertExplain(TEST_SESSION, "explain select count(*) from (select count(*) from foo group by d1) a",
+                "\\Qiceberg:tpch.foo$dataAggIndex{aggIndexId=2");
+
+        table.updateAggregationIndexSpec().removeAggregationIndex("index2").commit();
+        table.updateAggregationIndexSpec().addAggregationIndex("index3", Arrays.asList("d2"),
+                Collections.singletonList(new AggregationHolder(Functions.COUNT_DISTINCT.get(), "d1"))).commit();
+        assertExplain(TEST_SESSION, "explain select count(*) from (select count(d2) from foo group by d1) a",
+                "\\Qiceberg:tpch.foo$dataAggIndex{aggIndexId=3");
+    }
+
+    @Test
+    public void testQueryRewriteForCountFunctions()
+    {
+        Table table = loadIcebergTable("p_lineorder");
+        AggregationHolder countAgg = new AggregationHolder(Functions.Count.get(), "v_revenue");
+        List<AggregationHolder> measuresAgg = Lists.newArrayList(countAgg);
+        table.updateAggregationIndexSpec()
+                .addAggregationIndex("index1", Arrays.asList("lo_discount"), measuresAgg)
+                .commit();
+        // will not rewrite
+        assertExplain(TEST_SESSION, "EXPLAIN select lo_discount, lo_quantity from p_lineorder group by lo_discount, lo_quantity",
+                "\\Qiceberg:tpch.p_lineorder$dataALLALL");
+    }
+
+    @Test
+    public void testQueryRewriteForAggIndexWithRealData()
+    {
+        Table table = loadIcebergTable("test");
+        AggregationHolder countDistinctAgg1 = new AggregationHolder(Functions.COUNT_DISTINCT.get(), "m1");
+        AggregationHolder countDistinctAgg2 = new AggregationHolder(Functions.COUNT_DISTINCT.get(), "m4");
+        AggregationHolder percentileAgg1 = new AggregationHolder(Functions.Percentile.of(), "m1");
+        AggregationHolder percentileAgg2 = new AggregationHolder(Functions.Percentile.of(2.0), "m2");
+        AggregationHolder percentileAgg3 = new AggregationHolder(Functions.Percentile.of(), "m3");
+        AggregationHolder approxCDAgg = new AggregationHolder(Functions.APPROX_COUNT_DISTINCT.get(), "m2");
+        insertDataForTestTable();
+        List<AggregationHolder> measuresAgg = new ArrayList<>(Arrays.asList(countDistinctAgg1, countDistinctAgg2, percentileAgg1, percentileAgg2, percentileAgg3, approxCDAgg));
+        table.updateAggregationIndexSpec()
+                .addAggregationIndex("index1", Arrays.asList("dm1", "dm2"), measuresAgg)
+                .commit();
+
+        buildAggIndexFiles(table);
+        Map<String, String> properties = ImmutableMap.of("allow_read_agg_index_files", "false");
+        Session testDisableAggIndexSession = testSessionBuilder()
+                .setCatalog("iceberg")
+                .setSchema("tpch")
+                .setSystemProperties(properties).build();
+
+        String sql = "select count(distinct m1), count(distinct m4), approx_distinct(m2), approx_percentile(m1, 1.0, 0.5), " +
+                "approx_percentile(m2, 2.0, 0.5), approx_percentile(m3, 1.0, 0.5)  from test";
+        List<MaterializedRow> aggIndexDataResult = queryRunner.execute(TEST_SESSION, sql).getMaterializedRows();
+        List<MaterializedRow> dataResult = queryRunner.execute(testDisableAggIndexSession, sql).getMaterializedRows();
+        Assert.assertEquals(dataResult, aggIndexDataResult);
+
+        sql = "select count(distinct m1), count(distinct m4), approx_distinct(m2), approx_percentile(m1, 1.0, 0.5), " +
+                "approx_percentile(m2, 2.0, 0.5), approx_percentile(m3, 1.0, 0.5)  from test group by dm1";
+        assertExplain(TEST_SESSION, format("EXPLAIN %s", sql), "\\Qiceberg:tpch.test$dataAggIndex{aggIndexId=1");
+        aggIndexDataResult = queryRunner.execute(TEST_SESSION, sql).getMaterializedRows();
+        dataResult = queryRunner.execute(testDisableAggIndexSession, sql).getMaterializedRows();
+        Assert.assertTrue(aggIndexDataResult.containsAll(dataResult));
+        Assert.assertTrue(dataResult.containsAll(aggIndexDataResult));
+
+        sql = "select count(distinct m1), count(distinct m4), approx_distinct(m2), approx_percentile(m1, 1.0, 0.5), " +
+                "approx_percentile(m2, 2.0, 0.5), approx_percentile(m3, 1.0, 0.5)  from test where dm1 <= 3 group by dm1";
+        assertExplain(TEST_SESSION, format("EXPLAIN %s", sql), "\\Qiceberg:tpch.test$dataAggIndex{aggIndexId=1");
+        aggIndexDataResult = queryRunner.execute(TEST_SESSION, sql).getMaterializedRows();
+        dataResult = queryRunner.execute(testDisableAggIndexSession, sql).getMaterializedRows();
+        Assert.assertTrue(aggIndexDataResult.containsAll(dataResult));
+        Assert.assertTrue(dataResult.containsAll(aggIndexDataResult));
+
+        sql = "select count(distinct m1), count(distinct m4), approx_distinct(m2), approx_percentile(m1, 1.0, array[0.3, 0.7, 0.9]), " +
+                "approx_percentile(m2, 2.0, array[0.2, 0.6, 0.9, 0.5]), approx_percentile(m3, 1.0, array[0.3, 0.4, 0.9, 0.7])  from test where dm1 <= 3 group by dm1";
+        assertExplain(TEST_SESSION, format("EXPLAIN %s", sql), "\\Qiceberg:tpch.test$dataAggIndex{aggIndexId=1");
+        aggIndexDataResult = queryRunner.execute(TEST_SESSION, sql).getMaterializedRows();
+        dataResult = queryRunner.execute(testDisableAggIndexSession, sql).getMaterializedRows();
+        Assert.assertTrue(aggIndexDataResult.containsAll(dataResult));
+        Assert.assertTrue(dataResult.containsAll(aggIndexDataResult));
     }
 
     private Table loadIcebergTable(String tableName)
@@ -238,11 +380,27 @@ public class TestAggIndexFunctions
                 .withFileSizeInBytes(1000) // any value
                 .withRecordCount(4) // any value
                 .withAggIndexFiles(Arrays.asList(new AggIndexFile(specId, aggIndexPath, sourceFile.length()))).build();
-        copyAggIndexFiles(sourceFile, aggIndexDir, fileName);
+        copyFiles(sourceFile, aggIndexDir, fileName);
         table.newAppend().appendFile(dataFile).commit();
     }
 
-    private void copyAggIndexFiles(File file, String targetDir, String fileName)
+    private void buildAggIndexFiles(Table table)
+    {
+        String aggFileFolder = table.location() + "/agg-index/";
+        String sourceFolder = "aggindex/test/";
+        String aggFileName = "agg_index_file.orc";
+        File aggFile = new File(this.getClass().getClassLoader().getResource(sourceFolder + aggFileName).getFile());
+        copyFiles(aggFile, aggFileFolder, aggFileName);
+        DataFile dataFile = table.newScan().planFiles().iterator().next().file();
+        DataFile newFile = DataFiles.builder(table.spec())
+                .copy(dataFile)
+                .withAggIndexFiles(List.of(new AggIndexFile(table.aggregationIndexSpec().specId(), aggFileFolder + aggFileName, aggFile.length())))
+                .build();
+        table.newWriteAggIndices().rewriteFiles(Set.of(dataFile), Set.of(newFile))
+                .commit();
+    }
+
+    private void copyFiles(File file, String targetDir, String fileName)
     {
         try {
             File targetPath = new File(targetDir);

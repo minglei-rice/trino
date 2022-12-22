@@ -14,6 +14,14 @@
 package io.trino.plugin.iceberg.functions;
 
 import com.google.common.collect.ImmutableSet;
+import io.trino.plugin.iceberg.functions.operator.aggregation.AggIndexApproxDistinctAggregations;
+import io.trino.plugin.iceberg.functions.operator.aggregation.AggIndexApproximateDoublePercentileAggregations;
+import io.trino.plugin.iceberg.functions.operator.aggregation.AggIndexApproximateDoublePercentileArrayAggregations;
+import io.trino.plugin.iceberg.functions.operator.aggregation.AggIndexApproximateLongPercentileAggregations;
+import io.trino.plugin.iceberg.functions.operator.aggregation.AggIndexApproximateLongPercentileArrayAggregations;
+import io.trino.plugin.iceberg.functions.operator.aggregation.AggIndexApproximateRealPercentileAggregations;
+import io.trino.plugin.iceberg.functions.operator.aggregation.AggIndexApproximateRealPercentileArrayAggregations;
+import io.trino.plugin.iceberg.functions.operator.aggregation.AggIndexCountDistinctAggregations;
 import io.trino.plugin.iceberg.functions.operator.aggregation.AggIndexDecimalAverageAggregations;
 import io.trino.plugin.iceberg.functions.operator.aggregation.AggIndexDoubleAverageAggregations;
 import io.trino.spi.Plugin;
@@ -29,6 +37,14 @@ public class IcebergFunctionsPlugin
         return ImmutableSet.<Class<?>>builder()
                 .add(AggIndexDecimalAverageAggregations.class)
                 .add(AggIndexDoubleAverageAggregations.class)
+                .add(AggIndexCountDistinctAggregations.class)
+                .add(AggIndexApproxDistinctAggregations.class)
+                .add(AggIndexApproximateDoublePercentileAggregations.class)
+                .add(AggIndexApproximateDoublePercentileArrayAggregations.class)
+                .add(AggIndexApproximateLongPercentileAggregations.class)
+                .add(AggIndexApproximateLongPercentileArrayAggregations.class)
+                .add(AggIndexApproximateRealPercentileAggregations.class)
+                .add(AggIndexApproximateRealPercentileArrayAggregations.class)
                 .build();
     }
 }
