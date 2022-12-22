@@ -93,10 +93,20 @@ public class AggIndex
 
     public enum AggFunctionType
     {
-        AVG,
-        TOP_N,
-        COUNT_DISTINCT,
-        APPROX_COUNT_DISTINCT,
-        PERCENTILE
+        AVG("avg"),
+        COUNT_DISTINCT("count_distinct"),
+        APPROX_COUNT_DISTINCT("approx_count_distinct"),
+        PERCENTILE("percentile");
+
+        String name;
+        AggFunctionType(String name)
+        {
+            this.name = name;
+        }
+
+        public String getName()
+        {
+            return name;
+        }
     }
 }

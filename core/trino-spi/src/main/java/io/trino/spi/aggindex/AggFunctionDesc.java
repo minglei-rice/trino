@@ -14,6 +14,8 @@
 package io.trino.spi.aggindex;
 
 import java.io.Serializable;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 
@@ -28,10 +30,15 @@ public class AggFunctionDesc
      */
     private final TableColumnIdentify columnIdentify;
 
-    public AggFunctionDesc(String function, TableColumnIdentify columnIdentify)
+    List<Object> attributes = new ArrayList<>();
+
+    public AggFunctionDesc(String function, TableColumnIdentify columnIdentify, List<Object> attributes)
     {
         this.function = function.toLowerCase(Locale.ENGLISH);
         this.columnIdentify = columnIdentify;
+        if (attributes != null) {
+            this.attributes = attributes;
+        }
     }
 
     public String getFunction()
@@ -55,20 +62,21 @@ public class AggFunctionDesc
         }
         AggFunctionDesc that = (AggFunctionDesc) o;
         return Objects.equals(function, that.function)
+                && Objects.equals(attributes, that.attributes)
                 && Objects.equals(columnIdentify, that.columnIdentify);
     }
 
     @Override
     public int hashCode()
     {
-        return Objects.hash(function.toLowerCase(Locale.ENGLISH), columnIdentify);
+        return Objects.hash(function.toLowerCase(Locale.ENGLISH), columnIdentify, attributes);
     }
 
     @Override
     public String toString()
     {
         if (columnIdentify != null) {
-            return "functionName=" + function + ",columnName=" + columnIdentify.getTableName() + "." + columnIdentify.getColumnName();
+            return "functionName=" + function + ",columnName=" + columnIdentify.getTableName() + "." + columnIdentify.getColumnName() + ",attributes=" + attributes;
         }
         else {
             // count(*)

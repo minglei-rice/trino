@@ -142,6 +142,7 @@ import org.apache.iceberg.actions.WriteAggIndexUtils;
 import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.cube.AggregationDesc;
 import org.apache.iceberg.cube.AggregationIndex;
+import org.apache.iceberg.cube.Functions;
 import org.apache.iceberg.exceptions.ValidationException;
 import org.apache.iceberg.expressions.Expressions;
 import org.apache.iceberg.expressions.Term;
@@ -574,9 +575,10 @@ public class IcebergMetadata
             Integer sourceColumnId = icebergAggFunc.getSourceColumnId();
             // count(*)
             if (sourceColumnId == null) {
-                return new AggFunctionDesc(funcName, null);
+                return new AggFunctionDesc(funcName, null, new ArrayList<>());
             }
-            return new AggFunctionDesc(funcName, new TableColumnIdentify(icebergTableHandle.getTableName(), table.schema().findColumnName(sourceColumnId)));
+            return new AggFunctionDesc(funcName, new TableColumnIdentify(icebergTableHandle.getTableName(),
+                    table.schema().findColumnName(sourceColumnId)), getAggFunctionAttributes(icebergAggFunc.getFunction()));
         });
 
         Map<AggFunctionDesc, String> trinoAggFuncDescToName = icebergAggIndex.getAggDesc().stream()
@@ -656,6 +658,19 @@ public class IcebergMetadata
                 return snapshotId;
         }
         throw new TrinoException(NOT_SUPPORTED, "Version pointer type is not supported: " + version.getPointerType());
+    }
+
+    private List<Object> getAggFunctionAttributes(org.apache.iceberg.cube.Function function)
+    {
+        List<Object> attributes = new ArrayList<>();
+        switch (function.functionId()) {
+            case PERCENTILE:
+                attributes.add(((Functions.Percentile) function).getWeight());
+                break;
+            default:
+                break;
+        }
+        return attributes;
     }
 
     @Override
@@ -2393,7 +2408,7 @@ public class IcebergMetadata
     }
 
     private static boolean sameJoinCondition(List<JoinCondition> joinConditions, Correlation correlation, Table icebergTable, Map<String, ColumnHandle> tableAssignments,
-            Map<String, ColumnHandle> corrTableAssignments, boolean isLeft)
+                                             Map<String, ColumnHandle> corrTableAssignments, boolean isLeft)
     {
         if (correlation.getLeftKeys().size() != joinConditions.size()) {
             return false;

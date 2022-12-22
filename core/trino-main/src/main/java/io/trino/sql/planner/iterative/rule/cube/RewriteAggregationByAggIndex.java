@@ -14,6 +14,7 @@
 package io.trino.sql.planner.iterative.rule.cube;
 
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import io.airlift.log.Logger;
 import io.trino.Session;
 import io.trino.connector.system.GlobalSystemConnector;
@@ -33,6 +34,9 @@ import io.trino.spi.function.FunctionId;
 import io.trino.spi.function.FunctionNullability;
 import io.trino.spi.type.BigintType;
 import io.trino.spi.type.DecimalType;
+import io.trino.spi.type.DoubleType;
+import io.trino.spi.type.RealType;
+import io.trino.spi.type.StandardTypes;
 import io.trino.spi.type.Type;
 import io.trino.spi.type.TypeSignature;
 import io.trino.sql.ExpressionUtils;
@@ -44,19 +48,23 @@ import io.trino.sql.planner.iterative.Lookup;
 import io.trino.sql.planner.iterative.Rule;
 import io.trino.sql.planner.optimizations.PlanNodeSearcher;
 import io.trino.sql.planner.plan.AggregationNode;
+import io.trino.sql.planner.plan.Assignments;
 import io.trino.sql.planner.plan.FilterNode;
 import io.trino.sql.planner.plan.JoinNode;
+import io.trino.sql.planner.plan.MarkDistinctNode;
 import io.trino.sql.planner.plan.PlanNode;
 import io.trino.sql.planner.plan.ProjectNode;
 import io.trino.sql.planner.plan.TableScanNode;
 import io.trino.sql.tree.AstVisitor;
 import io.trino.sql.tree.DefaultExpressionTraversalVisitor;
+import io.trino.sql.tree.DoubleLiteral;
 import io.trino.sql.tree.Expression;
 import io.trino.sql.tree.SymbolReference;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -93,7 +101,7 @@ public class RewriteAggregationByAggIndex
             .with(step().equalTo(AggregationNode.Step.SINGLE))
             .matching(RewriteAggregationByAggIndex::preCheck);
 
-    private static final Set<String> SUPPORTED_AGG_FUNC = new HashSet<>(Arrays.asList("sum", "min", "max", "count", "avg"));
+    private static final Set<String> SUPPORTED_AGG_FUNC = new HashSet<>(Arrays.asList("sum", "min", "max", "count", "avg", "approx_distinct", "approx_percentile"));
 
     public RewriteAggregationByAggIndex(PlannerContext context)
     {
@@ -178,8 +186,10 @@ public class RewriteAggregationByAggIndex
             effectColumnNames.addAll(dimFields);
 
             Map<AggFunctionDesc, String> aggFunctionDescToName = candidateAggIndex.getAggFunctionDescToName();
+            Set<Symbol> distinctColumns = rewriteUtil.getDistinctColumns();
+            Map<Symbol, Expression> projectionMap = rewriteUtil.getProjectionMap();
             Set<String> aggregationNames = node.getAggregations().values().stream()
-                    .map(aggregation -> aggFunctionDescToName.get(aggregationToAggFunctionDesc(aggregation, aggArgsSymbolToColumn)))
+                    .map(aggregation -> aggFunctionDescToName.get(aggregationToAggFunctionDesc(aggregation, aggArgsSymbolToColumn, distinctColumns, projectionMap)))
                     .collect(Collectors.toSet());
             // agg column names included
             effectColumnNames.addAll(aggregationNames);
@@ -198,7 +208,8 @@ public class RewriteAggregationByAggIndex
                     outputs.add(symbol);
                 }
             }
-            TableScanNode tableScanNode = new TableScanNode(
+
+            PlanNode planNode = new TableScanNode(
                     context.getIdAllocator().getNextId(),
                     newTable,
                     outputs,
@@ -210,13 +221,24 @@ public class RewriteAggregationByAggIndex
             List<Expression> exprCollector = rewriteUtil.getFilterCollector();
             List<Expression> expressions = ExpressionUtils.removeDuplicates(metadata, exprCollector);
             Expression expression = ExpressionUtils.combineConjuncts(metadata, expressions);
-            FilterNode filterNode = new FilterNode(context.getIdAllocator().getNextId(), tableScanNode, expression);
-            LOG.info("cube filter is %s", filterNode.getPredicate().toString());
+            if (exprCollector.size() > 0) {
+                planNode = new FilterNode(context.getIdAllocator().getNextId(), planNode, expression);
+                LOG.info("Conjunctive filter is %s", ((FilterNode) planNode).getPredicate().toString());
+            }
+
+            if (projectionMap.size() > 0) {
+                Assignments projectAssignments = Assignments.builder()
+                        .putAll(projectionMap)
+                        .putAll(assignments.keySet().stream().collect(Collectors.toMap(Function.identity(), Symbol::toSymbolReference)))
+                        .build();
+                planNode = new ProjectNode(context.getIdAllocator().getNextId(), planNode, projectAssignments);
+            }
+
             Map<Symbol, AggregationNode.Aggregation> aggregationMap = rewriteAggregation(node.getAggregations(),
-                    aggArgsSymbolToColumn, candidateAggIndex.getAggFunctionDescToName());
+                    aggArgsSymbolToColumn, candidateAggIndex.getAggFunctionDescToName(), distinctColumns, projectionMap);
             return Result.ofPlanNode(new AggregationNode(
                     context.getIdAllocator().getNextId(),
-                    exprCollector.size() > 0 ? filterNode : tableScanNode,
+                    planNode,
                     aggregationMap,
                     node.getGroupingSets(),
                     node.getPreGroupedSymbols(),
@@ -256,12 +278,23 @@ public class RewriteAggregationByAggIndex
         @Override
         public Void visitAggregation(AggregationNode node, RewriteUtil rewriteUtil)
         {
+            rewriteUtil.increaseCurrentAggregationDepth();
+            if (!rewriteUtil.canRewrite()) {
+                return null;
+            }
+
+            if (node.getAggregations().isEmpty()) {
+                // for case count distinct is optimized by SingleDistinctAggregationToGroupBy
+                rewriteUtil.addDistinctColumns(node.getGroupingSets().getGroupingKeys());
+            }
+
             node.getSource().accept(this, rewriteUtil);
             if (!rewriteUtil.canRewrite()) {
                 return null;
             }
             List<TableColumnIdentify> dimFieldsFromPlan = node.getGroupingSets().getGroupingKeys()
                     .stream()
+                    .filter(symbol -> !rewriteUtil.getDistinctColumns().contains(symbol))
                     .map(groupKey -> rewriteUtil.getSymbolToTableColumnName().getOrDefault(groupKey, TableColumnIdentify.NONE))
                     .collect(Collectors.toList());
             List<TableColumnIdentify> dimFieldsFromAggIndex = rewriteUtil.getAggIndex().getDimFields();
@@ -297,20 +330,38 @@ public class RewriteAggregationByAggIndex
             Map<Symbol, AggregationNode.Aggregation> aggregations = node.getAggregations();
             for (Map.Entry<Symbol, AggregationNode.Aggregation> entry : aggregations.entrySet()) {
                 AggregationNode.Aggregation aggregation = entry.getValue();
-                String functionName = aggregation.getResolvedFunction().getSignature().getName();
+                String functionName = rewriteAggFunctionName(aggregation, aggregation.getResolvedFunction().getSignature().getName(), rewriteUtil.getDistinctColumns());
                 AggFunctionDesc aggFunctionDesc;
                 // count(*)
-                if (aggregation.getArguments().size() == 0) {
-                    aggFunctionDesc = new AggFunctionDesc(functionName, null);
+                if (aggregation.getArguments().size() == 0 && "count".equalsIgnoreCase(functionName)) {
+                    aggFunctionDesc = new AggFunctionDesc(functionName, null, new ArrayList<>());
                 }
                 else {
+                    List<Object> attributes = new ArrayList<>();
                     // only support single argument, do not support function like max(x1,x2) with two arguments.
-                    if (aggregation.getArguments().size() > 1) {
+                    // approx_distinct with maxStandardError is not supported
+                    // approx_percentile has multiple arguments
+                    if (aggregation.getArguments().size() > 1 && !checkApproxPercentileAndSetAttributes(
+                            aggregation.getResolvedFunction().getSignature().getName(), aggregation, attributes, rewriteUtil.getProjectionMap())) {
                         rewriteUtil.setCanRewrite(false);
                         return null;
                     }
-                    TableColumnIdentify tableColumnIdent = applyExpr.apply(aggregation.getArguments().get(0));
-                    aggFunctionDesc = new AggFunctionDesc(functionName, tableColumnIdent);
+                    TableColumnIdentify tableColumnIdent;
+                    if (aggregation.getArguments().size() > 0) {
+                        tableColumnIdent = applyExpr.apply(aggregation.getArguments().get(0));
+                    }
+                    else {
+                        // count(*) -> count_distinct
+                        if (rewriteUtil.getDistinctColumns().size() != 1) {
+                            rewriteUtil.setCanRewrite(false);
+                            LOG.warn("This may be misjudged, however to be safety, skip rewriting agg index");
+                            return null;
+                        }
+                        Symbol symbol = rewriteUtil.getDistinctColumns().iterator().next();
+                        tableColumnIdent = applyExpr.apply(symbol.toSymbolReference());
+                        rewriteUtil.putAggArgsSymbolToColumn(symbol, tableColumnIdent);
+                    }
+                    aggFunctionDesc = new AggFunctionDesc(functionName, tableColumnIdent, attributes);
                 }
                 aggFunctionFromPlan.add(aggFunctionDesc);
             }
@@ -447,8 +498,16 @@ public class RewriteAggregationByAggIndex
         }
 
         @Override
+        public Void visitMarkDistinct(MarkDistinctNode node, RewriteUtil context)
+        {
+            node.getSource().accept(this, context);
+            return null;
+        }
+
+        @Override
         public Void visitProject(ProjectNode node, RewriteUtil context)
         {
+            context.putAllProjectionMap(node.getAssignments().getMap());
             node.getSource().accept(this, context);
             return null;
         }
@@ -526,6 +585,7 @@ public class RewriteAggregationByAggIndex
 
     private static class RewriteUtil
     {
+        private static final int MAX_AGGREGATION_DEPTH = 2;
         private boolean canRewrite;
 
         private final List<Expression> filterCollector;
@@ -551,9 +611,15 @@ public class RewriteAggregationByAggIndex
          */
         private final Map<Symbol, TableColumnIdentify> symbolToTableColumnIdent;
 
+        private final Set<Symbol> distinctColumns;
+
+        private final Map<Symbol, Expression> projectionMap;
+
         private AggIndex aggIndex;
 
         private Map<String, Symbol> nameToSymbol;
+
+        private int currentAggregationDepth;
 
         public RewriteUtil(boolean canRewrite)
         {
@@ -563,6 +629,8 @@ public class RewriteAggregationByAggIndex
             this.filterCollector = new ArrayList<>();
             this.nameToSymbol = new HashMap<>();
             this.aggArgsSymbolToColumn = new HashMap<>();
+            this.distinctColumns = new HashSet<>();
+            this.projectionMap = new HashMap<>();
         }
 
         public Map<String, Symbol> getNameToSymbol()
@@ -636,6 +704,34 @@ public class RewriteAggregationByAggIndex
         {
             symbolToTableColumnIdent.putAll(toTableSchemaColumn);
         }
+
+        public void addDistinctColumns(List<Symbol> symbols)
+        {
+            distinctColumns.addAll(symbols);
+        }
+
+        public Set<Symbol> getDistinctColumns()
+        {
+            return distinctColumns;
+        }
+
+        public void putAllProjectionMap(Map<Symbol, Expression> symbolToValue)
+        {
+            projectionMap.putAll(symbolToValue);
+        }
+
+        public Map<Symbol, Expression> getProjectionMap()
+        {
+            return projectionMap;
+        }
+
+        public void increaseCurrentAggregationDepth()
+        {
+            currentAggregationDepth++;
+            if (currentAggregationDepth > MAX_AGGREGATION_DEPTH) {
+                setCanRewrite(false);
+            }
+        }
     }
 
     // TODO support avg, count, etc.
@@ -647,20 +743,107 @@ public class RewriteAggregationByAggIndex
         }
         boolean allSymRef = true;
         Map<Symbol, AggregationNode.Aggregation> aggregations = node.getAggregations();
+        if (aggregations.size() == 0) {
+            return false;
+        }
+
         for (Map.Entry<Symbol, AggregationNode.Aggregation> entry : aggregations.entrySet()) {
             AggregationNode.Aggregation aggregation = entry.getValue();
             String name = aggregation.getResolvedFunction().getSignature().toSignature().getName();
             boolean allowFunc = SUPPORTED_AGG_FUNC.contains(name);
-            if (aggregation.isDistinct()
+            if ((aggregation.isDistinct()
                     || aggregation.getFilter().isPresent()
                     || aggregation.getOrderingScheme().isPresent()
                     || aggregation.getMask().isPresent()
-                    || !allowFunc) {
+                    || !allowFunc) && !isCountDistinct(aggregation, name, null)) {
                 return false;
             }
             allSymRef = allSymRef && entry.getValue().getArguments().stream().allMatch(SymbolReference.class::isInstance);
         }
         return allSymRef;
+    }
+
+    private static boolean isCountDistinct(AggregationNode.Aggregation aggregation, String name, Set<Symbol> distinctColumns)
+    {
+        if ("count".equalsIgnoreCase(name)) {
+            if (aggregation.isDistinct()) {
+                return true;
+            }
+
+            if (aggregation.getMask().isPresent() && aggregation.getMask().get().getName().endsWith("distinct")) {
+                return true;
+            }
+
+            if (distinctColumns != null && distinctColumns.size() > 0) {
+                // count(*) -> count distinct
+                if (aggregation.getArguments().size() == 0 && distinctColumns.size() == 1) {
+                    return true;
+                }
+                return distinctColumns.contains(Symbol.from(aggregation.getArguments().get(0)));
+            }
+        }
+        return false;
+    }
+
+    private static boolean isApproxDistinct(String name)
+    {
+        return "approx_distinct".equalsIgnoreCase(name);
+    }
+
+    private static boolean isApproxPercentile(String name)
+    {
+        return "approx_percentile".equalsIgnoreCase(name);
+    }
+
+    private static boolean checkApproxPercentileAndSetAttributes(String name, AggregationNode.Aggregation aggregation, List<Object> attributes,
+                                                                 Map<Symbol, Expression> projectionMap)
+    {
+        if (isApproxPercentile(name)) {
+            attributes.addAll(getAggFuncAttributes(aggregation, projectionMap));
+            return attributes.size() > 0;
+        }
+        return false;
+    }
+
+    private static List<Object> getAggFuncAttributes(AggregationNode.Aggregation aggregation, Map<Symbol, Expression> projectionMap)
+    {
+        List<Object> attributes = new ArrayList<>();
+        String funcName = aggregation.getResolvedFunction().getSignature().getName();
+        if (isApproxPercentile(funcName)) {
+            if (aggregation.getArguments().size() > 3) {
+                // LegacyApproximateLongPercentileAggregations function with accuracy is not supported
+                LOG.warn("approx_percentile with param: accuracy is not supported for agg index!");
+                return attributes;
+            }
+            double weight = 1.0D;
+            if (aggregation.getArguments().size() == 3) {
+                Expression weightExp = projectionMap.get(Symbol.from(aggregation.getArguments().get(1)));
+                if (weightExp == null || !(weightExp instanceof DoubleLiteral)) {
+                    LOG.warn("approx_percentile with param: weight can not be recognized by agg index!");
+                    return attributes;
+                }
+                weight = ((DoubleLiteral) weightExp).getValue();
+            }
+            attributes.add(weight);
+        }
+        return attributes;
+    }
+
+    private static String rewriteAggFunctionName(AggregationNode.Aggregation aggregation, String name, Set<Symbol> countDistinctColumns)
+    {
+        if (isCountDistinct(aggregation, name, countDistinctColumns)) {
+            return AggIndex.AggFunctionType.COUNT_DISTINCT.getName();
+        }
+
+        if (isApproxDistinct(name)) {
+            return AggIndex.AggFunctionType.APPROX_COUNT_DISTINCT.getName();
+        }
+
+        if (isApproxPercentile(name)) {
+            return AggIndex.AggFunctionType.PERCENTILE.getName();
+        }
+
+        return name;
     }
 
     private static void tuneAggregationNode(
@@ -700,7 +883,9 @@ public class RewriteAggregationByAggIndex
 
     private static Map<Symbol, AggregationNode.Aggregation> rewriteAggregation(Map<Symbol, AggregationNode.Aggregation> aggregationMap,
                                                                                Map<Symbol, TableColumnIdentify> aggArgsSymbolToColumn,
-                                                                               Map<AggFunctionDesc, String> aggFunctionDescToName)
+                                                                               Map<AggFunctionDesc, String> aggFunctionDescToName,
+                                                                               Set<Symbol> distinctColumns,
+                                                                               Map<Symbol, Expression> projectionMap)
     {
         Map<Symbol, AggregationNode.Aggregation> result = new HashMap<>();
         for (Map.Entry<Symbol, AggregationNode.Aggregation> entry : aggregationMap.entrySet()) {
@@ -709,26 +894,47 @@ public class RewriteAggregationByAggIndex
             FunctionId functionId = prevResolvedFunction.getFunctionId();
             FunctionNullability functionNullability = prevResolvedFunction.getFunctionNullability();
             Map<TypeSignature, Type> typeDependencies = prevResolvedFunction.getTypeDependencies();
-            String newAggName = aggFunctionDescToName.get(aggregationToAggFunctionDesc(entry.getValue(), aggArgsSymbolToColumn));
+            String newAggArgName = aggFunctionDescToName.get(aggregationToAggFunctionDesc(entry.getValue(), aggArgsSymbolToColumn, distinctColumns, projectionMap));
+            List<Expression> arguments = new ArrayList<>(Collections.singletonList(new SymbolReference(newAggArgName)));
             String functionFormat = "%s<t>(t):%s";
             switch (boundSignature.getName().toLowerCase(Locale.ROOT)) {
                 case "avg":
                     String avgName = "cube_avg_double";
-                    String funcIdName = String.format(functionFormat, avgName, "double");
+                    String funcIdName = String.format(functionFormat, avgName, StandardTypes.DOUBLE);
                     if (boundSignature.getReturnType() instanceof DecimalType) {
                         avgName = "cube_avg_decimal";
-                        funcIdName = String.format(functionFormat, avgName, "decimal");
+                        funcIdName = String.format(functionFormat, avgName, StandardTypes.DECIMAL);
                     }
                     boundSignature = new BoundSignature(avgName, boundSignature.getReturnType(), ImmutableList.of(VARBINARY));
                     functionId = new FunctionId(funcIdName);
-                    typeDependencies = new HashMap<>();
-                    typeDependencies.put(new TypeSignature("varbinary"), prevResolvedFunction.getSignature().getArgumentTypes().get(0));
+                    typeDependencies = ImmutableMap.of(new TypeSignature("varbinary"), prevResolvedFunction.getSignature().getArgumentTypes().get(0));
                     break;
                 case "count":
-                    boundSignature = new BoundSignature("sum", prevResolvedFunction.getSignature().getReturnType(),
-                            ImmutableList.of(BigintType.BIGINT));
-                    functionId = FunctionId.toFunctionId(boundSignature.toSignature());
+                    if (isCountDistinct(entry.getValue(), "count", distinctColumns)) {
+                        boundSignature = new BoundSignature("cube_count_distinct", boundSignature.getReturnType(), ImmutableList.of(VARBINARY));
+                    }
+                    else {
+                        boundSignature = new BoundSignature("sum", prevResolvedFunction.getSignature().getReturnType(), ImmutableList.of(BigintType.BIGINT));
+                    }
                     functionNullability = new FunctionNullability(true, ImmutableList.of(false));
+                    functionId = FunctionId.toFunctionId(boundSignature.toSignature());
+                    break;
+                case "approx_distinct":
+                    String approxDistinctName = "cube_approx_distinct";
+                    funcIdName = String.format(functionFormat, approxDistinctName, StandardTypes.BIGINT);
+                    boundSignature = new BoundSignature(approxDistinctName, boundSignature.getReturnType(), ImmutableList.of(VARBINARY));
+                    functionId = new FunctionId(funcIdName);
+                    typeDependencies = ImmutableMap.of(new TypeSignature("varbinary"), prevResolvedFunction.getSignature().getArgumentTypes().get(0));
+                    break;
+                case "approx_percentile":
+                    String approxPercentileName = getAggIndexApproxPercentileName(boundSignature.getArgumentTypes().get(0));
+                    List<Type> paramTypes = new ImmutableList.Builder<Type>()
+                            .add(VARBINARY)
+                            .addAll(boundSignature.getArgumentTypes().subList(1, boundSignature.getArgumentTypes().size()))
+                            .build();
+                    boundSignature = new BoundSignature(approxPercentileName, boundSignature.getReturnType(), ImmutableList.copyOf(paramTypes));
+                    functionId = FunctionId.toFunctionId(boundSignature.toSignature());
+                    arguments.addAll(entry.getValue().getArguments().subList(1, entry.getValue().getArguments().size()));
                     break;
                 case "sum":
                 case "min":
@@ -747,28 +953,52 @@ public class RewriteAggregationByAggIndex
                     functionNullability,
                     typeDependencies,
                     prevResolvedFunction.getFunctionDependencies());
-            result.put(entry.getKey(), aggregationMapping(entry.getValue(), resolvedFunction, ImmutableList.of(new SymbolReference(newAggName))));
+            result.put(entry.getKey(), aggregationMapping(entry.getValue(), resolvedFunction, arguments));
         }
         return result;
+    }
+
+    private static String getAggIndexApproxPercentileName(Type type)
+    {
+        if (type instanceof DoubleType) {
+            return "cube_approx_double_percentile";
+        }
+
+        if (type instanceof BigintType) {
+            return "cube_approx_long_percentile";
+        }
+
+        if (type instanceof RealType) {
+            return "cube_approx_float_percentile";
+        }
+
+        throw new IllegalArgumentException(format("Invalid type %s for agg index: approx_percentile!", type));
     }
 
     private static AggregationNode.Aggregation aggregationMapping(AggregationNode.Aggregation aggregation, ResolvedFunction resolvedFunction, List<Expression> arguments)
     {
         return new AggregationNode.Aggregation(resolvedFunction,
                 arguments,
-                aggregation.isDistinct(),
+                false,
                 aggregation.getFilter(),
                 aggregation.getOrderingScheme(),
-                aggregation.getMask());
+                Optional.empty());
     }
 
-    private static AggFunctionDesc aggregationToAggFunctionDesc(AggregationNode.Aggregation aggregation, Map<Symbol, TableColumnIdentify> symbolToColumnIdentify)
+    private static AggFunctionDesc aggregationToAggFunctionDesc(AggregationNode.Aggregation aggregation,
+                                                                Map<Symbol, TableColumnIdentify> symbolToColumnIdentify,
+                                                                Set<Symbol> distinctColumns,
+                                                                Map<Symbol, Expression> projectionMap)
     {
         TableColumnIdentify tableColumnIdentify = null;
+        String aggFunctionName = rewriteAggFunctionName(aggregation, aggregation.getResolvedFunction().getSignature().getName(), distinctColumns);
         // for count(*), the arguments will with size 0
-        if (aggregation.getArguments().size() > 0) {
+        if (aggregation.getArguments().size() == 0 && AggIndex.AggFunctionType.COUNT_DISTINCT.getName().equals(aggFunctionName)) {
+            tableColumnIdentify = symbolToColumnIdentify.get(distinctColumns.iterator().next());
+        }
+        else if (aggregation.getArguments().size() > 0) {
             tableColumnIdentify = symbolToColumnIdentify.get(Symbol.from(aggregation.getArguments().get(0)));
         }
-        return new AggFunctionDesc(aggregation.getResolvedFunction().getSignature().getName(), tableColumnIdentify);
+        return new AggFunctionDesc(aggFunctionName, tableColumnIdentify, getAggFuncAttributes(aggregation, projectionMap));
     }
 }

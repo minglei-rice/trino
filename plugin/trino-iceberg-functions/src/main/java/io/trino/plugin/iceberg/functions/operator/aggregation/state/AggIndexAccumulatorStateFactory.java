@@ -20,6 +20,8 @@ import io.trino.spi.aggindex.AggIndex;
 import io.trino.spi.function.AccumulatorStateFactory;
 import io.trino.spi.type.Type;
 import org.apache.iceberg.aggindex.AvgAccumulator;
+import org.apache.iceberg.aggindex.CountDistinctAccumulator;
+import org.apache.iceberg.aggindex.HyperLogLogAccumulator;
 import org.apache.iceberg.aggindex.PartialAggAccumulator;
 import org.openjdk.jol.info.ClassLayout;
 
@@ -230,6 +232,10 @@ public class AggIndexAccumulatorStateFactory
         switch (functionType) {
             case AVG:
                 return AvgAccumulator.forType(icebergType);
+            case COUNT_DISTINCT:
+                return new CountDistinctAccumulator();
+            case APPROX_COUNT_DISTINCT:
+                return HyperLogLogAccumulator.forType(icebergType);
             default:
                 throw new IllegalArgumentException("Unexpected agg function type: " + functionType);
         }
