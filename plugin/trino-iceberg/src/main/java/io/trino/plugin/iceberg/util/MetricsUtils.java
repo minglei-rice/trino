@@ -18,6 +18,8 @@ import io.trino.spi.metrics.DataSkippingMetrics;
 import io.trino.spi.metrics.Metrics;
 import org.apache.iceberg.FilterMetrics;
 
+import static io.trino.spi.metrics.DataSkippingMetrics.Builder;
+import static io.trino.spi.metrics.DataSkippingMetrics.MetricType;
 import static io.trino.spi.metrics.DataSkippingMetrics.MetricType.SKIPPED_BY_DF_IN_COORDINATOR;
 import static io.trino.spi.metrics.DataSkippingMetrics.MetricType.SKIPPED_BY_INDEX_IN_COORDINATOR;
 import static io.trino.spi.metrics.DataSkippingMetrics.MetricType.SKIPPED_BY_MINMAX_STATS;
@@ -39,23 +41,30 @@ public class MetricsUtils
             int skippedSplitsByPartitionFilter,
             long skippedDataSizeByPartitionFilter)
     {
-        DataSkippingMetrics.Builder builder = DataSkippingMetrics.builder()
-                .withMetric(SKIPPED_BY_DF_IN_COORDINATOR, skippedSplitsByDfInCoordinator, skippedDataSizeByDfInCoordinator)
-                .withMetric(SKIPPED_BY_PART_FILTER, skippedSplitsByPartitionFilter, skippedDataSizeByPartitionFilter);
+        Builder builder = DataSkippingMetrics.builder();
+        addNonZeroMetric(builder, SKIPPED_BY_DF_IN_COORDINATOR, skippedSplitsByDfInCoordinator, skippedDataSizeByDfInCoordinator);
+        addNonZeroMetric(builder, SKIPPED_BY_PART_FILTER, skippedSplitsByPartitionFilter, skippedDataSizeByPartitionFilter);
 
         if (filterMetrics != null) {
             filterMetrics.getMetricEntry(FilterMetrics.MetricType.TOTAL).ifPresent(entry ->
-                    builder.withMetric(TOTAL, entry.getRawSplitCount(), entry.getTotalFileSize()));
+                    addNonZeroMetric(builder, TOTAL, entry.getRawSplitCount(), entry.getTotalFileSize()));
             filterMetrics.getMetricEntry(FilterMetrics.MetricType.SKIPPED_BY_MINMAX).ifPresent(entry ->
-                    builder.withMetric(SKIPPED_BY_MINMAX_STATS, entry.getRawSplitCount(), entry.getTotalFileSize()));
+                    addNonZeroMetric(builder, SKIPPED_BY_MINMAX_STATS, entry.getRawSplitCount(), entry.getTotalFileSize()));
             filterMetrics.getMetricEntry(FilterMetrics.MetricType.SKIPPED_BY_IN_PLACE).ifPresent(entry ->
-                    builder.withMetric(SKIPPED_BY_INDEX_IN_COORDINATOR, entry.getRawSplitCount(), entry.getTotalFileSize()));
+                    addNonZeroMetric(builder, SKIPPED_BY_INDEX_IN_COORDINATOR, entry.getRawSplitCount(), entry.getTotalFileSize()));
         }
 
         return new Metrics(ImmutableMap.of(DATA_SKIPPING_METRICS_NAME, builder.build()));
     }
 
-    public static Metrics makeMetrics(DataSkippingMetrics.MetricType metricType, int splitCount, long dataSize)
+    private static void addNonZeroMetric(Builder builder, MetricType metricType, int splitCount, long dataSize)
+    {
+        if (splitCount != 0 && dataSize != 0) {
+            builder.withMetric(metricType, splitCount, dataSize);
+        }
+    }
+
+    public static Metrics makeMetrics(MetricType metricType, int splitCount, long dataSize)
     {
         DataSkippingMetrics dataSkippingMetrics = DataSkippingMetrics.builder()
                 .withMetric(metricType, splitCount, dataSize)
