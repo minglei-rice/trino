@@ -135,10 +135,10 @@ public final class Session
 
         // Runtime properties have higher privileges. Considering these properties are from set session task,
         // this override action would be duplicate in that session.
-        ImmutableMap.Builder<String, String> finalSystemPropertiesBuilder = ImmutableMap.builder();
-        finalSystemPropertiesBuilder.putAll(requireNonNull(systemProperties, "systemProperties is null"));
-        finalSystemPropertiesBuilder.putAll(sessionPropertyManager.getRuntimeSystemSessionProperties());
-        this.systemProperties = finalSystemPropertiesBuilder.build();
+        Map<String, String> finalSystemProperties = new HashMap<>();
+        finalSystemProperties.putAll(requireNonNull(systemProperties, "systemProperties is null"));
+        finalSystemProperties.putAll(sessionPropertyManager.getRuntimeSystemSessionProperties());
+        this.systemProperties = ImmutableMap.copyOf(finalSystemProperties);
 
         Map<CatalogName, Map<String, String>> mergedConnectorProperties = new HashMap<>();
         connectorProperties.forEach((catalogName, properties) -> mergedConnectorProperties.put(catalogName, new HashMap<>(properties)));
