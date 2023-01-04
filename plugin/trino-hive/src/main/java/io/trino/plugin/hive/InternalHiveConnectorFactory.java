@@ -14,6 +14,7 @@
 package io.trino.plugin.hive;
 
 import com.google.inject.Binder;
+import com.google.inject.Binding;
 import com.google.inject.Injector;
 import com.google.inject.Key;
 import com.google.inject.Module;
@@ -36,9 +37,13 @@ import io.trino.plugin.base.jmx.MBeanServerModule;
 import io.trino.plugin.base.session.SessionPropertiesProvider;
 import io.trino.plugin.hive.authentication.HdfsAuthenticationModule;
 import io.trino.plugin.hive.azure.HiveAzureModule;
+import io.trino.plugin.hive.function.HiveFunctionCreator;
+import io.trino.plugin.hive.function.HiveFunctionResolver;
+import io.trino.plugin.hive.function.HiveFunctionModule;
 import io.trino.plugin.hive.gcs.HiveGcsModule;
 import io.trino.plugin.hive.metastore.HiveMetastore;
 import io.trino.plugin.hive.metastore.HiveMetastoreModule;
+import io.trino.plugin.hive.metastore.thrift.MetastoreLocator;
 import io.trino.plugin.hive.procedure.HiveProcedureModule;
 import io.trino.plugin.hive.rubix.RubixEnabledConfig;
 import io.trino.plugin.hive.rubix.RubixModule;
@@ -63,10 +68,12 @@ import io.trino.spi.eventlistener.EventListener;
 import io.trino.spi.procedure.Procedure;
 import org.weakref.jmx.guice.MBeanModule;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
+import static com.google.common.collect.ImmutableList.toImmutableList;
 import static com.google.common.collect.ImmutableSet.toImmutableSet;
 import static com.google.inject.multibindings.Multibinder.newSetBinder;
 import static io.airlift.configuration.ConditionalModule.conditionalModule;
@@ -115,6 +122,7 @@ public final class InternalHiveConnectorFactory
                     },
                     binder -> newSetBinder(binder, EventListener.class),
                     binder -> bindSessionPropertiesProvider(binder, HiveSessionProperties.class),
+                    conditionalModule(HiveConfig.class, HiveConfig::isExternalFunctionsResolverEnabled, new HiveFunctionModule(classLoader, config)),
                     module);
 
             Injector injector = app
@@ -144,6 +152,16 @@ public final class InternalHiveConnectorFactory
                     .map(accessControl -> new SystemTableAwareAccessControl(accessControl, systemTableProviders))
                     .map(accessControl -> new ClassLoaderSafeConnectorAccessControl(accessControl, classLoader));
 
+            if (metastore.isEmpty()) {
+                // Only support thrift metastore
+                injector.findBindingsByType(new TypeLiteral<MetastoreLocator>() {})
+                        .stream()
+                        .findFirst()
+                        .ifPresent(bind -> injector.getInstance(HiveFunctionCreator.class).setClientProvider(bind.getProvider().get()));
+            }
+
+            List<Binding<HiveFunctionResolver>> externalFunctionResolverBindings = injector.findBindingsByType(new TypeLiteral<HiveFunctionResolver>() {});
+
             return new HiveConnector(
                     lifeCycleManager,
                     metadataFactory,
@@ -161,7 +179,8 @@ public final class InternalHiveConnectorFactory
                     hiveAnalyzeProperties.getAnalyzeProperties(),
                     hiveMaterializedViewPropertiesProvider.getMaterializedViewProperties(),
                     hiveAccessControl,
-                    classLoader);
+                    classLoader,
+                    externalFunctionResolverBindings.stream().map(bind -> bind.getProvider().get()).collect(toImmutableList()));
         }
     }
 

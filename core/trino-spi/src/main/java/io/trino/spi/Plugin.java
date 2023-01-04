@@ -16,6 +16,7 @@ package io.trino.spi;
 import io.trino.spi.block.BlockEncoding;
 import io.trino.spi.connector.ConnectorFactory;
 import io.trino.spi.eventlistener.EventListenerFactory;
+import io.trino.spi.function.ExternalFunctionResolverFactory;
 import io.trino.spi.resourcegroups.ResourceGroupConfigurationManagerFactory;
 import io.trino.spi.security.CertificateAuthenticatorFactory;
 import io.trino.spi.security.GroupProviderFactory;

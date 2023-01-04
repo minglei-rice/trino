@@ -19,6 +19,7 @@ import org.apache.hadoop.hive.metastore.api.ColumnStatisticsObj;
 import org.apache.hadoop.hive.metastore.api.Database;
 import org.apache.hadoop.hive.metastore.api.EnvironmentContext;
 import org.apache.hadoop.hive.metastore.api.FieldSchema;
+import org.apache.hadoop.hive.metastore.api.Function;
 import org.apache.hadoop.hive.metastore.api.HiveObjectPrivilege;
 import org.apache.hadoop.hive.metastore.api.HiveObjectRef;
 import org.apache.hadoop.hive.metastore.api.LockRequest;
@@ -445,6 +446,12 @@ public class FailureAwareThriftMetastoreClient
             throws TException
     {
         runWithHandle(() -> delegate.alterTransactionalTable(table, transactionId, writeId, context));
+    }
+
+    @Override
+    public Function getFunction(String dbName, String functionName) throws TException
+    {
+        return runWithHandle(() -> delegate.getFunction(dbName, functionName));
     }
 
     private <T> T runWithHandle(ThrowingSupplier<T> supplier)

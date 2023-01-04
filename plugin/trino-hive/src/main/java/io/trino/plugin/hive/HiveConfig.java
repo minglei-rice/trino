@@ -164,6 +164,8 @@ public class HiveConfig
     private boolean sizeBasedSplitWeightsEnabled = true;
     private double minimumAssignedSplitWeight = 0.05;
 
+    private boolean externalFunctionsResolverEnabled = true;
+
     public int getMaxInitialSplits()
     {
         return maxInitialSplits;
@@ -1149,5 +1151,17 @@ public class HiveConfig
     public double getMinimumAssignedSplitWeight()
     {
         return minimumAssignedSplitWeight;
+    }
+
+    @Config("catalog.external-functions-resolver.enabled")
+    public HiveConfig setExternalFunctionsResolverEnabled(boolean externalFunctionsResolverEnabled)
+    {
+        this.externalFunctionsResolverEnabled = externalFunctionsResolverEnabled;
+        return this;
+    }
+
+    public boolean isExternalFunctionsResolverEnabled()
+    {
+        return externalFunctionsResolverEnabled;
     }
 }

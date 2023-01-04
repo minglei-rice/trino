@@ -311,6 +311,8 @@ public class ConnectorManager
 
         connector.getEventListeners()
                 .forEach(eventListenerManager::addEventListener);
+
+        metadataManager.registerExternalFunctionManager(catalogName.getCatalogName(), connector.getConnector().getExternalFunctionResolvers());
     }
 
     private synchronized void addConnectorInternal(MaterializedConnector connector)

@@ -30,6 +30,7 @@ import io.trino.spi.connector.ConnectorSplitManager;
 import io.trino.spi.connector.ConnectorTransactionHandle;
 import io.trino.spi.connector.TableProcedureMetadata;
 import io.trino.spi.eventlistener.EventListener;
+import io.trino.spi.function.ExternalFunctionResolver;
 import io.trino.spi.procedure.Procedure;
 import io.trino.spi.session.PropertyMetadata;
 import io.trino.spi.transaction.IsolationLevel;
@@ -67,6 +68,8 @@ public class HiveConnector
 
     private final HiveTransactionManager transactionManager;
 
+    private final List<ExternalFunctionResolver> externalFunctionResolvers;
+
     public HiveConnector(
             LifeCycleManager lifeCycleManager,
             TransactionalMetadataFactory metadataFactory,
@@ -84,7 +87,8 @@ public class HiveConnector
             List<PropertyMetadata<?>> analyzeProperties,
             List<PropertyMetadata<?>> materializedViewProperties,
             Optional<ConnectorAccessControl> accessControl,
-            ClassLoader classLoader)
+            ClassLoader classLoader,
+            List<ExternalFunctionResolver> externalFunctionResolvers)
     {
         this.lifeCycleManager = requireNonNull(lifeCycleManager, "lifeCycleManager is null");
         this.metadataFactory = requireNonNull(metadataFactory, "metadataFactory is null");
@@ -105,6 +109,7 @@ public class HiveConnector
         this.materializedViewProperties = requireNonNull(materializedViewProperties, "materializedViewProperties is null");
         this.accessControl = requireNonNull(accessControl, "accessControl is null");
         this.classLoader = requireNonNull(classLoader, "classLoader is null");
+        this.externalFunctionResolvers = requireNonNull(externalFunctionResolvers, "externalFunctionResolvers is null");
     }
 
     @Override
@@ -240,5 +245,11 @@ public class HiveConnector
     public Set<TableProcedureMetadata> getTableProcedures()
     {
         return tableProcedures;
+    }
+
+    @Override
+    public List<ExternalFunctionResolver> getExternalFunctionResolvers()
+    {
+        return externalFunctionResolvers;
     }
 }

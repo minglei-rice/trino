@@ -339,7 +339,7 @@ public class TestAnalyzer
     @Test
     public void testHavingReferencesOutputAlias()
     {
-        assertFails("SELECT sum(a) x FROM t1 HAVING x > 5")
+        assertFails("SELECT sum(a) x, 1 as const FROM t1 HAVING 2 != 0 AND sum(x) > 5")
                 .hasErrorCode(COLUMN_NOT_FOUND);
 
         Session newSession = Session.builder(CLIENT_SESSION)

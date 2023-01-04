@@ -98,26 +98,10 @@ import static com.google.common.io.Files.createTempDir;
 import static com.google.common.io.MoreFiles.deleteRecursively;
 import static com.google.common.io.RecursiveDeleteOption.ALLOW_INSECURE;
 import static io.trino.FeaturesConfig.JoinDistributionType.BROADCAST;
-import static io.trino.SystemSessionProperties.COLOCATED_JOIN;
-import static io.trino.SystemSessionProperties.CONCURRENT_LIFESPANS_PER_NODE;
-import static io.trino.SystemSessionProperties.DYNAMIC_SCHEDULE_FOR_GROUPED_EXECUTION;
-import static io.trino.SystemSessionProperties.ENABLE_DYNAMIC_FILTERING;
-import static io.trino.SystemSessionProperties.GROUPED_EXECUTION;
-import static io.trino.SystemSessionProperties.JOIN_DISTRIBUTION_TYPE;
-import static io.trino.SystemSessionProperties.USE_TABLE_SCAN_NODE_PARTITIONING;
-import static io.trino.plugin.hive.HiveColumnHandle.BUCKET_COLUMN_NAME;
-import static io.trino.plugin.hive.HiveColumnHandle.FILE_MODIFIED_TIME_COLUMN_NAME;
-import static io.trino.plugin.hive.HiveColumnHandle.FILE_SIZE_COLUMN_NAME;
-import static io.trino.plugin.hive.HiveColumnHandle.PARTITION_COLUMN_NAME;
-import static io.trino.plugin.hive.HiveColumnHandle.PATH_COLUMN_NAME;
-import static io.trino.plugin.hive.HiveQueryRunner.HIVE_CATALOG;
-import static io.trino.plugin.hive.HiveQueryRunner.TPCH_SCHEMA;
-import static io.trino.plugin.hive.HiveQueryRunner.createBucketedSession;
-import static io.trino.plugin.hive.HiveTableProperties.AUTO_PURGE;
-import static io.trino.plugin.hive.HiveTableProperties.BUCKETED_BY_PROPERTY;
-import static io.trino.plugin.hive.HiveTableProperties.BUCKET_COUNT_PROPERTY;
-import static io.trino.plugin.hive.HiveTableProperties.PARTITIONED_BY_PROPERTY;
-import static io.trino.plugin.hive.HiveTableProperties.STORAGE_FORMAT_PROPERTY;
+import static io.trino.SystemSessionProperties.*;
+import static io.trino.plugin.hive.HiveColumnHandle.*;
+import static io.trino.plugin.hive.HiveQueryRunner.*;
+import static io.trino.plugin.hive.HiveTableProperties.*;
 import static io.trino.plugin.hive.HiveType.toHiveType;
 import static io.trino.plugin.hive.util.HiveUtil.columnExtraInfo;
 import static io.trino.spi.security.Identity.ofUser;
@@ -130,9 +114,7 @@ import static io.trino.spi.type.DoubleType.DOUBLE;
 import static io.trino.spi.type.IntegerType.INTEGER;
 import static io.trino.spi.type.SmallintType.SMALLINT;
 import static io.trino.spi.type.TinyintType.TINYINT;
-import static io.trino.spi.type.VarcharType.VARCHAR;
-import static io.trino.spi.type.VarcharType.createUnboundedVarcharType;
-import static io.trino.spi.type.VarcharType.createVarcharType;
+import static io.trino.spi.type.VarcharType.*;
 import static io.trino.sql.planner.optimizations.PlanNodeSearcher.searchFrom;
 import static io.trino.sql.planner.planprinter.IoPlanPrinter.FormattedMarker.Bound.ABOVE;
 import static io.trino.sql.planner.planprinter.IoPlanPrinter.FormattedMarker.Bound.EXACTLY;
@@ -141,10 +123,7 @@ import static io.trino.sql.tree.ExplainType.Type.DISTRIBUTED;
 import static io.trino.testing.DataProviders.toDataProvider;
 import static io.trino.testing.MaterializedResult.resultBuilder;
 import static io.trino.testing.QueryAssertions.assertEqualsIgnoreOrder;
-import static io.trino.testing.TestingAccessControlManager.TestingPrivilegeType.DELETE_TABLE;
-import static io.trino.testing.TestingAccessControlManager.TestingPrivilegeType.INSERT_TABLE;
-import static io.trino.testing.TestingAccessControlManager.TestingPrivilegeType.SELECT_COLUMN;
-import static io.trino.testing.TestingAccessControlManager.TestingPrivilegeType.SHOW_COLUMNS;
+import static io.trino.testing.TestingAccessControlManager.TestingPrivilegeType.*;
 import static io.trino.testing.TestingAccessControlManager.privilege;
 import static io.trino.testing.TestingSession.testSessionBuilder;
 import static io.trino.testing.assertions.Assert.assertEquals;
@@ -163,12 +142,7 @@ import static java.util.stream.Collectors.toSet;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.data.Offset.offset;
-import static org.testng.Assert.assertFalse;
-import static org.testng.Assert.assertNotEquals;
-import static org.testng.Assert.assertNotNull;
-import static org.testng.Assert.assertNull;
-import static org.testng.Assert.assertTrue;
-import static org.testng.Assert.fail;
+import static org.testng.Assert.*;
 import static org.testng.FileAssert.assertFile;
 
 public class TestHiveConnectorTest
@@ -8277,6 +8251,45 @@ public class TestHiveConnectorTest
         assertEquals(tableMetadataWithPurge.getMetadata().getProperties().get(AUTO_PURGE), true);
 
         assertUpdate("DROP TABLE " + tableName);
+    }
+
+    @Test
+    public void testUnsupportedExternalHiveFunctions()
+    {
+        List<String> unsupportedFunctions = ImmutableList.of(
+                "current_database()",
+                "logged_in_user()",
+                "unix_timestamp()",
+                "create_union()",
+                "extract_union()");
+        unsupportedFunctions.forEach(func -> assertThatThrownBy(() -> getQueryRunner().execute("SELECT " + func))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("Could not resolve function"));
+    }
+
+    @Test
+    public void testExternalHiveBuiltinFunctions()
+    {
+        Map<String, Object> supportedFunctions = ImmutableMap.<String, Object>builder()
+                .put("decode(encode('hive', 'UTF-8'), 'UTF-8')", "hive")
+                .put("md5('ABC')", "902fbdd2b1df0c4f70b4a5d23525e932")
+                .put("regexp_extract('100-200', '(\\d+)-(\\d+)', 1)", "100")
+                .put("parse_url('http://facebook.com/path/p1.php?query=1', 'HOST')", "facebook.com")
+                .put("get_json_object('{\"name\":\"Lily\",\"sex\":\"female\",\"age\":\"30\"}', '$.age')", "30")
+                .put("day('2009-07-30')", 30)
+                .put("datediff('2009-07-30', '2009-07-31')", -1)
+                .put("date_add('2009-07-30', 1)", LocalDate.of(2009, 07, 31))
+                .put("date_sub('2009-07-30', 1)", LocalDate.of(2009, 07, 29))
+                .put("dayofmonth('2009-07-30')", 30)
+                .put("dayofweek('2009-07-30')", 5)
+                .put("year('2009-07-30')", 2009)
+                .put("crc32('ABC')", 2743272264L)
+                .put("xpath('<a><b>b1</b><b>b2</b><b>b3</b><c>c1</c><c>c2</c></a>', 'a/b/text()')", ImmutableList.of("b1", "b2", "b3"))
+                .build();
+        supportedFunctions.forEach((key, value) -> {
+            MaterializedResult result = computeActual("SELECT " + key);
+            assertEquals(result.getOnlyValue(), value, "the result is not expected for " + key);
+        });
     }
 
     private static final Set<HiveStorageFormat> NAMED_COLUMN_ONLY_FORMATS = ImmutableSet.of(HiveStorageFormat.AVRO, HiveStorageFormat.JSON);

@@ -722,6 +722,8 @@ public abstract class BaseIcebergConnectorTest
         assertThat(query("SELECT * FROM test_partitioned_table"))
                 .matches(values + " UNION ALL " + nullValues);
 
+        query("SELECT * FROM test_partitioned_table WHERE starts_with(a_varchar, 'one')");
+
         // SELECT with predicates
         assertThat(query("SELECT * FROM test_partitioned_table WHERE " +
                 "    a_boolean = true " +

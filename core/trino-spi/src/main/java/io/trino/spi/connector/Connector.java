@@ -14,6 +14,7 @@
 package io.trino.spi.connector;
 
 import io.trino.spi.eventlistener.EventListener;
+import io.trino.spi.function.ExternalFunctionResolver;
 import io.trino.spi.procedure.Procedure;
 import io.trino.spi.session.PropertyMetadata;
 import io.trino.spi.transaction.IsolationLevel;
@@ -239,5 +240,10 @@ public interface Connector
     default Set<ConnectorCapabilities> getCapabilities()
     {
         return emptySet();
+    }
+
+    default List<ExternalFunctionResolver> getExternalFunctionResolvers()
+    {
+        return emptyList();
     }
 }

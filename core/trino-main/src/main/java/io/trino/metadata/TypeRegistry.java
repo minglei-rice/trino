@@ -259,6 +259,13 @@ public final class TypeRegistry
         parametricTypes.putIfAbsent(name, parametricType);
     }
 
+    public ParametricType getParametricType(String name)
+    {
+        requireNonNull(name, "parametricType name is null");
+
+        return parametricTypes.get(name);
+    }
+
     public TypeOperators getTypeOperators()
     {
         return typeOperators;

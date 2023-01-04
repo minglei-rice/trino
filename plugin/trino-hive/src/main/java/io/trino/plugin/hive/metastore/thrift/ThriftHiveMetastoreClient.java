@@ -36,6 +36,7 @@ import org.apache.hadoop.hive.metastore.api.CommitTxnRequest;
 import org.apache.hadoop.hive.metastore.api.Database;
 import org.apache.hadoop.hive.metastore.api.EnvironmentContext;
 import org.apache.hadoop.hive.metastore.api.FieldSchema;
+import org.apache.hadoop.hive.metastore.api.Function;
 import org.apache.hadoop.hive.metastore.api.GetPrincipalsInRoleRequest;
 import org.apache.hadoop.hive.metastore.api.GetPrincipalsInRoleResponse;
 import org.apache.hadoop.hive.metastore.api.GetRoleGrantsForPrincipalRequest;
@@ -594,5 +595,11 @@ public class ThriftHiveMetastoreClient
         request.setWriteId(writeId);
         request.setEnvironmentContext(environmentContext);
         client.alter_table_req(request);
+    }
+
+    @Override
+    public Function getFunction(String dbName, String functionName) throws TException
+    {
+        return client.get_function(dbName, functionName);
     }
 }

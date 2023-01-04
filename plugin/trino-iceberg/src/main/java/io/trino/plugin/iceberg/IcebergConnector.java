@@ -31,6 +31,7 @@ import io.trino.spi.connector.ConnectorPageSourceProvider;
 import io.trino.spi.connector.ConnectorSplitManager;
 import io.trino.spi.connector.ConnectorTransactionHandle;
 import io.trino.spi.connector.SystemTable;
+import io.trino.spi.function.ExternalFunctionResolver;
 import io.trino.spi.procedure.Procedure;
 import io.trino.spi.session.PropertyMetadata;
 import io.trino.spi.transaction.IsolationLevel;
@@ -64,6 +65,8 @@ public class IcebergConnector
     private final Optional<ConnectorAccessControl> accessControl;
     private final Set<Procedure> procedures;
 
+    private final List<ExternalFunctionResolver> externalFunctionResolvers;
+
     public IcebergConnector(
             LifeCycleManager lifeCycleManager,
             IcebergTransactionManager transactionManager,
@@ -77,7 +80,8 @@ public class IcebergConnector
             List<PropertyMetadata<?>> schemaProperties,
             List<PropertyMetadata<?>> tableProperties,
             Optional<ConnectorAccessControl> accessControl,
-            Set<Procedure> procedures)
+            Set<Procedure> procedures,
+            List<ExternalFunctionResolver> externalFunctionResolvers)
     {
         this.lifeCycleManager = requireNonNull(lifeCycleManager, "lifeCycleManager is null");
         this.transactionManager = requireNonNull(transactionManager, "transactionManager is null");
@@ -94,6 +98,7 @@ public class IcebergConnector
         this.tableProperties = ImmutableList.copyOf(requireNonNull(tableProperties, "tableProperties is null"));
         this.accessControl = requireNonNull(accessControl, "accessControl is null");
         this.procedures = requireNonNull(procedures, "procedures is null");
+        this.externalFunctionResolvers = requireNonNull(externalFunctionResolvers, "externalFunctionResolvers is null");
     }
 
     @Override
@@ -211,5 +216,11 @@ public class IcebergConnector
     public final void shutdown()
     {
         lifeCycleManager.stop();
+    }
+
+    @Override
+    public List<ExternalFunctionResolver> getExternalFunctionResolvers()
+    {
+        return externalFunctionResolvers;
     }
 }

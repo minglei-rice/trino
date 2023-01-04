@@ -25,6 +25,7 @@ import org.apache.hadoop.hive.metastore.api.ColumnStatisticsObj;
 import org.apache.hadoop.hive.metastore.api.Database;
 import org.apache.hadoop.hive.metastore.api.EnvironmentContext;
 import org.apache.hadoop.hive.metastore.api.FieldSchema;
+import org.apache.hadoop.hive.metastore.api.Function;
 import org.apache.hadoop.hive.metastore.api.HiveObjectPrivilege;
 import org.apache.hadoop.hive.metastore.api.HiveObjectRef;
 import org.apache.hadoop.hive.metastore.api.LockRequest;
@@ -521,6 +522,12 @@ public class MockThriftMetastoreClient
     @Override
     public void alterTransactionalTable(Table table, long transactionId, long writeId, EnvironmentContext context)
             throws TException
+    {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public Function getFunction(String dbName, String functionName) throws TException
     {
         throw new UnsupportedOperationException();
     }

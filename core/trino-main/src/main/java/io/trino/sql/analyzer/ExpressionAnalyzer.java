@@ -1295,6 +1295,7 @@ public class ExpressionAnalyzer
 
             ResolvedFunction function;
             try {
+                // also support hive built-in function and udf
                 function = plannerContext.getMetadata().resolveFunction(session, node.getName(), argumentTypes);
             }
             catch (TrinoException e) {

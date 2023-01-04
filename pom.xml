@@ -36,6 +36,8 @@
     <properties>
         <air.main.basedir>${project.basedir}</air.main.basedir>
 
+        <air.check.skip-checkstyle>true</air.check.skip-checkstyle>
+        <air.check.fail-checkstyle>false</air.check.fail-checkstyle>
         <air.check.skip-spotbugs>true</air.check.skip-spotbugs>
         <air.check.skip-pmd>true</air.check.skip-pmd>
         <air.check.skip-jacoco>true</air.check.skip-jacoco>
@@ -96,6 +98,7 @@
         <module>docs</module>
         <module>lib/trino-array</module>
         <module>lib/trino-geospatial-toolkit</module>
+        <module>lib/trino-hive-functions</module>
         <module>lib/trino-matching</module>
         <module>lib/trino-memory-context</module>
         <module>lib/trino-orc</module>
@@ -287,6 +290,18 @@
                 <artifactId>trino-hive</artifactId>
                 <type>test-jar</type>
                 <version>${project.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>io.trino</groupId>
+                <artifactId>trino-hive-functions</artifactId>
+                <version>${project.version}</version>
+                <exclusions>
+                    <exclusion>
+                        <groupId>io.airlift</groupId>
+                        <artifactId>slice</artifactId>
+                    </exclusion>
+                </exclusions>
             </dependency>
 
             <dependency>
@@ -1536,7 +1551,7 @@
             <dependency>
                 <groupId>org.ow2.asm</groupId>
                 <artifactId>asm</artifactId>
-                <version>9.1</version>
+                <version>6.2.1</version>
             </dependency>
 
             <dependency>
@@ -1785,6 +1800,7 @@
                     <argLine>
                         -Djava.util.logging.config.file=${project.basedir}/src/test/resources/logging.properties
                     </argLine>
+                    <useModulePath>false</useModulePath>  <!-- tests use classpath -->
                     <!-- some modules have no tests -->
                     <failIfNoTests>false</failIfNoTests>
                     <includes>

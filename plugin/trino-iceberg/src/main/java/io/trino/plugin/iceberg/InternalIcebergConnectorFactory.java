@@ -14,6 +14,7 @@
 package io.trino.plugin.iceberg;
 
 import com.google.common.collect.ImmutableSet;
+import com.google.inject.Binding;
 import com.google.inject.Injector;
 import com.google.inject.Key;
 import com.google.inject.Module;
@@ -30,12 +31,17 @@ import io.trino.plugin.base.classloader.ClassLoaderSafeNodePartitioningProvider;
 import io.trino.plugin.base.jmx.ConnectorObjectNameGeneratorModule;
 import io.trino.plugin.base.jmx.MBeanServerModule;
 import io.trino.plugin.base.session.SessionPropertiesProvider;
+import io.trino.plugin.hive.HiveConfig;
 import io.trino.plugin.hive.HiveHdfsModule;
 import io.trino.plugin.hive.NodeVersion;
 import io.trino.plugin.hive.authentication.HdfsAuthenticationModule;
 import io.trino.plugin.hive.azure.HiveAzureModule;
+import io.trino.plugin.hive.function.HiveFunctionCreator;
+import io.trino.plugin.hive.function.HiveFunctionResolver;
+import io.trino.plugin.hive.function.HiveFunctionModule;
 import io.trino.plugin.hive.gcs.HiveGcsModule;
 import io.trino.plugin.hive.metastore.HiveMetastore;
+import io.trino.plugin.hive.metastore.thrift.MetastoreLocator;
 import io.trino.plugin.hive.s3.HiveS3Module;
 import io.trino.spi.NodeManager;
 import io.trino.spi.PageIndexerFactory;
@@ -51,11 +57,14 @@ import io.trino.spi.procedure.Procedure;
 import io.trino.spi.type.TypeManager;
 import org.weakref.jmx.guice.MBeanModule;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
+import static com.google.common.collect.ImmutableList.toImmutableList;
 import static com.google.inject.Scopes.SINGLETON;
+import static io.airlift.configuration.ConditionalModule.conditionalModule;
 
 public final class InternalIcebergConnectorFactory
 {
@@ -95,6 +104,7 @@ public final class InternalIcebergConnectorFactory
                         binder.bind(PageIndexerFactory.class).toInstance(context.getPageIndexerFactory());
                         binder.bind(CatalogName.class).toInstance(new CatalogName(catalogName));
                     },
+                    conditionalModule(HiveConfig.class, HiveConfig::isExternalFunctionsResolverEnabled, new HiveFunctionModule(classLoader, config)),
                     module);
 
             Injector injector = app
@@ -114,6 +124,16 @@ public final class InternalIcebergConnectorFactory
             Set<Procedure> procedures = injector.getInstance(Key.get(new TypeLiteral<Set<Procedure>>() {}));
             Optional<ConnectorAccessControl> accessControl = injector.getInstance(Key.get(new TypeLiteral<Optional<ConnectorAccessControl>>() {}));
 
+            if (metastore.isEmpty()) {
+                // Only support thrift metastore
+                injector.findBindingsByType(new TypeLiteral<MetastoreLocator>() {})
+                        .stream()
+                        .findFirst()
+                        .ifPresent(bind -> injector.getInstance(HiveFunctionCreator.class).setClientProvider(bind.getProvider().get()));
+            }
+
+            List<Binding<HiveFunctionResolver>> externalFunctionResolverBindings = injector.findBindingsByType(new TypeLiteral<HiveFunctionResolver>() {});
+
             return new IcebergConnector(
                     lifeCycleManager,
                     transactionManager,
@@ -127,7 +147,8 @@ public final class InternalIcebergConnectorFactory
                     IcebergSchemaProperties.SCHEMA_PROPERTIES,
                     icebergTableProperties.getTableProperties(),
                     accessControl,
-                    procedures);
+                    procedures,
+                    externalFunctionResolverBindings.stream().map(bind -> bind.getProvider().get()).collect(toImmutableList()));
         }
     }
 }

@@ -14,6 +14,7 @@
 package io.trino.plugin.hive.metastore.thrift;
 
 import com.google.common.base.Splitter;
+import com.google.common.collect.ImmutableList;
 import io.airlift.configuration.Config;
 import io.airlift.configuration.ConfigDescription;
 
@@ -31,7 +32,7 @@ public class StaticMetastoreConfig
 
     private static final Splitter SPLITTER = Splitter.on(',').trimResults().omitEmptyStrings();
 
-    private List<URI> metastoreUris;
+    private List<URI> metastoreUris = ImmutableList.of();
     private String metastoreUsername;
 
     @NotNull

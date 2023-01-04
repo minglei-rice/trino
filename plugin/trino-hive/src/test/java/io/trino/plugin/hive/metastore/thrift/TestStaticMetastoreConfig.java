@@ -31,7 +31,7 @@ public class TestStaticMetastoreConfig
     public void testDefaults()
     {
         assertRecordedDefaults(recordDefaults(StaticMetastoreConfig.class)
-                .setMetastoreUris(null)
+                .setMetastoreUris("")
                 .setMetastoreUsername(null));
     }
 

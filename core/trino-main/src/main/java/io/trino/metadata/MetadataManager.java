@@ -88,6 +88,8 @@ import io.trino.spi.connector.TableScanRedirectApplicationResult;
 import io.trino.spi.connector.TopNApplicationResult;
 import io.trino.spi.expression.ConnectorExpression;
 import io.trino.spi.expression.Variable;
+import io.trino.spi.function.ExternalFunctionKey;
+import io.trino.spi.function.ExternalFunctionResolver;
 import io.trino.spi.function.InvocationConvention;
 import io.trino.spi.function.InvocationConvention.InvocationArgumentConvention;
 import io.trino.spi.function.OperatorType;
@@ -102,6 +104,7 @@ import io.trino.spi.statistics.TableStatistics;
 import io.trino.spi.statistics.TableStatisticsMetadata;
 import io.trino.spi.type.Type;
 import io.trino.spi.type.TypeManager;
+import io.trino.spi.type.TypeManagerAware;
 import io.trino.spi.type.TypeNotFoundException;
 import io.trino.spi.type.TypeOperators;
 import io.trino.spi.type.TypeSignature;
@@ -149,6 +152,8 @@ import static com.google.common.primitives.Primitives.wrap;
 import static com.google.common.util.concurrent.MoreExecutors.directExecutor;
 import static io.airlift.concurrent.MoreFutures.toListenableFuture;
 import static io.trino.SystemSessionProperties.getRetryPolicy;
+import static io.trino.metadata.HiveFunctionManagerResolver.resolveCatalogName;
+import static io.trino.metadata.HiveFunctionManagerResolver.resolveFunctionKey;
 import static io.trino.metadata.FunctionKind.AGGREGATE;
 import static io.trino.metadata.QualifiedObjectName.convertFromSchemaTableName;
 import static io.trino.metadata.RedirectionAwareTableHandle.noRedirection;
@@ -183,6 +188,8 @@ public final class MetadataManager
     private final SystemSecurityMetadata systemSecurityMetadata;
     private final TransactionManager transactionManager;
     private final TypeManager typeManager;
+
+    private final HiveFunctionManagerResolver hiveFunctionManagerResolver = HiveFunctionManagerResolver.getInstance();
 
     private final ConcurrentMap<QueryId, QueryCatalogs> catalogsByQueryId = new ConcurrentHashMap<>();
 
@@ -255,6 +262,21 @@ public final class MetadataManager
                 typeManager,
                 new InternalBlockEncodingSerde(new BlockEncodingManager(), typeManager),
                 NodeVersion.UNKNOWN);
+    }
+
+    public void registerExternalFunctionManager(String catalogName, List<ExternalFunctionResolver> externalFunctionResolvers)
+    {
+        if (!externalFunctionResolvers.isEmpty()) {
+            externalFunctionResolvers.forEach(externalFunctionResolver -> {
+                if (externalFunctionResolver instanceof TypeManagerAware) {
+                    externalFunctionResolver.setTypeManager(typeManager);
+                }
+            });
+            HiveFunctionManager existingExternalFunctionManager =
+                    hiveFunctionManagerResolver.putIfAbsent(catalogName, new DefaultHiveFunctionManager(catalogName, externalFunctionResolvers));
+            checkArgument(existingExternalFunctionManager == null,
+                    "ExternalFunctionManager for catalog '%s' has already registered!", catalogName);
+        }
     }
 
     @Override
@@ -2319,8 +2341,34 @@ public final class MetadataManager
 
     private ResolvedFunction resolvedFunctionInternal(Session session, QualifiedName name, List<TypeSignatureProvider> parameterTypes)
     {
-        return functionDecoder.fromQualifiedName(name)
-                .orElseGet(() -> resolve(session, functionResolver.resolveFunction(session, functions.get(name), name, parameterTypes)));
+        return functionDecoder.fromQualifiedName(name).orElseGet(() -> {
+            ImmutableList.Builder<FunctionMetadata> candidates = ImmutableList.builder();
+            candidates.addAll(functions.get(name));
+            // collect candidates from external function managers
+            String catalogName = resolveCatalogName(session, name);
+            if (hiveFunctionManagerResolver.contains(catalogName) && candidates.build().isEmpty()) {
+                ExternalFunctionKey externalFunctionKey = resolveFunctionKey(name);
+                candidates.addAll(functions.get(QualifiedName.of(externalFunctionKey.toString())));
+            }
+
+            try {
+                FunctionBinding functionBinding = functionResolver.resolveFunction(session, candidates.build(), name, parameterTypes);
+                return resolve(session, functionBinding);
+            }
+            catch (TrinoException e) {
+                if (!FUNCTION_NOT_FOUND.toErrorCode().equals(e.getErrorCode()) || !hiveFunctionManagerResolver.contains(catalogName)) {
+                    throw e;
+                }
+                try {
+                    // If no matched functions in trino, try to resolve it from the hive
+                    return hiveFunctionManagerResolver.resolvedFunction(functions, typeManager, session, name, parameterTypes);
+                }
+                catch (Throwable t) {
+                    t.addSuppressed(e);
+                    throw t;
+                }
+            }
+        });
     }
 
     @Override
@@ -2513,7 +2561,7 @@ public final class MetadataManager
         return functionInvoker;
     }
 
-    private static void verifyMethodHandleSignature(BoundSignature boundSignature, FunctionInvoker functionInvoker, InvocationConvention convention)
+    public static void verifyMethodHandleSignature(BoundSignature boundSignature, FunctionInvoker functionInvoker, InvocationConvention convention)
     {
         MethodHandle methodHandle = functionInvoker.getMethodHandle();
         MethodType methodType = methodHandle.type();

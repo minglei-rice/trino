@@ -44,6 +44,7 @@ public final class StandardTypes
     public static final String IPADDRESS = "ipaddress";
     public static final String GEOMETRY = "Geometry";
     public static final String UUID = "uuid";
+    public static final String UNKNOWNTYPE = "unknown";
 
     private StandardTypes() {}
 }

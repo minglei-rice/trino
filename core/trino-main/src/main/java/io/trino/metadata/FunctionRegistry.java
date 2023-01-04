@@ -824,6 +824,11 @@ public class FunctionRegistry
         return functions.get(functionId).getFunctionMetadata();
     }
 
+    public boolean existFunction(FunctionId functionId)
+    {
+        return functions.exist(functionId);
+    }
+
     public AggregationFunctionMetadata getAggregationFunctionMetadata(FunctionId functionId)
     {
         SqlFunction function = functions.get(functionId);
@@ -871,6 +876,23 @@ public class FunctionRegistry
     {
         SqlFunction function = functions.get(functionBinding.getFunctionId());
         return function.getFunctionDependencies(functionBinding.getBoundSignature());
+    }
+
+    public FunctionInvoker getScalarFunctionInvoker(
+            FunctionId functionId,
+            BoundSignature boundSignature,
+            ScalarFunctionImplementation implementation,
+            InvocationConvention invocationConvention)
+    {
+        ScalarFunctionImplementation scalarFunctionImplementation;
+        try {
+            scalarFunctionImplementation = specializedScalarCache.get(new FunctionKey(functionId, boundSignature), () -> implementation);
+        }
+        catch (ExecutionException | UncheckedExecutionException e) {
+            throwIfInstanceOf(e.getCause(), TrinoException.class);
+            throw new RuntimeException(e.getCause());
+        }
+        return scalarFunctionImplementation.getScalarFunctionInvoker(invocationConvention);
     }
 
     public FunctionInvoker getScalarFunctionInvoker(
@@ -947,6 +969,11 @@ public class FunctionRegistry
             SqlFunction sqlFunction = functions.get(functionId);
             checkArgument(sqlFunction != null, "Unknown function implementation: %s", functionId);
             return sqlFunction;
+        }
+
+        public boolean exist(FunctionId functionId)
+        {
+            return functions.containsKey(functionId);
         }
     }
 
