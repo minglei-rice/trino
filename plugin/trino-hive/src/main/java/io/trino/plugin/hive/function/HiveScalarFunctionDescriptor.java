@@ -13,7 +13,7 @@
  */
 package io.trino.plugin.hive.function;
 
-import io.trino.external.function.hive.HiveScalarFunctionInvoker;
+import io.trino.hive.function.HiveScalarFunctionInvoker;
 import io.trino.spi.function.ExternalFunctionKey;
 import io.trino.spi.function.FunctionDescriptor;
 import io.trino.spi.function.InvocationConvention;

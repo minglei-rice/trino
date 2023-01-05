@@ -11,7 +11,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.external.function;
+package io.trino.hive.function;
 
 import io.trino.spi.type.Type;
 import io.trino.spi.type.TypeSignature;

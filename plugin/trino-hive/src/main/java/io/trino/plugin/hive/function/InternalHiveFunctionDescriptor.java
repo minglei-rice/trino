@@ -35,7 +35,7 @@ import static java.lang.String.format;
  * This class is to transform the real argument types of the Hive function into the parametric type signatures,
  * for example, varchar(10) will be rewritten to varchar(x), in which x is a variable symbol representing an
  * arbitrary integer in [0, Integer.MAX_VALUE].
- *
+ * <p>
  * But now the implementation is not good at transforming the function which could accept multiple elements,
  * e.g. map, because it's arguments are arbitrary types and have any number of elements, so it's not easy to
  * recognise the concrete semantic of each argument.
@@ -50,23 +50,23 @@ import static java.lang.String.format;
  * by the internal parser, of which argument types are same, however the arguments have different definitions,
  * in which the first is a map key, the second is the value bind to the first key, the third is a map key, ...,
  * and so on.
- *
+ * <p>
  * Note: If wrote the same function with different argument types, each function will be treated as a new
  * function definition, so this will cause the memory pressure.
- *
+ * <p>
  * TODO: Fold argument types and coerce types if possible.
  */
 public class InternalHiveFunctionDescriptor
-    implements FunctionDescriptor
+        implements FunctionDescriptor
 {
-    private final FunctionDescriptor internal;
+    private final FunctionDescriptor functionDescriptor;
     private final List<TypeSignature> argumentSignatures;
 
-    int counter = 0;
+    int counter;
 
     public InternalHiveFunctionDescriptor(FunctionDescriptor functionDescriptor, TypeManager typeManager)
     {
-        this.internal = functionDescriptor;
+        this.functionDescriptor = functionDescriptor;
         this.argumentSignatures = transform(typeManager, functionDescriptor.getArgumentSignatures());
     }
 
@@ -98,59 +98,69 @@ public class InternalHiveFunctionDescriptor
         throw new UnsupportedOperationException(format("Unsupported parameter [%s]", parameter));
     }
 
-    private NamedTypeSignature lookupNamedTypeSignature(NamedTypeSignature namedTypeSignature,  TypeManager typeManager)
+    private NamedTypeSignature lookupNamedTypeSignature(NamedTypeSignature namedTypeSignature, TypeManager typeManager)
     {
         List<TypeSignatureParameter> parameters = namedTypeSignature.getTypeSignature().getParameters().stream().map(p -> lookupTypeParameter(p, typeManager)).collect(toImmutableList());
         return new NamedTypeSignature(namedTypeSignature.getFieldName(), new TypeSignature(namedTypeSignature.getTypeSignature().getBase(), parameters));
     }
 
     @Override
-    public String getFunctionKey() {
-        return internal.getFunctionKey();
+    public String getFunctionKey()
+    {
+        return functionDescriptor.getFunctionKey();
     }
 
     @Override
-    public Type getReturnType() {
-        return internal.getReturnType();
+    public Type getReturnType()
+    {
+        return functionDescriptor.getReturnType();
     }
 
     @Override
-    public List<TypeSignature> getArgumentSignatures() {
+    public List<TypeSignature> getArgumentSignatures()
+    {
         return argumentSignatures;
     }
 
     @Override
-    public List<Type> getArgumentTypes() {
-        return internal.getArgumentTypes();
+    public List<Type> getArgumentTypes()
+    {
+        return functionDescriptor.getArgumentTypes();
     }
 
     @Override
-    public MethodHandle getMethodHandle() {
-        return internal.getMethodHandle();
+    public MethodHandle getMethodHandle()
+    {
+        return functionDescriptor.getMethodHandle();
     }
 
     @Override
-    public InvocationConvention getInvocationConvention() {
-        return internal.getInvocationConvention();
+    public InvocationConvention getInvocationConvention()
+    {
+        return functionDescriptor.getInvocationConvention();
     }
 
     @Override
-    public boolean isDeterministic() {
-        return internal.isDeterministic();
+    public boolean isDeterministic()
+    {
+        return functionDescriptor.isDeterministic();
     }
 
     @Override
-    public String description() {
-        return internal.description();
+    public String description()
+    {
+        return functionDescriptor.description();
     }
 
     @Override
-    public String example() {
-        return internal.example();
+    public String example()
+    {
+        return functionDescriptor.example();
     }
 
     @Override
-    public FunctionDescriptor getInternalFunctionDescriptor(TypeManager typeManager) {
+    public FunctionDescriptor getInternalFunctionDescriptor(TypeManager typeManager)
+    {
         return this;
     }
 }

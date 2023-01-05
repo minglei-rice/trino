@@ -11,7 +11,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.external.function.hive;
+package io.trino.hive.function;
 
 import io.airlift.slice.Slice;
 import io.trino.spi.type.ArrayType;
@@ -30,7 +30,6 @@ import org.apache.hadoop.hive.serde2.typeinfo.TypeInfo;
 import java.util.ArrayList;
 import java.util.List;
 
-import static io.trino.external.function.hive.HiveFunctionErrorCode.unsupportedType;
 import static org.apache.hadoop.hive.serde2.typeinfo.TypeInfoFactory.binaryTypeInfo;
 import static org.apache.hadoop.hive.serde2.typeinfo.TypeInfoFactory.booleanTypeInfo;
 import static org.apache.hadoop.hive.serde2.typeinfo.TypeInfoFactory.byteTypeInfo;
@@ -126,7 +125,7 @@ public final class HiveTypeTransformer
             DecimalType decimal = (DecimalType) type;
             return getDecimalTypeInfo(decimal.getPrecision(), decimal.getScale());
         }
-        throw unsupportedType(type);
+        throw HiveFunctionErrorCode.unsupportedType(type);
     }
 
     private static TypeInfo toVarcharTypeInfo(Type type)
@@ -138,7 +137,7 @@ public final class HiveTypeTransformer
             }
             return getVarcharTypeInfo(varchar.getLengthSafe());
         }
-        throw unsupportedType(type);
+        throw HiveFunctionErrorCode.unsupportedType(type);
     }
 
     private static TypeInfo toCharTypeInfo(Type type)
@@ -147,7 +146,7 @@ public final class HiveTypeTransformer
             CharType chars = (CharType) type;
             return getCharTypeInfo(chars.getLength());
         }
-        throw unsupportedType(type);
+        throw HiveFunctionErrorCode.unsupportedType(type);
     }
 
     private static TypeInfo toStructTypeInfo(Type type)
@@ -164,7 +163,7 @@ public final class HiveTypeTransformer
             }
             return getStructTypeInfo(fieldNames, fieldTypes);
         }
-        throw unsupportedType(type);
+        throw HiveFunctionErrorCode.unsupportedType(type);
     }
 
     private static TypeInfo toListTypeInfo(Type type)
@@ -174,7 +173,7 @@ public final class HiveTypeTransformer
             Type element = array.getElementType();
             return getListTypeInfo(toTypeInfo(element));
         }
-        throw unsupportedType(type);
+        throw HiveFunctionErrorCode.unsupportedType(type);
     }
 
     private static TypeInfo toMapTypeInfo(Type type)
@@ -183,6 +182,6 @@ public final class HiveTypeTransformer
             MapType map = (MapType) type;
             return getMapTypeInfo(toTypeInfo(map.getKeyType()), toTypeInfo(map.getValueType()));
         }
-        throw unsupportedType(type);
+        throw HiveFunctionErrorCode.unsupportedType(type);
     }
 }

@@ -11,12 +11,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.external.function.hive;
+package io.trino.hive.function;
 
 import io.airlift.slice.Slice;
-import io.trino.external.function.DateTimeUtils;
-import io.trino.external.function.InputBlockDecoder;
-import io.trino.external.function.InputObjectEncoder;
 import io.trino.spi.block.Block;
 import io.trino.spi.type.ArrayType;
 import io.trino.spi.type.DecimalType;
@@ -35,7 +32,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-import static io.trino.external.function.hive.HiveFunctionErrorCode.unsupportedType;
 import static io.trino.spi.type.StandardTypes.ARRAY;
 import static io.trino.spi.type.StandardTypes.BIGINT;
 import static io.trino.spi.type.StandardTypes.BOOLEAN;
@@ -112,7 +108,7 @@ public final class TrinoObjectEncoders
                 return MapInputObjectEncoder.create(((MapType) type), typeManager);
         }
 
-        throw unsupportedType(type);
+        throw HiveFunctionErrorCode.unsupportedType(type);
     }
 
     public static InputBlockDecoder createBlockInputDecoder(Type type, TypeManager typeManager)

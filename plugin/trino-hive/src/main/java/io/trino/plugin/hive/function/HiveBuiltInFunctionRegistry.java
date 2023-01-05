@@ -14,8 +14,8 @@
 package io.trino.plugin.hive.function;
 
 import com.google.inject.Inject;
-import io.trino.external.function.HiveFunctionRegistry;
-import io.trino.external.function.hive.StaticFunctionRegistry;
+import io.trino.hive.function.HiveFunctionRegistry;
+import io.trino.hive.function.StaticFunctionRegistry;
 import io.trino.spi.classloader.ThreadContextClassLoader;
 import org.apache.hadoop.hive.ql.parse.SemanticException;
 

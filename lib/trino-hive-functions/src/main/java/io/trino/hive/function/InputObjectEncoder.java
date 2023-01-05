@@ -11,7 +11,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.external.function;
+package io.trino.hive.function;
 
 /**
  * Interface for encoding objects for input to a Hive function.

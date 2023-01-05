@@ -11,11 +11,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.external.function.hive;
+package io.trino.hive.function;
 
 import com.google.common.collect.Streams;
-import io.trino.external.function.InputBlockDecoder;
-import io.trino.spi.TrinoException;
 import io.trino.spi.block.Block;
 import io.trino.spi.type.ArrayType;
 import io.trino.spi.type.DecimalType;
@@ -72,11 +70,9 @@ import java.util.stream.Collectors;
 
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Verify.verify;
-import static io.trino.external.function.DateTimeUtils.createDate;
-import static io.trino.external.function.DecimalUtils.readHiveDecimal;
-import static io.trino.external.function.hive.HiveFunctionErrorCode.unsupportedType;
-import static io.trino.external.function.hive.HiveTypeTransformer.createHiveChar;
-import static io.trino.external.function.hive.HiveTypeTransformer.createHiveVarChar;
+import static io.trino.hive.function.DateTimeUtils.createDate;
+import static io.trino.hive.function.HiveTypeTransformer.createHiveChar;
+import static io.trino.hive.function.HiveTypeTransformer.createHiveVarChar;
 import static java.lang.Float.intBitsToFloat;
 
 public class InputBlockDecoders
@@ -166,7 +162,7 @@ public class InputBlockDecoders
         }
         else if (inspector instanceof JavaHiveDecimalObjectInspector) {
             verify(type instanceof DecimalType);
-            return (b, i) -> b.isNull(i) ? null : readHiveDecimal(((DecimalType) type), b, i);
+            return (b, i) -> b.isNull(i) ? null : DecimalUtils.readHiveDecimal(((DecimalType) type), b, i);
         }
         else if (inspector instanceof JavaDateObjectInspector) {
             return (b, i) -> b.isNull(i) ? null : new Date(TimeUnit.DAYS.toMillis(type.getLong(b, i)));
@@ -177,8 +173,8 @@ public class InputBlockDecoders
         else if (inspector instanceof HiveDecimalObjectInspector) {
             verify(type instanceof DecimalType);
             return preferWritable ?
-                    (b, i) -> b.isNull(i) ? null : new HiveDecimalWritable(readHiveDecimal(((DecimalType) type), b, i)) :
-                    (b, i) -> b.isNull(i) ? null : readHiveDecimal(((DecimalType) type), b, i);
+                    (b, i) -> b.isNull(i) ? null : new HiveDecimalWritable(DecimalUtils.readHiveDecimal(((DecimalType) type), b, i)) :
+                    (b, i) -> b.isNull(i) ? null : DecimalUtils.readHiveDecimal(((DecimalType) type), b, i);
         }
         else if (inspector instanceof BinaryObjectInspector) {
             return preferWritable ?

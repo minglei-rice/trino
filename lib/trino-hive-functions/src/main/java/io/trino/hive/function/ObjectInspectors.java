@@ -11,7 +11,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.external.function.hive;
+package io.trino.hive.function;
 
 import io.trino.spi.type.ArrayType;
 import io.trino.spi.type.DecimalType;

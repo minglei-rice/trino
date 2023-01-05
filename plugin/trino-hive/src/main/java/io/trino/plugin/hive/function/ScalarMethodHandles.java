@@ -18,7 +18,7 @@ import io.airlift.bytecode.ClassDefinition;
 import io.airlift.bytecode.MethodDefinition;
 import io.airlift.bytecode.Parameter;
 import io.airlift.bytecode.expression.BytecodeExpression;
-import io.trino.external.function.ScalarFunctionInvoker;
+import io.trino.hive.function.ScalarFunctionInvoker;
 import io.trino.spi.type.Type;
 import io.trino.spi.type.TypeManager;
 
@@ -35,8 +35,8 @@ import static io.airlift.bytecode.Access.a;
 import static io.airlift.bytecode.Parameter.arg;
 import static io.airlift.bytecode.ParameterizedType.type;
 import static io.airlift.bytecode.expression.BytecodeExpressions.newArray;
-import static io.trino.external.function.CompilerUtils.defineClass;
-import static io.trino.external.function.CompilerUtils.makeClassName;
+import static io.trino.hive.function.CompilerUtils.defineClass;
+import static io.trino.hive.function.CompilerUtils.makeClassName;
 import static io.trino.spi.block.MethodHandleUtil.methodHandle;
 
 public final class ScalarMethodHandles

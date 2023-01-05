@@ -11,11 +11,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.external.function.hive;
+package io.trino.hive.function;
 
-import io.trino.external.function.InputObjectEncoder;
-import io.trino.external.function.OutputObjectDecoder;
-import io.trino.external.function.ScalarFunctionInvoker;
 import io.trino.spi.StandardErrorCode;
 import io.trino.spi.TrinoException;
 import io.trino.spi.classloader.ThreadContextClassLoader;
@@ -35,8 +32,6 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
-import static io.trino.external.function.hive.HiveFunctionErrorCode.initializationError;
-import static io.trino.external.function.hive.HiveFunctionErrorCode.unsupportedFunction;
 import static java.util.Objects.requireNonNull;
 
 /**
@@ -139,7 +134,7 @@ public class HiveScalarFunctionInvoker
                     resultType);
         }
         catch (Throwable e) {
-            throw initializationError(e, String.format("Failed to initialize function %s with class %s.", name, cls));
+            throw HiveFunctionErrorCode.initializationError(e, String.format("Failed to initialize function %s with class %s.", name, cls));
         }
     }
 
@@ -153,7 +148,7 @@ public class HiveScalarFunctionInvoker
         else if (UDF.class.isAssignableFrom(cls)) {
             return new CustomizedGenericUDFBridge(name, false, cls.getName());
         }
-        throw unsupportedFunction(cls);
+        throw HiveFunctionErrorCode.unsupportedFunction(cls);
     }
 
     @Override

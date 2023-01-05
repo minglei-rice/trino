@@ -11,13 +11,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.external.function.hive;
+package io.trino.hive.function;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Streams;
 import io.airlift.slice.Slices;
-import io.trino.external.function.DecimalUtils;
-import io.trino.external.function.OutputObjectDecoder;
 import io.trino.spi.PageBuilder;
 import io.trino.spi.TrinoException;
 import io.trino.spi.block.BlockBuilder;
@@ -58,7 +56,6 @@ import java.util.stream.Collectors;
 
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Verify.verify;
-import static io.trino.external.function.hive.HiveFunctionErrorCode.unsupportedType;
 import static io.trino.spi.StandardErrorCode.INVALID_FUNCTION_ARGUMENT;
 import static io.trino.spi.type.TypeUtils.writeNativeValue;
 import static java.lang.Float.floatToRawIntBits;
@@ -157,7 +154,7 @@ public class HiveObjectDecoders
             case StandardTypes.MAP:
                 return MapOutputObjectDecoder.create(type, inspector);
         }
-        throw unsupportedType(type);
+        throw HiveFunctionErrorCode.unsupportedType(type);
     }
 
     private static OutputObjectDecoder compose(Function<Object, Object> inspector, Function<Object, Object> encoder)

@@ -11,15 +11,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.external.function;
+package io.trino.hive.function;
 
-import io.trino.spi.block.Block;
-
-public interface InputBlockDecoder
+public interface OutputObjectDecoder
 {
-    /**
-     * Get object from block at position and convert it to
-     * internal object used in Hive functions.
-     */
-    Object decode(Block block, int position);
+    Object decode(Object object);
 }

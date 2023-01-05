@@ -83,13 +83,13 @@ public class HiveFunctionManagerResolver
             List<TypeSignatureProvider> parameterTypes)
     {
         String catalogName = resolveCatalogName(session, name);
-        HiveFunctionManager externalFunctionManager = get(catalogName);
+        HiveFunctionManager hiveFunctionManager = get(catalogName);
         final List<TypeSignature> pTypes = parameterTypes
                 .stream()
                 .map(TypeSignatureProvider::getTypeSignature)
                 .collect(Collectors.toList());
 
-        FunctionDescriptor functionDescriptor = externalFunctionManager.getScalarFunctionDescriptor(
+        FunctionDescriptor functionDescriptor = hiveFunctionManager.getScalarFunctionDescriptor(
                 session,
                 catalogName,
                 resolveResolverName(name),
@@ -125,7 +125,7 @@ public class HiveFunctionManagerResolver
                 internalFunctionDescriptor.description(),
                 SCALAR);
 
-        ScalarFunctionImplementation scalarFunctionImplementation = externalFunctionManager.getScalarFunctionImplementation(internalFunctionDescriptor);
+        ScalarFunctionImplementation scalarFunctionImplementation = hiveFunctionManager.getScalarFunctionImplementation(internalFunctionDescriptor);
         FunctionInvoker functionInvoker = functionRegistry.getScalarFunctionInvoker(
                 resolvedFunction.getFunctionId(),
                 resolvedFunction.getSignature(),

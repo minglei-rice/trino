@@ -824,11 +824,6 @@ public class FunctionRegistry
         return functions.get(functionId).getFunctionMetadata();
     }
 
-    public boolean existFunction(FunctionId functionId)
-    {
-        return functions.exist(functionId);
-    }
-
     public AggregationFunctionMetadata getAggregationFunctionMetadata(FunctionId functionId)
     {
         SqlFunction function = functions.get(functionId);

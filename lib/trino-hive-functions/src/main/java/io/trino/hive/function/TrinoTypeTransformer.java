@@ -11,9 +11,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.external.function.hive;
+package io.trino.hive.function;
 
-import io.trino.spi.TrinoException;
 import io.trino.spi.type.ArrayType;
 import io.trino.spi.type.BigintType;
 import io.trino.spi.type.BooleanType;
@@ -46,8 +45,6 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 import static com.google.common.base.Verify.verify;
-import static io.trino.external.function.hive.HiveFunctionErrorCode.UNSUPPORTED_HIVE_OBJECT_INSPECTOR;
-import static io.trino.external.function.hive.HiveFunctionErrorCode.unsupportedType;
 import static java.util.Objects.requireNonNull;
 
 /**
