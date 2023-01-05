@@ -66,29 +66,8 @@ public class HiveFunctionMetadata
     {
         requireNonNull(definedClass, "parsed function class should not be null");
         FunctionMetadataBuilder builder = FunctionMetadataBuilder.newBuilder(definedClass);
-        findFunctionName(definedClass, builder);
+        builder.fillMetadata(definedClass, builder);
         return builder.build();
-    }
-
-    private static void findFunctionName(Class<?> definedClass, FunctionMetadataBuilder builder)
-    {
-        if (definedClass == null) {
-            return;
-        }
-        Description description = definedClass.getAnnotation(Description.class);
-        if (description != null) {
-            builder.name(description.name());
-            builder.description(description.value());
-            builder.example(description.extended());
-        }
-
-        UDFType type = definedClass.getAnnotation(UDFType.class);
-        if (type != null) {
-            builder.deterministic(type.deterministic());
-            builder.runtimeConstant(type.runtimeConstant());
-        }
-
-        findFunctionName(definedClass.getSuperclass(), builder);
     }
 
     public static class FunctionMetadataBuilder
@@ -103,6 +82,27 @@ public class HiveFunctionMetadata
         private FunctionMetadataBuilder(Class<?> funcClass)
         {
             this.funcClass = funcClass;
+        }
+
+        private void fillMetadata(Class<?> definedClass, FunctionMetadataBuilder builder)
+        {
+            if (definedClass == null) {
+                return;
+            }
+            Description description = definedClass.getAnnotation(Description.class);
+            if (description != null) {
+                builder.name(description.name());
+                builder.description(description.value());
+                builder.example(description.extended());
+            }
+
+            UDFType type = definedClass.getAnnotation(UDFType.class);
+            if (type != null) {
+                builder.deterministic(type.deterministic());
+                builder.runtimeConstant(type.runtimeConstant());
+            }
+
+            fillMetadata(definedClass.getSuperclass(), builder);
         }
 
         public static FunctionMetadataBuilder newBuilder(Class<?> funcClass)
