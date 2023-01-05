@@ -15,6 +15,7 @@ package io.trino.external.function.hive;
 
 import com.google.common.collect.Streams;
 import io.trino.external.function.InputBlockDecoder;
+import io.trino.spi.TrinoException;
 import io.trino.spi.block.Block;
 import io.trino.spi.type.ArrayType;
 import io.trino.spi.type.DecimalType;
@@ -111,7 +112,7 @@ public class InputBlockDecoders
             verify(type instanceof MapType);
             return createForMap(((MapObjectInspector) inspector), ((MapType) type));
         }
-        throw unsupportedType(inspector);
+        throw new RuntimeException("Unsupported Hive ObjectInspector " + inspector.getCategory().toString());
     }
 
     private static InputBlockDecoder createForPrimitive(PrimitiveObjectInspector inspector, Type type)
@@ -197,7 +198,7 @@ public class InputBlockDecoders
         else if (inspector instanceof VoidObjectInspector) {
             return (b, i) -> null;
         }
-        throw unsupportedType(inspector);
+        throw new RuntimeException("Unsupported Hive ObjectInspector " + inspector.getCategory().toString());
     }
 
     private static InputBlockDecoder createForStruct(SettableStructObjectInspector structInspector, RowType rowType)

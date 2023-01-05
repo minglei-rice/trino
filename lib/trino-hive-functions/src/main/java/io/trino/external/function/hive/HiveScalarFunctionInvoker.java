@@ -16,7 +16,6 @@ package io.trino.external.function.hive;
 import io.trino.external.function.InputObjectEncoder;
 import io.trino.external.function.OutputObjectDecoder;
 import io.trino.external.function.ScalarFunctionInvoker;
-import io.trino.spi.ErrorCodeSupplier;
 import io.trino.spi.StandardErrorCode;
 import io.trino.spi.TrinoException;
 import io.trino.spi.classloader.ThreadContextClassLoader;
@@ -34,12 +33,10 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
-import static io.trino.external.function.hive.HiveFunctionErrorCode.executionError;
 import static io.trino.external.function.hive.HiveFunctionErrorCode.initializationError;
-import static io.trino.external.function.hive.HiveFunctionErrorCode.unsupportedFunctionType;
+import static io.trino.external.function.hive.HiveFunctionErrorCode.unsupportedFunction;
 import static java.util.Objects.requireNonNull;
 
 /**
@@ -156,7 +153,7 @@ public class HiveScalarFunctionInvoker
         else if (UDF.class.isAssignableFrom(cls)) {
             return new CustomizedGenericUDFBridge(name, false, cls.getName());
         }
-        throw unsupportedFunctionType(cls);
+        throw unsupportedFunction(cls);
     }
 
     @Override
@@ -181,10 +178,10 @@ public class HiveScalarFunctionInvoker
      * Note that the argumentEncoders and outputObjectDecoder are used to bridge this gap between the Trino and Hive
      * representations of the function's inputs and outputs, allowing the HiveScalarFunctionInvoker to invoke
      * the Hive UDF with the correct arguments and interpret the result of the UDF correctly.
-     *
+     * <p>
      * Without these encoders and decoders, it would not be possible to use the HiveScalarFunctionInvoker
      * to invoke a Hive UDF from Trino.
-     *
+     * <p>
      * the input arguments are first passed through the argumentEncoders to convert them to a format that
      * can be passed to the Hive UDF. The resulting array of encoded arguments is then passed to the Hive UDF,
      * which returns its output. This output is then passed to the outputObjectDecoder to convert it to a
@@ -202,7 +199,7 @@ public class HiveScalarFunctionInvoker
             return outputObjectDecoder.decode(evaluated);
         }
         catch (HiveException e) {
-            throw executionError(e);
+            throw new RuntimeException(e);
         }
     }
 }

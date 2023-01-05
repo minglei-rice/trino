@@ -13,6 +13,7 @@
  */
 package io.trino.external.function.hive;
 
+import io.trino.spi.TrinoException;
 import io.trino.spi.type.ArrayType;
 import io.trino.spi.type.BigintType;
 import io.trino.spi.type.BooleanType;
@@ -45,6 +46,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 import static com.google.common.base.Verify.verify;
+import static io.trino.external.function.hive.HiveFunctionErrorCode.UNSUPPORTED_HIVE_OBJECT_INSPECTOR;
 import static io.trino.external.function.hive.HiveFunctionErrorCode.unsupportedType;
 import static java.util.Objects.requireNonNull;
 
@@ -83,7 +85,7 @@ public final class TrinoTypeTransformer
                 verify(inspector instanceof StructObjectInspector);
                 return fromStruct(((StructObjectInspector) inspector), typeManager);
             default:
-                throw unsupportedType(inspector);
+                throw new RuntimeException("Unsupported Hive ObjectInspector " + inspector.getCategory().toString());
         }
     }
 
@@ -125,7 +127,7 @@ public final class TrinoTypeTransformer
             case INTERVAL_DAY_TIME:
             case UNKNOWN:
             default:
-                throw unsupportedType(inspector);
+                throw new RuntimeException("Unsupported Hive ObjectInspector " + inspector.getCategory().toString());
         }
     }
 

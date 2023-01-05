@@ -57,7 +57,7 @@ import java.util.stream.Stream;
 
 import static io.trino.external.function.hive.HiveFunctionErrorCode.functionNotFound;
 import static io.trino.external.function.hive.HiveFunctionErrorCode.initializationError;
-import static io.trino.external.function.hive.HiveFunctionErrorCode.unsupportedFunctionType;
+import static io.trino.external.function.hive.HiveFunctionErrorCode.unsupportedFunction;
 import static io.trino.spi.StandardErrorCode.GENERIC_INTERNAL_ERROR;
 import static io.trino.spi.StandardErrorCode.GENERIC_USER_ERROR;
 import static java.util.Objects.requireNonNull;
@@ -122,11 +122,11 @@ public class HiveFunctionCreator
                         typeManager);
             }
             catch (RuntimeException te) {
-                throw functionNotFound(functionKey.getFuncName(), "Could not resolve it from hive metastore!");
+                throw functionNotFound(functionKey.getFuncName(), "Could not resolve it from hive metastore.");
             }
         }
         catch (TrinoException te) {
-            throw functionNotFound(functionKey.getFuncName(), "Could not resolve it from hive built-in functions!");
+            throw functionNotFound(functionKey.getFuncName(), "Could not resolve it from hive built-in functions.");
         }
     }
 
@@ -142,7 +142,7 @@ public class HiveFunctionCreator
                 throw e;
             }
             catch (Throwable t) {
-                throw initializationError(t);
+                throw initializationError(t, "Failed to create built in function descriptor.");
             }
         }
     }
@@ -173,8 +173,7 @@ public class HiveFunctionCreator
             throw e;
         }
         catch (Throwable e) {
-            log.error(e, "Error loading function from Hive metastore");
-            throw initializationError(e);
+            throw initializationError(e, "Error loading function from Hive metastore.");
         }
         finally {
             log.info("Creating function descriptor from Hive metastore took {} ms", System.currentTimeMillis() - startTime);
@@ -225,7 +224,7 @@ public class HiveFunctionCreator
             // to evaluate the arguments in Hive 3+, which is not compatible with Trino.
             // TODO: Support more hive3+ UDFs.
             if (functionMetadata.isRuntimeConstant() || FUNCTIONS_TO_EXCLUDE.contains(functionKey.getFuncName())) {
-                throw unsupportedFunctionType(cls);
+                throw unsupportedFunction(cls);
             }
 
             HiveScalarFunctionInvoker invoker = HiveScalarFunctionInvoker.create(cls, functionKey.getFuncName(), arguments, typeManager);
@@ -239,10 +238,9 @@ public class HiveFunctionCreator
                     typeManager);
         }
         else if (anyAssignableFrom(cls, AbstractGenericUDAFResolver.class, UDAF.class)) {
-            throw unsupportedFunctionType(cls,
-                    new RuntimeException(String.format("Does not support UDAF %s function.", cls)));
+            throw unsupportedFunction(cls);
         }
-        throw unsupportedFunctionType(cls);
+        throw unsupportedFunction(cls);
     }
 
     private static boolean anyAssignableFrom(Class<?> cls, Class<?>... supers)

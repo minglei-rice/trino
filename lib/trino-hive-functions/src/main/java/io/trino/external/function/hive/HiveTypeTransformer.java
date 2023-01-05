@@ -77,6 +77,9 @@ public final class HiveTypeTransformer
         return new HiveChar(str, str.length());
     }
 
+    /**
+     * Convert Trino type to Hive type
+     */
     public static TypeInfo toTypeInfo(Type type)
     {
         TypeSignature signature = type.getTypeSignature();
@@ -114,7 +117,7 @@ public final class HiveTypeTransformer
             case StandardTypes.MAP:
                 return toMapTypeInfo(type);
         }
-        throw unsupportedType(signature);
+        throw new RuntimeException("Unsupported Trino type signature " + signature);
     }
 
     private static TypeInfo toDecimalTypeInfo(Type type)
