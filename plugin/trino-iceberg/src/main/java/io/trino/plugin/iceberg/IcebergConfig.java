@@ -42,6 +42,8 @@ public class IcebergConfig
     private boolean generateSplitsAsync = true;
     private boolean queryPartitionFilterRequired;
     private boolean complexExpressionsOnPartitionKeysPushdownEnabled = true;
+    private int maxDataFilesWithoutAggIndex = 10_000;
+    private double maxPercentageOfDataFilesWithoutAggIndex = 0.5;
 
     public CatalogType getCatalogType()
     {
@@ -218,5 +220,31 @@ public class IcebergConfig
     public boolean isComplexExpressionsOnPartitionKeysPushdownEnabled()
     {
         return complexExpressionsOnPartitionKeysPushdownEnabled;
+    }
+
+    @Config("iceberg.max-datafiles-without-agg-index")
+    @ConfigDescription("allow to read partial agg index when data files without agg index no greater than the max value")
+    public IcebergConfig setMaxDataFilesWithoutAggIndex(int maxDataFilesWithoutAggIndex)
+    {
+        this.maxDataFilesWithoutAggIndex = maxDataFilesWithoutAggIndex;
+        return this;
+    }
+
+    public int getMaxDataFilesWithoutAggIndex()
+    {
+        return maxDataFilesWithoutAggIndex;
+    }
+
+    @Config("iceberg.max-percentile-of-datafiles-without-agg-index")
+    @ConfigDescription("allow to read partial agg index when percentile of data files without agg index no greater than the max value")
+    public IcebergConfig setMaxPercentageOfDataFilesWithoutAggIndex(double percentile)
+    {
+        this.maxPercentageOfDataFilesWithoutAggIndex = percentile;
+        return this;
+    }
+
+    public double getMaxPercentageOfDataFilesWithoutAggIndex()
+    {
+        return maxPercentageOfDataFilesWithoutAggIndex;
     }
 }

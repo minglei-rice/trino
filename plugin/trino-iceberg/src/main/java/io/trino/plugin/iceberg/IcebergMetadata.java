@@ -72,7 +72,6 @@ import io.trino.spi.security.TrinoPrincipal;
 import io.trino.spi.statistics.ComputedStatistics;
 import io.trino.spi.statistics.TableStatistics;
 import io.trino.spi.type.TypeManager;
-import org.apache.iceberg.AggIndexFile;
 import org.apache.iceberg.AppendFiles;
 import org.apache.iceberg.CorrelatedColumns;
 import org.apache.iceberg.CorrelatedColumns.CorrelatedColumn;
@@ -229,7 +228,9 @@ public class IcebergMetadata
                 Optional.ofNullable(nameMappingJson),
                 TupleDomain.all(),
                 Optional.empty(),
-                Optional.empty());
+                Optional.empty(),
+                false,
+                -1);
     }
 
     @Override
@@ -255,10 +256,12 @@ public class IcebergMetadata
             ConnectorTableHandle handle,
             AggIndex aggIndex)
     {
-        if (aggIndex == null) {
+        IcebergTableHandle icebergTableHandle = (IcebergTableHandle) handle;
+        if (aggIndex == null ||
+                icebergTableHandle.isReadPartialFiles()) { // since tableHandle has already be reconstructed, will not apply agg index again
             return Optional.empty();
         }
-        IcebergTableHandle icebergTableHandle = (IcebergTableHandle) handle;
+
         Table table;
         try {
             table = catalog.loadTable(session, icebergTableHandle.getSchemaTableName());
@@ -268,19 +271,6 @@ public class IcebergMetadata
         }
         Schema schema = table.schema();
 
-        IcebergTableHandle newIcebergTableHandle = new IcebergTableHandle(
-                icebergTableHandle.getSchemaName(),
-                icebergTableHandle.getTableName(),
-                icebergTableHandle.getTableType(),
-                icebergTableHandle.getSnapshotId(),
-                TupleDomain.all(),
-                icebergTableHandle.getEnforcedPredicate(),
-                icebergTableHandle.getProjectedColumns(),
-                icebergTableHandle.getNameMappingJson(),
-                icebergTableHandle.getCorrColPredicate(),
-                icebergTableHandle.getStringPredicates(),
-                Optional.of(aggIndex));
-
         Map<String, TableColumnIdentify> aggIndexFileColumnNameToColumnIdent = new HashMap<>();
         AggregationIndex aggregationIndex =
                 table.aggregationIndexSpec().aggIndex()
@@ -289,7 +279,7 @@ public class IcebergMetadata
                         .findFirst()
                         .orElse(null);
         if (aggregationIndex == null) {
-            LOG.info("Can not find an AggIndex %s in connector, maybe it was dropped by some reasons.", aggIndex.getAggIndexId());
+            LOG.info("Can not find an AggIndex %s in connector for query %s, maybe it was dropped by some reasons.", aggIndex.getAggIndexId(), session.getQueryId());
             return Optional.empty();
         }
         for (Integer dimColumnId : aggregationIndex.getDims().getColumnIds()) {
@@ -326,30 +316,63 @@ public class IcebergMetadata
         }
 
         // verify data file whether it has cube file
+        int totalFiles = 0;
+        int dataFiles = 0;
         try (CloseableIterable<FileScanTask> fileScanTasks =
                      table.newScan()
                              .filter(toIcebergExpression(icebergTableHandle.getEnforcedPredicate()))
                              .includeAggIndexStats()
                              .planFiles()) {
+            int maxDataFilesWithoutAggIndex = IcebergSessionProperties.getMaxDataFilesWithoutAggIndex(session);
+            double maxPercentage = IcebergSessionProperties.getMaxPercentageOfDataFilesWithoutAggIndex(session);
             for (FileScanTask scanTask : fileScanTasks) {
+                totalFiles++;
                 if (!scanTask.deletes().isEmpty()) {
+                    // TODO for delete files
                     return Optional.empty();
                 }
-                AggIndexFile aggIndexFile = DataFiles.getAggIndexFiles(scanTask.file())
-                        .stream()
-                        .filter(cubeFile -> cubeFile.getAggIndexId() == aggIndex.getAggIndexId())
-                        .findAny()
-                        .orElse(null);
-                if (aggIndexFile == null) {
+                boolean aggIndexFileExists = DataFiles.getAggIndexFiles(scanTask.file()).stream()
+                        .anyMatch(cubeFile -> cubeFile.getAggIndexId() == aggIndex.getAggIndexId());
+                if (!aggIndexFileExists) {
+                    if (!aggIndex.isAllowPartialAggIndex()) {
+                        LOG.warn("Partial agg index is not allowed for current query %s for some reason, rewrite agg index skipped!", session.getQueryId());
+                        return Optional.empty();
+                    }
                     // data file does not have cube file
+                    dataFiles++;
+                }
+                if (dataFiles > maxDataFilesWithoutAggIndex) {
+                    LOG.warn("Nums of data files without agg index for query %s is greater than %s, rewrite agg index skipped!", session.getQueryId(), maxDataFilesWithoutAggIndex);
                     return Optional.empty();
                 }
+            }
+            if (dataFiles > 0 && dataFiles * 1.0 / totalFiles > maxPercentage) {
+                LOG.warn("Percentage of data files without agg index for query %s is %s greater than %s, rewrite agg index skipped!", session.getQueryId(), dataFiles * 1.0 / totalFiles, maxPercentage);
+                return Optional.empty();
             }
         }
         catch (Throwable t) {
             throw new RuntimeException(t);
         }
-        return Optional.of(new AggIndexApplicationResult<>(newIcebergTableHandle, aggIndexFileColumnNameToColumnIdent));
+        // affect current tableHandle as well
+        icebergTableHandle.setReadPartialFiles(dataFiles > 0);
+        icebergTableHandle.setAggIndexId(aggIndex.getAggIndexId());
+        IcebergTableHandle newIcebergTableHandle = new IcebergTableHandle(
+                icebergTableHandle.getSchemaName(),
+                icebergTableHandle.getTableName(),
+                icebergTableHandle.getTableType(),
+                icebergTableHandle.getSnapshotId(),
+                TupleDomain.all(),
+                icebergTableHandle.getEnforcedPredicate(),
+                icebergTableHandle.getProjectedColumns(),
+                icebergTableHandle.getNameMappingJson(),
+                icebergTableHandle.getCorrColPredicate(),
+                Optional.empty(),
+                icebergTableHandle.getStringPredicates(),
+                Optional.of(aggIndex),
+                icebergTableHandle.isReadPartialFiles(),
+                icebergTableHandle.getAggIndexId());
+        return Optional.of(new AggIndexApplicationResult<>(newIcebergTableHandle, aggIndexFileColumnNameToColumnIdent, dataFiles > 0));
     }
 
     /**
@@ -1045,7 +1068,9 @@ public class IcebergMetadata
                         table.getCorrColPredicate(),
                         enforcedEvaluator,
                         constraint.getStringPredicates(),
-                        table.getAggIndex()),
+                        table.getAggIndex(),
+                        table.isReadPartialFiles(),
+                        table.getAggIndexId()),
                 remainingConstraint.transformKeys(ColumnHandle.class::cast),
                 false));
     }
@@ -1167,7 +1192,9 @@ public class IcebergMetadata
                         icebergTableHandle.getNameMappingJson(),
                         pushableDomain,
                         icebergTableHandle.getStringPredicates(),
-                        icebergTableHandle.getAggIndex())));
+                        icebergTableHandle.getAggIndex(),
+                        icebergTableHandle.isReadPartialFiles(),
+                        icebergTableHandle.getAggIndexId())));
     }
 
     // converts column handle in correlated table to correlated column in left table

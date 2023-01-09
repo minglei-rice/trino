@@ -80,6 +80,12 @@ public abstract class AbstractGroupedPercentileAccumulatorState
     }
 
     @Override
+    public byte[] getIntermediateResult()
+    {
+        return getPercentileAccumulator().toBinary();
+    }
+
+    @Override
     public void addMemoryUsage(long value)
     {
         size += value;

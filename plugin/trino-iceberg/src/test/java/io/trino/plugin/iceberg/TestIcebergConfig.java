@@ -48,7 +48,9 @@ public class TestIcebergConfig
                 .setReadIndicesSwitchOn(true)
                 .setGenerateSplitsAsync(true)
                 .setQueryPartitionFilterRequired(false)
-                .setComplexExpressionsOnPartitionKeysPushdownEnabled(true));
+                .setComplexExpressionsOnPartitionKeysPushdownEnabled(true)
+                .setMaxDataFilesWithoutAggIndex(10_000)
+                .setMaxPercentageOfDataFilesWithoutAggIndex(0.5));
     }
 
     @Test
@@ -68,6 +70,8 @@ public class TestIcebergConfig
                 .put("iceberg.generate-splits-async", "false")
                 .put("iceberg.query-partition-filter-required", "true")
                 .put("iceberg.complex-expressions-on-partition-keys-pushdown-enabled", "false")
+                .put("iceberg.max-datafiles-without-agg-index", "100")
+                .put("iceberg.max-percentile-of-datafiles-without-agg-index", "0.6")
                 .build();
 
         IcebergConfig expected = new IcebergConfig()
@@ -83,7 +87,9 @@ public class TestIcebergConfig
                 .setReadIndicesSwitchOn(false)
                 .setGenerateSplitsAsync(false)
                 .setQueryPartitionFilterRequired(true)
-                .setComplexExpressionsOnPartitionKeysPushdownEnabled(false);
+                .setComplexExpressionsOnPartitionKeysPushdownEnabled(false)
+                .setMaxDataFilesWithoutAggIndex(100)
+                .setMaxPercentageOfDataFilesWithoutAggIndex(0.6);
 
         assertFullMapping(properties, expected);
     }

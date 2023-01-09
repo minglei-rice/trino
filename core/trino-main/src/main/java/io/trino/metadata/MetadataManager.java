@@ -1837,7 +1837,7 @@ public final class MetadataManager
         return aggIndexResult.map(result ->
                 new AggIndexApplicationResult<>(
                         new TableHandle(catalogName, result.getHandle(), table.getTransaction(), Optional.empty()),
-                        aggIndexColumnNameToIdentify));
+                        aggIndexColumnNameToIdentify, result.isPartialResult()));
     }
 
     private void verifyProjection(TableHandle table, List<ConnectorExpression> projections, List<Assignment> assignments, int expectedProjectionSize)

@@ -218,14 +218,18 @@ public class IcebergSplitSource
             }
 
             if (tableHandle.getAggIndex().isPresent()) {
-                this.fileScanIterator = tableScan
+                TableScan refinedScan = tableScan
                         .filter(filterExpression)
                         .includeColumnStats()
                         .includeAggIndexStats()
                         .includeIndexStats()
                         .option(SystemProperties.SCAN_FILTER_METRICS_ENABLED, "true")
-                        .withThreadName(threadNamePrefix + "producer")
-                        .planFiles().iterator();
+                        .withThreadName(threadNamePrefix + "producer");
+
+                if (tableHandle.isReadPartialFiles()) {
+                    refinedScan = refinedScan.filesWithAggIndex(tableHandle.getAggIndex().get().getAggIndexId());
+                }
+                this.fileScanIterator = refinedScan.planFiles().iterator();
                 this.combinedScanIterable = CloseableIterable.empty();
             }
             else {
@@ -235,6 +239,11 @@ public class IcebergSplitSource
                         .includeColumnStats()
                         .option(SystemProperties.SCAN_FILTER_METRICS_ENABLED, "true")
                         .withThreadName(threadNamePrefix + "producer");
+
+                if (tableHandle.isReadPartialFiles()) {
+                    refinedScan = refinedScan.includeAggIndexStats()
+                            .filesWithoutAggIndex(tableHandle.getAggIndexId());
+                }
 
                 scanLock.writeLock().lock();
                 try {

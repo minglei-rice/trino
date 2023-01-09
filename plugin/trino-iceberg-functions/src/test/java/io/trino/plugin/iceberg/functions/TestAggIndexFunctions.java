@@ -146,10 +146,9 @@ public class TestAggIndexFunctions
         queryRunner.execute(TEST_SESSION, "drop table test");
     }
 
-    private void insertDataForTestTable()
+    private void insertDataWithAggIndexForTestTable()
     {
         Map<String, String> properties = ImmutableMap.of(
-                "allow_read_agg_index_files", "true",
                 "task_writer_count", "1");
         Session testSession = testSessionBuilder()
                 .setCatalog("iceberg")
@@ -159,6 +158,32 @@ public class TestAggIndexFunctions
                 "(2, 2, 3.0, 4.0, 's2', 2, 3), (3, 4, 4.0, 5.0, 's3', 2, 3), (4, 4, 4.0, 5.0, 's3', 3, 4), " +
                 "(5, 4, 4.0, 5.0, 's3', 3, 4), (6, 5, 5.0, 6.0, 's4', 4, 5), (7, 6, 6.0, 7.0, 's5', 4, 5), " +
                 "(8, 7, 7.0, 8.0, 's6', 4, 5)");
+    }
+
+    private void insertDataWithoutAggIndexForTestTable()
+    {
+        Map<String, String> properties = ImmutableMap.of(
+                "task_writer_count", "1");
+        Session testSession = testSessionBuilder()
+                .setCatalog("iceberg")
+                .setSchema("tpch")
+                .setSystemProperties(properties).build();
+        queryRunner.execute(testSession, "insert into test values (2, 5, 2.0, 3.0, 's1', 2, 3), (3, 6, 3.0, 4.0, 's2', 2, 3)");
+    }
+
+    private void insertDataForTestPartialAggIndex()
+    {
+        Map<String, String> properties = ImmutableMap.of(
+                "allow_read_agg_index_files", "true",
+                "task_writer_count", "1");
+        Session testSession = testSessionBuilder()
+                .setCatalog("iceberg")
+                .setSchema("tpch")
+                .setSystemProperties(properties).build();
+        queryRunner.execute(testSession, "insert into p_lineorder values (10, 20221002, 5, 10, 11390002, 1519995, 10, cast (20.20 as decimal(10, 2))), " +
+                "(10, 20221002, 5, 10, 11390002, 1519995, 10, cast (30.40 as decimal(10, 2)))");
+
+        queryRunner.execute(testSession, "insert into dates values (20221103, 2022, '11'),(20221002, 2022, '10')");
     }
 
     private Schema buildFactTable()
@@ -304,6 +329,7 @@ public class TestAggIndexFunctions
         table.updateAggregationIndexSpec()
                 .addAggregationIndex("index1", Arrays.asList("lo_discount"), measuresAgg)
                 .commit();
+
         // will not rewrite
         assertExplain(TEST_SESSION, "EXPLAIN select lo_discount, lo_quantity from p_lineorder group by lo_discount, lo_quantity",
                 "\\Qiceberg:tpch.p_lineorder$dataALLALL");
@@ -319,7 +345,7 @@ public class TestAggIndexFunctions
         AggregationHolder percentileAgg2 = new AggregationHolder(Functions.Percentile.of(2.0), "m2");
         AggregationHolder percentileAgg3 = new AggregationHolder(Functions.Percentile.of(), "m3");
         AggregationHolder approxCDAgg = new AggregationHolder(Functions.APPROX_COUNT_DISTINCT.get(), "m2");
-        insertDataForTestTable();
+        insertDataWithAggIndexForTestTable();
         List<AggregationHolder> measuresAgg = new ArrayList<>(Arrays.asList(countDistinctAgg1, countDistinctAgg2, percentileAgg1, percentileAgg2, percentileAgg3, approxCDAgg));
         table.updateAggregationIndexSpec()
                 .addAggregationIndex("index1", Arrays.asList("dm1", "dm2"), measuresAgg)
@@ -355,6 +381,123 @@ public class TestAggIndexFunctions
         Assert.assertTrue(dataResult.containsAll(aggIndexDataResult));
 
         sql = "select count(distinct m1), count(distinct m4), approx_distinct(m2), approx_percentile(m1, 1.0, array[0.3, 0.7, 0.9]), " +
+                "approx_percentile(m2, 2.0, array[0.2, 0.6, 0.9, 0.5]), approx_percentile(m3, 1.0, array[0.3, 0.4, 0.9, 0.7])  from test where dm1 <= 3 group by dm1";
+        assertExplain(TEST_SESSION, format("EXPLAIN %s", sql), "\\Qiceberg:tpch.test$dataAggIndex{aggIndexId=1");
+        aggIndexDataResult = queryRunner.execute(TEST_SESSION, sql).getMaterializedRows();
+        dataResult = queryRunner.execute(testDisableAggIndexSession, sql).getMaterializedRows();
+        Assert.assertTrue(aggIndexDataResult.containsAll(dataResult));
+        Assert.assertTrue(dataResult.containsAll(aggIndexDataResult));
+    }
+
+    /**
+     * Test data:
+     * sql("insert into p_lineorder values
+     * # v_revenue|lo_orderdate|lo_discount|lo_quantity|lo_custkey|lo_suppkey|lo_revenue|lo_money
+     * (10, 20221002, 5, 10, 11390002, 1519995, 10, 100.50),
+     * (19, 20221103, 8, 12, 11390002, 1519995, 19, 200.52),
+     * (22, 20221103, 8, 12, 11390002, 1519995, 19, 300.54),
+     * (30, 20221002, 12, 30, 11390002, 1519995, 30, 400.54));
+     * # d_datekey|d_year|d_yearmonth
+     * sql("insert into dates values (20221103, 2022, '11'),(20221002, 2022, '10')");
+     */
+    @Test
+    public void testQueryRewriteForPartialAvgAggIndex()
+    {
+        // (10, 20221002, 5, 10, 11390002, 1519995, 10, cast (20.20 as decimal(10, 2)))
+        // (10, 20221002, 5, 10, 11390002, 1519995, 10, cast (30.40 as decimal(10, 2)))
+        insertDataForTestPartialAggIndex();
+        Table table = loadIcebergTable("p_lineorder");
+        AggregationHolder countAgg = new AggregationHolder(Functions.Count.get(), "*");
+        AggregationHolder sumAgg = new AggregationHolder(Functions.Sum.get(), "v_revenue");
+        AggregationHolder avgDoubleAgg = new AggregationHolder(Functions.Avg.get(), "v_revenue");
+        AggregationHolder minAgg = new AggregationHolder(Functions.Min.get(), "lo_money");
+        AggregationHolder avgDecimalAgg = new AggregationHolder(Functions.Avg.get(), "lo_money");
+        List<AggregationHolder> measuresAgg = new ArrayList<>(Arrays.asList(countAgg, sumAgg, avgDoubleAgg, minAgg, avgDecimalAgg));
+        table.updateCorrelatedColumnsSpec().addCorrelatedColumns(buildCorrColsForQ1_1()).commit();
+        table.updateAggregationIndexSpec()
+                .addAggregationIndex("index1", Arrays.asList("d_year", "lo_discount", "lo_quantity", "lo_orderdate"), measuresAgg)
+                .commit();
+        addAggIndexFiles(table, "./aggindex/lineorder_dates", "lineorder_dates_avg_agg_index.parquet");
+        table.refresh();
+
+        AssertProvider<QueryAssertions.QueryAssert> queryAssert = query(TEST_SESSION, "select count(*), avg(lo_money), avg(lo_money) from p_lineorder left join dates on lo_orderdate = d_datekey where d_year = 2022 group by lo_discount, lo_quantity");
+        queryAssert.assertThat().matches(new MaterializedResult(Arrays.asList(
+                new MaterializedRow(Arrays.asList(2L, new BigDecimal("250.53"), new BigDecimal("250.53"))),
+                new MaterializedRow(Arrays.asList(3L, new BigDecimal("50.37"), new BigDecimal("50.37"))),
+                new MaterializedRow(Arrays.asList(1L, new BigDecimal("400.54"), new BigDecimal("400.54")))),
+                Arrays.asList(BigintType.BIGINT, DecimalType.createDecimalType(10, 2), DecimalType.createDecimalType(10, 2))));
+
+        // agg index will not be written more than 1 time
+        queryAssert = query(TEST_SESSION, "select count(*) from p_lineorder left join dates on lo_orderdate = d_datekey where d_year = 2022 group by lo_discount, lo_quantity");
+        queryAssert.assertThat().matches(new MaterializedResult(Arrays.asList(
+                new MaterializedRow(Arrays.asList(2L)), new MaterializedRow(Arrays.asList(3L)), new MaterializedRow(Arrays.asList(1L))), Arrays.asList(BigintType.BIGINT)));
+
+        queryAssert = query(TEST_SESSION,
+                "select sum(v_revenue) as v_revenue_sum, count(*) as v_revenue_cnt, avg(v_revenue) as avg_revenue, avg(lo_money) as avg_money, min(lo_money) from p_lineorder left join dates on lo_orderdate = d_datekey where d_year = 2022");
+
+        queryAssert.assertThat().matches(new MaterializedResult(Collections.singletonList(new MaterializedRow(
+                Arrays.asList(101L, 6L, 16.833333333333332, new BigDecimal("175.45"), new BigDecimal("20.20")))),
+                Arrays.asList(BigintType.BIGINT, BigintType.BIGINT, DoubleType.DOUBLE, DecimalType.createDecimalType(10, 2), DecimalType.createDecimalType(10, 2))));
+
+        queryAssert = query(TEST_SESSION, "select sum(v_revenue), count(*), avg(v_revenue) from p_lineorder left join dates on lo_orderdate = d_datekey where d_year = 2022 group by d_year");
+        queryAssert.assertThat().matches(new MaterializedResult(Arrays.asList(new MaterializedRow(Arrays.asList(101L, 6L, 16.833333333333332))),
+                Arrays.asList(BigintType.BIGINT, BigintType.BIGINT, DoubleType.DOUBLE)));
+
+        queryAssert = query(TEST_SESSION, "select count(*), avg(lo_money) from p_lineorder left join dates on lo_orderdate = d_datekey where d_year = 2022 group by lo_discount");
+        queryAssert.assertThat().matches(new MaterializedResult(Arrays.asList(
+                new MaterializedRow(Arrays.asList(2L, new BigDecimal("250.53"))),
+                new MaterializedRow(Arrays.asList(3L, new BigDecimal("50.37"))),
+                new MaterializedRow(Arrays.asList(1L, new BigDecimal("400.54")))),
+                Arrays.asList(BigintType.BIGINT, DecimalType.createDecimalType(10, 2))));
+    }
+
+    @Test
+    public void testQueryRewriteForPartialAggIndex()
+    {
+        Table table = loadIcebergTable("test");
+        AggregationHolder countDistinctAgg1 = new AggregationHolder(Functions.COUNT_DISTINCT.get(), "m1");
+        AggregationHolder countDistinctAgg2 = new AggregationHolder(Functions.COUNT_DISTINCT.get(), "m4");
+        AggregationHolder percentileAgg1 = new AggregationHolder(Functions.Percentile.of(), "m1");
+        AggregationHolder percentileAgg2 = new AggregationHolder(Functions.Percentile.of(2.0), "m2");
+        AggregationHolder percentileAgg3 = new AggregationHolder(Functions.Percentile.of(), "m3");
+        AggregationHolder approxCDAgg = new AggregationHolder(Functions.APPROX_COUNT_DISTINCT.get(), "m2");
+        insertDataWithAggIndexForTestTable();
+        List<AggregationHolder> measuresAgg = new ArrayList<>(Arrays.asList(countDistinctAgg1, countDistinctAgg2, percentileAgg1, percentileAgg2, percentileAgg3, approxCDAgg));
+        table.updateAggregationIndexSpec()
+                .addAggregationIndex("index1", Arrays.asList("dm1", "dm2"), measuresAgg)
+                .commit();
+
+        buildAggIndexFiles(table);
+        Map<String, String> properties = ImmutableMap.of("allow_read_agg_index_files", "false");
+        Session testDisableAggIndexSession = testSessionBuilder()
+                .setCatalog("iceberg")
+                .setSchema("tpch")
+                .setSystemProperties(properties).build();
+        insertDataWithoutAggIndexForTestTable();
+
+        String sql = "select approx_distinct(m2), approx_percentile(m1, 1.0, 0.5), " +
+                "approx_percentile(m2, 2.0, 0.5), approx_percentile(m3, 1.0, 0.5)  from test";
+        List<MaterializedRow> aggIndexDataResult = queryRunner.execute(TEST_SESSION, sql).getMaterializedRows();
+        List<MaterializedRow> dataResult = queryRunner.execute(testDisableAggIndexSession, sql).getMaterializedRows();
+        Assert.assertEquals(dataResult, aggIndexDataResult);
+
+        sql = "select approx_distinct(m2), approx_percentile(m1, 1.0, 0.5), " +
+                "approx_percentile(m2, 2.0, 0.5), approx_percentile(m3, 1.0, 0.5)  from test group by dm1";
+        assertExplain(TEST_SESSION, format("EXPLAIN %s", sql), "\\Qiceberg:tpch.test$dataAggIndex{aggIndexId=1");
+        aggIndexDataResult = queryRunner.execute(TEST_SESSION, sql).getMaterializedRows();
+        dataResult = queryRunner.execute(testDisableAggIndexSession, sql).getMaterializedRows();
+        Assert.assertTrue(aggIndexDataResult.containsAll(dataResult));
+        Assert.assertTrue(dataResult.containsAll(aggIndexDataResult));
+
+        sql = "select approx_distinct(m2), approx_percentile(m1, 1.0, 0.5), " +
+                "approx_percentile(m2, 2.0, 0.5), approx_percentile(m3, 1.0, 0.5)  from test where dm1 <= 3 group by dm1";
+        assertExplain(TEST_SESSION, format("EXPLAIN %s", sql), "\\Qiceberg:tpch.test$dataAggIndex{aggIndexId=1");
+        aggIndexDataResult = queryRunner.execute(TEST_SESSION, sql).getMaterializedRows();
+        dataResult = queryRunner.execute(testDisableAggIndexSession, sql).getMaterializedRows();
+        Assert.assertTrue(aggIndexDataResult.containsAll(dataResult));
+        Assert.assertTrue(dataResult.containsAll(aggIndexDataResult));
+
+        sql = "select approx_distinct(m2), approx_percentile(m1, 1.0, array[0.3, 0.7, 0.9]), " +
                 "approx_percentile(m2, 2.0, array[0.2, 0.6, 0.9, 0.5]), approx_percentile(m3, 1.0, array[0.3, 0.4, 0.9, 0.7])  from test where dm1 <= 3 group by dm1";
         assertExplain(TEST_SESSION, format("EXPLAIN %s", sql), "\\Qiceberg:tpch.test$dataAggIndex{aggIndexId=1");
         aggIndexDataResult = queryRunner.execute(TEST_SESSION, sql).getMaterializedRows();

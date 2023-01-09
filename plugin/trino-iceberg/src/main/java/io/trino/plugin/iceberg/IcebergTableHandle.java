@@ -61,6 +61,10 @@ public class IcebergTableHandle
 
     private final Optional<Set<StringPredicate>> stringPredicates;
 
+    private boolean readPartialFiles;
+    // used for tableHandle without agg index file
+    private int aggIndexId;
+
     @JsonCreator
     public IcebergTableHandle(
             @JsonProperty("schemaName") String schemaName,
@@ -73,7 +77,9 @@ public class IcebergTableHandle
             @JsonProperty("nameMappingJson") Optional<String> nameMappingJson,
             @JsonProperty("corrColPredicate") TupleDomain<IcebergColumnHandle> corrColPredicate,
             @JsonProperty("stringPredicate") Optional<Set<StringPredicate>> stringPredicates,
-            @JsonProperty("aggIndex") Optional<AggIndex> aggIndex)
+            @JsonProperty("aggIndex") Optional<AggIndex> aggIndex,
+            @JsonProperty("readPartialFiles") boolean readPartialFiles,
+            @JsonProperty("aggIndexId") int aggIndexId)
     {
         this.schemaName = requireNonNull(schemaName, "schemaName is null");
         this.tableName = requireNonNull(tableName, "tableName is null");
@@ -86,6 +92,8 @@ public class IcebergTableHandle
         this.corrColPredicate = requireNonNull(corrColPredicate, "corrColPredicate is null");
         this.stringPredicates = requireNonNull(stringPredicates, "stringPredicate is null");
         this.aggIndex = aggIndex;
+        this.readPartialFiles = readPartialFiles;
+        this.aggIndexId = aggIndexId;
     }
 
     public IcebergTableHandle(
@@ -100,10 +108,13 @@ public class IcebergTableHandle
             TupleDomain<IcebergColumnHandle> corrColPredicate,
             Optional<BiPredicate<PartitionSpec, StructLike>> enforcedEvaluator,
             Optional<Set<StringPredicate>> stringPredicates,
-            Optional<AggIndex> aggIndex)
+            Optional<AggIndex> aggIndex,
+            boolean readPartialFiles,
+            int aggIndexId)
     {
-        this(schemaName, tableName, tableType, snapshotId, unenforcedPredicate, enforcedPredicate, projectedColumns, nameMappingJson, corrColPredicate, stringPredicates, aggIndex);
+        this(schemaName, tableName, tableType, snapshotId, unenforcedPredicate, enforcedPredicate, projectedColumns, nameMappingJson, corrColPredicate, stringPredicates, aggIndex, readPartialFiles, aggIndexId);
         this.enforcedEvaluator = requireNonNull(enforcedEvaluator, "evaluator is null");
+        this.readPartialFiles = readPartialFiles;
     }
 
     @JsonProperty
@@ -195,7 +206,9 @@ public class IcebergTableHandle
                 corrColPredicate,
                 enforcedEvaluator,
                 stringPredicates,
-                aggIndex);
+                aggIndex,
+                readPartialFiles,
+                aggIndexId);
     }
 
     @Override
@@ -217,13 +230,15 @@ public class IcebergTableHandle
                 Objects.equals(enforcedPredicate, that.enforcedPredicate) &&
                 Objects.equals(projectedColumns, that.projectedColumns) &&
                 Objects.equals(nameMappingJson, that.nameMappingJson) &&
-                Objects.equals(aggIndex, that.aggIndex);
+                Objects.equals(aggIndex, that.aggIndex) &&
+                Objects.equals(readPartialFiles, that.readPartialFiles) &&
+                Objects.equals(aggIndexId, that.aggIndexId);
     }
 
     @Override
     public int hashCode()
     {
-        return Objects.hash(schemaName, tableName, tableType, snapshotId, unenforcedPredicate, enforcedPredicate, projectedColumns, nameMappingJson, aggIndex);
+        return Objects.hash(schemaName, tableName, tableType, snapshotId, unenforcedPredicate, enforcedPredicate, projectedColumns, nameMappingJson, aggIndex, readPartialFiles, aggIndexId);
     }
 
     @Override
@@ -247,5 +262,26 @@ public class IcebergTableHandle
     public Optional<BiPredicate<PartitionSpec, StructLike>> getEnforcedEvaluator()
     {
         return enforcedEvaluator;
+    }
+
+    @JsonProperty
+    public boolean isReadPartialFiles()
+    {
+        return readPartialFiles;
+    }
+
+    public void setReadPartialFiles(boolean partial)
+    {
+        this.readPartialFiles = partial;
+    }
+
+    public int getAggIndexId()
+    {
+        return aggIndexId;
+    }
+
+    public void setAggIndexId(int id)
+    {
+        this.aggIndexId = id;
     }
 }

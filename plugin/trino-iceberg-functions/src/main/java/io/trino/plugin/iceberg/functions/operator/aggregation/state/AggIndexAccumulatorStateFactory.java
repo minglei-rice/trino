@@ -96,6 +96,12 @@ public class AggIndexAccumulatorStateFactory
         }
 
         @Override
+        public byte[] getIntermediateResult(Type type, AggIndex.AggFunctionType functionType)
+        {
+            return getPartialAggAccumulator(type, functionType).toBinary();
+        }
+
+        @Override
         public void addMemoryUsage(long value)
         {
             // noop
@@ -186,6 +192,12 @@ public class AggIndexAccumulatorStateFactory
         public Object getResult(Type type, AggIndex.AggFunctionType functionType)
         {
             return getPartialAggAccumulator(type, functionType).getResult();
+        }
+
+        @Override
+        public byte[] getIntermediateResult(Type type, AggIndex.AggFunctionType functionType)
+        {
+            return getPartialAggAccumulator(type, functionType).toBinary();
         }
 
         @Override

@@ -167,7 +167,9 @@ public class TestIcebergNodeLocalDynamicSplitPruning
                         Optional.empty(),
                         TupleDomain.all(),
                         Optional.empty(),
-                        Optional.empty()),
+                        Optional.empty(),
+                        false,
+                        -1),
                 transaction,
                 Optional.empty());
 
