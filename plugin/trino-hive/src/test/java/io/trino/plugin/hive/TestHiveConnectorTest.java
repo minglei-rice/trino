@@ -8264,7 +8264,7 @@ public class TestHiveConnectorTest
                 "extract_union()");
         unsupportedFunctions.forEach(func -> assertThatThrownBy(() -> getQueryRunner().execute("SELECT " + func))
                 .isInstanceOf(RuntimeException.class)
-                .hasMessageContaining("Could not resolve function"));
+                .hasMessageContaining("Could not resolve it from hive built-in functions."));
     }
 
     @Test
