@@ -219,7 +219,7 @@ public class HiveFunctionCreator
             TypeManager typeManager)
     {
         if (anyAssignableFrom(cls, GenericUDF.class, UDF.class)) {
-            HiveFunctionMetadata functionMetadata = HiveFunctionMetadata.parseFunction(cls);
+            HiveFunctionMetadata functionMetadata = HiveFunctionMetadata.builder(cls).build();
             // if a function was runtime constant or excluded, it implies the function will utilize Hive SessionState
             // to evaluate the arguments in Hive 3+, which is not compatible with Trino.
             // TODO: Support more hive3+ UDFs.

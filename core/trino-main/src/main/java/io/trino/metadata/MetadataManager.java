@@ -2341,6 +2341,7 @@ public final class MetadataManager
 
     private ResolvedFunction resolvedFunctionInternal(Session session, QualifiedName name, List<TypeSignatureProvider> parameterTypes)
     {
+        checkArgument(name.getParts().size() <= 2, "Function names should have at most has two parts.");
         return functionDecoder.fromQualifiedName(name).orElseGet(() -> {
             ImmutableList.Builder<FunctionMetadata> candidates = ImmutableList.builder();
             candidates.addAll(functions.get(name));

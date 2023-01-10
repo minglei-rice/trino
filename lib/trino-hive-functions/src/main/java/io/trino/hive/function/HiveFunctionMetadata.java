@@ -62,12 +62,9 @@ public class HiveFunctionMetadata
         return example;
     }
 
-    public static HiveFunctionMetadata parseFunction(Class<?> definedClass)
+    public static FunctionMetadataBuilder builder(Class<?> definedClass)
     {
-        requireNonNull(definedClass, "parsed function class should not be null");
-        FunctionMetadataBuilder builder = FunctionMetadataBuilder.newBuilder(definedClass);
-        builder.fillMetadata(definedClass, builder);
-        return builder.build();
+        return new FunctionMetadataBuilder(definedClass);
     }
 
     public static class FunctionMetadataBuilder
@@ -81,73 +78,30 @@ public class HiveFunctionMetadata
 
         private FunctionMetadataBuilder(Class<?> funcClass)
         {
+            requireNonNull(funcClass, "function class should not be null");
             this.funcClass = funcClass;
+            fillMetadata(funcClass);
         }
 
-        private void fillMetadata(Class<?> definedClass, FunctionMetadataBuilder builder)
+        private void fillMetadata(Class<?> definedClass)
         {
             if (definedClass == null) {
                 return;
             }
+            fillMetadata(definedClass.getSuperclass());
+
             Description description = definedClass.getAnnotation(Description.class);
             if (description != null) {
-                builder.name(description.name());
-                builder.description(description.value());
-                builder.example(description.extended());
+                this.name = description.name();
+                this.description = description.value();
+                this.example = description.extended();
             }
 
             UDFType type = definedClass.getAnnotation(UDFType.class);
             if (type != null) {
-                builder.deterministic(type.deterministic());
-                builder.runtimeConstant(type.runtimeConstant());
+                this.deterministic = type.deterministic();
+                this.runtimeConstant = type.runtimeConstant();
             }
-
-            fillMetadata(definedClass.getSuperclass(), builder);
-        }
-
-        public static FunctionMetadataBuilder newBuilder(Class<?> funcClass)
-        {
-            return new FunctionMetadataBuilder(funcClass);
-        }
-
-        public FunctionMetadataBuilder name(String name)
-        {
-            if (this.name == null) {
-                this.name = name;
-            }
-            return this;
-        }
-
-        public FunctionMetadataBuilder deterministic(boolean deterministic)
-        {
-            if (this.deterministic == null) {
-                this.deterministic = deterministic;
-            }
-            return this;
-        }
-
-        public FunctionMetadataBuilder runtimeConstant(boolean runtimeConstant)
-        {
-            if (this.runtimeConstant == null) {
-                this.runtimeConstant = runtimeConstant;
-            }
-            return this;
-        }
-
-        public FunctionMetadataBuilder description(String description)
-        {
-            if (this.description == null) {
-                this.description = description;
-            }
-            return this;
-        }
-
-        public FunctionMetadataBuilder example(String example)
-        {
-            if (this.example == null) {
-                this.example = example;
-            }
-            return this;
         }
 
         public HiveFunctionMetadata build()
