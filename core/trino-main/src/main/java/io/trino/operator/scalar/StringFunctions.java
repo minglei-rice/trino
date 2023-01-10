@@ -932,7 +932,7 @@ public final class StringFunctions
         if (source.length() < token.length()) {
             return false;
         }
-        for (int i = 0; i < source.length() - token.length(); i++) {
+        for (int i = 0; i <= source.length() - token.length(); i++) {
             if (source.compareTo(i, token.length(), token, 0, token.length()) == 0) {
                 return true;
             }
