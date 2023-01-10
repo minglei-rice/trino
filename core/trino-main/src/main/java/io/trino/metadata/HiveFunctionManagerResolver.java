@@ -37,15 +37,13 @@ import static io.trino.metadata.FunctionKind.SCALAR;
 import static io.trino.metadata.MetadataManager.verifyMethodHandleSignature;
 
 /**
- * Supports resolving function name with the format catalogName.resolverName.functionName, for examples:
- *   hive.hive.max -- hive catalog, hive resolver, max function
- *   hive.max      -- hive resolver, max function
+ * Supports resolving function name with the format catalogName.functionName, for examples:
+ *   hive.max -- hive catalog, max function
  *   max           -- max function
  */
 public class HiveFunctionManagerResolver
 {
     private static final String DEFAULT_CATALOG_NAME_TO_RESOLVE = "hive";
-    private static final String DEFAULT_FUNCTION_RESOLVER_NAME = "hive";
 
     private final Map<String, HiveFunctionManager> hiveFunctionManagers = new ConcurrentHashMap<>();
 
@@ -92,7 +90,6 @@ public class HiveFunctionManagerResolver
         FunctionDescriptor functionDescriptor = hiveFunctionManager.getScalarFunctionDescriptor(
                 session,
                 catalogName,
-                resolveResolverName(name),
                 resolveFunctionName(name),
                 pTypes);
         FunctionDescriptor internalFunctionDescriptor = functionDescriptor.getInternalFunctionDescriptor(typeManager);
@@ -143,7 +140,7 @@ public class HiveFunctionManagerResolver
 
     public static ExternalFunctionKey resolveFunctionKey(QualifiedName name)
     {
-        String resolverName = resolveResolverName(name).orElse(DEFAULT_FUNCTION_RESOLVER_NAME);
+        String resolverName = resolveCatalogName(name).orElse(DEFAULT_CATALOG_NAME_TO_RESOLVE);
         return ExternalFunctionKey.of(resolverName, name.getSuffix());
     }
 
@@ -151,14 +148,6 @@ public class HiveFunctionManagerResolver
     {
         if (name.getParts().size() > 2) {
             return Optional.of(name.getParts().get(0));
-        }
-        return Optional.empty();
-    }
-
-    private static Optional<String> resolveResolverName(QualifiedName name)
-    {
-        if (name.getParts().size() > 1) {
-            return name.getPrefix().map(QualifiedName::getSuffix);
         }
         return Optional.empty();
     }

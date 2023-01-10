@@ -26,28 +26,19 @@ import io.trino.spi.type.TypeSignature;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
 import static io.trino.spi.StandardErrorCode.FUNCTION_NOT_FOUND;
 
 public class DefaultHiveFunctionManager
         implements HiveFunctionManager
 {
-    private final String identifier;
     private final Map<String, ExternalFunctionResolver> resolvers;
 
-    public DefaultHiveFunctionManager(String identifier, List<ExternalFunctionResolver> resolvers)
+    public DefaultHiveFunctionManager(String catalogName, List<ExternalFunctionResolver> resolvers)
     {
-        this.identifier = identifier;
         ImmutableMap.Builder<String, ExternalFunctionResolver> builder = ImmutableMap.builder();
-        resolvers.forEach(resolver -> builder.put(resolver.getName(), resolver));
+        resolvers.forEach(resolver -> builder.put(catalogName, resolver));
         this.resolvers = builder.build();
-    }
-
-    @Override
-    public String getIdentifier()
-    {
-        return identifier;
     }
 
     @Override
@@ -57,14 +48,15 @@ public class DefaultHiveFunctionManager
     }
 
     @Override
-    public FunctionDescriptor getScalarFunctionDescriptor(Session session, String catalogName, Optional<String> resolverName, String functionName, List<TypeSignature> parameters)
+    public FunctionDescriptor getScalarFunctionDescriptor(Session session, String catalogName, String functionName, List<TypeSignature> parameters)
     {
         ConnectorSession connectorSession = session.toConnectorSession(catalogName);
-        if (resolverName.isPresent()) {
-            if (resolvers.containsKey(resolverName.get())) {
-                return resolvers.get(resolverName.get()).getFunctionDescriptor(connectorSession, functionName, parameters);
+        if (catalogName != null) {
+            if (resolvers.containsKey(catalogName)) {
+                return resolvers.get(catalogName).getFunctionDescriptor(connectorSession, functionName, parameters);
             }
-            throw new TrinoException(FUNCTION_NOT_FOUND, String.format("Expected resolving function %s from external functions resolver %s, but no found!", functionName, resolverName.get()));
+            throw new TrinoException(FUNCTION_NOT_FOUND,
+                    String.format("Expected resolving function %s from external catalog %s, but no found!", functionName, catalogName));
         }
 
         // return the first matched descriptor

@@ -14,19 +14,15 @@
 package io.trino.spi.function;
 
 import io.trino.spi.connector.ConnectorSession;
-import io.trino.spi.security.Identity;
 import io.trino.spi.type.TypeManagerAware;
 import io.trino.spi.type.TypeSignature;
 
-import java.util.Collection;
 import java.util.List;
 
 public interface ExternalFunctionResolver
         extends TypeManagerAware
 {
     String getName();
-
-    Collection<FunctionDescriptor> getFunctionDescriptors(Identity identity, String functionName, List<TypeSignature> parameters);
 
     FunctionDescriptor getFunctionDescriptor(ConnectorSession session, String functionName, List<TypeSignature> parameters);
 }

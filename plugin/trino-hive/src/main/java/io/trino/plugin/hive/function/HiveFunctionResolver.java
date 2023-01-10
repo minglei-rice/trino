@@ -23,11 +23,9 @@ import io.trino.spi.connector.ConnectorSession;
 import io.trino.spi.function.ExternalFunctionKey;
 import io.trino.spi.function.ExternalFunctionResolver;
 import io.trino.spi.function.FunctionDescriptor;
-import io.trino.spi.security.Identity;
 import io.trino.spi.type.TypeManager;
 import io.trino.spi.type.TypeSignature;
 
-import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 
@@ -56,12 +54,6 @@ public class HiveFunctionResolver
     public String getName()
     {
         return "hive";
-    }
-
-    @Override
-    public Collection<FunctionDescriptor> getFunctionDescriptors(Identity identity, String functionName, List<TypeSignature> parameters)
-    {
-        return null;
     }
 
     @Override

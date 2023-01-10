@@ -268,14 +268,11 @@ public final class MetadataManager
     {
         if (!externalFunctionResolvers.isEmpty()) {
             externalFunctionResolvers.forEach(externalFunctionResolver -> {
-                if (externalFunctionResolver instanceof TypeManagerAware) {
+                if (externalFunctionResolver != null) {
                     externalFunctionResolver.setTypeManager(typeManager);
                 }
             });
-            HiveFunctionManager existingExternalFunctionManager =
-                    hiveFunctionManagerResolver.putIfAbsent(catalogName, new DefaultHiveFunctionManager(catalogName, externalFunctionResolvers));
-            checkArgument(existingExternalFunctionManager == null,
-                    "ExternalFunctionManager for catalog '%s' has already registered!", catalogName);
+            hiveFunctionManagerResolver.putIfAbsent(catalogName, new DefaultHiveFunctionManager(catalogName, externalFunctionResolvers));
         }
     }
 

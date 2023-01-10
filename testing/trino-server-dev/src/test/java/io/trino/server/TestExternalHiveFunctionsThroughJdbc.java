@@ -58,7 +58,7 @@ public class TestExternalHiveFunctionsThroughJdbc {
         value = runAndGetSingleValue("select hive.b_parse_url('O%2FLMsMPS9cEHbHgj73LaXaI%2BD%2B')");
         assertEquals(value, "O/LMsMPS9cEHbHgj73LaXaI+D+");
         // with catalog hive and resolver hive
-        value = runAndGetSingleValue("select hive.hive.b_parse_url('O%2FLMsMPS9cEHbHgj73LaXaI%2BD%2B')");
+        value = runAndGetSingleValue("select hive.b_parse_url('O%2FLMsMPS9cEHbHgj73LaXaI%2BD%2B')");
         assertEquals(value, "O/LMsMPS9cEHbHgj73LaXaI+D+");
 
         value = runAndGetSingleValue("select bdecode('http%3A%2F%2Fwww.bilibili.com%2F')");
@@ -80,12 +80,12 @@ public class TestExternalHiveFunctionsThroughJdbc {
         // failed on prohibited Hive built-in function
         Assertions.assertThatThrownBy(() -> runAndGetSingleValue("select current_database()"))
                 .isInstanceOf(SQLException.class)
-                .hasMessageContaining("Could not resolve function current_database");
+                .hasMessageContaining("Could not resolve it from hive built-in functions.");
 
         // failed on unregistered Hive UDF
         Assertions.assertThatThrownBy(() -> runAndGetSingleValue("select b_typeid(105)"))
                 .isInstanceOf(SQLException.class)
-                .hasMessageContaining("Could not resolve function b_typeid");
+                .hasMessageContaining("Could not resolve it from hive metastore.");
     }
 
     private Object runAndGetSingleValue(String sql)

@@ -19,13 +19,10 @@ import io.trino.spi.function.FunctionDescriptor;
 import io.trino.spi.type.TypeSignature;
 
 import java.util.List;
-import java.util.Optional;
 
 public interface HiveFunctionManager
 {
-    String getIdentifier();
-
     ScalarFunctionImplementation getScalarFunctionImplementation(FunctionDescriptor descriptor);
 
-    FunctionDescriptor getScalarFunctionDescriptor(Session session, String catalogName, Optional<String> resolverName, String functionName, List<TypeSignature> parameters);
+    FunctionDescriptor getScalarFunctionDescriptor(Session session, String catalogName, String functionName, List<TypeSignature> parameters);
 }
