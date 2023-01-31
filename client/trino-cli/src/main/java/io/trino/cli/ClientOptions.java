@@ -162,6 +162,9 @@ public class ClientOptions
     @Option(names = "--client-request-timeout", paramLabel = "<timeout>", defaultValue = "2m", description = "Client request timeout " + DEFAULT_VALUE)
     public Duration clientRequestTimeout;
 
+    @Option(names = "--read-timeout", paramLabel = "<timeout>", defaultValue = "1m", description = "Read timeout " + DEFAULT_VALUE)
+    public Optional<Duration> readTimeout;
+
     @Option(names = "--ignore-errors", description = "Continue processing in batch mode when an error occurs (default is to exit immediately)")
     public boolean ignoreErrors;
 

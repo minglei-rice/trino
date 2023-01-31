@@ -43,6 +43,8 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import static com.google.common.base.MoreObjects.firstNonNull;
 import static com.google.common.base.Preconditions.checkState;
@@ -372,6 +374,8 @@ class StatementClientV1
                 response = JsonResponse.execute(QUERY_RESULTS_CODEC, httpClient, request);
             }
             catch (RuntimeException e) {
+                Logger.getLogger(StatementClientV1.class.getName())
+                        .log(Level.WARNING, format("error happens when invoke request %s, ", request.url()), e);
                 cause = e;
                 continue;
             }

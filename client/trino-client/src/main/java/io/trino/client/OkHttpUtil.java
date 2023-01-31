@@ -47,6 +47,7 @@ import java.security.cert.Certificate;
 import java.security.cert.CertificateExpiredException;
 import java.security.cert.CertificateNotYetValidException;
 import java.security.cert.X509Certificate;
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
@@ -99,8 +100,14 @@ public final class OkHttpUtil
     {
         clientBuilder
                 .connectTimeout(timeout, unit)
-                .readTimeout(timeout, unit)
                 .writeTimeout(timeout, unit);
+    }
+
+    public static void setupReadTimeout(OkHttpClient.Builder clientBuilder, Optional<Duration> duration)
+    {
+        if (duration.isPresent()) {
+            clientBuilder.readTimeout(duration.get());
+        }
     }
 
     public static void setupCookieJar(OkHttpClient.Builder clientBuilder)

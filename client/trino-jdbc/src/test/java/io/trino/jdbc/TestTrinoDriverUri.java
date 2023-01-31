@@ -173,6 +173,8 @@ public class TestTrinoDriverUri
 
         // legacy url
         assertInvalid("jdbc:presto://localhost:8080", "Invalid JDBC URL: jdbc:presto://localhost:8080");
+
+        assertInvalid("jdbc:trino://localhost:8080?readTimeout=10max", "Connection property 'readTimeout' value is invalid:");
     }
 
     @Test(expectedExceptions = SQLException.class, expectedExceptionsMessageRegExp = "Connection property 'user' is required")
@@ -375,6 +377,22 @@ public class TestTrinoDriverUri
         TrinoDriverUri parameters = createDriverUri("jdbc:trino://localhost:8080/catalog");
         assertThat(parameters.getCatalog()).isPresent();
         assertThat(parameters.getSchema()).isEmpty();
+    }
+
+    @Test
+    public void testDefaultReadTimeout()
+            throws SQLException
+    {
+        TrinoDriverUri parameters = createDriverUri("jdbc:trino://localhost:8080?password=");
+        assertEquals(parameters.getProperties().getProperty("readTimeout"), "1m");
+    }
+
+    @Test
+    public void testSetReadTimeout()
+            throws SQLException
+    {
+        TrinoDriverUri parameters = createDriverUri("jdbc:trino://localhost:8080?readTimeout=10s");
+        assertEquals(parameters.getProperties().getProperty("readTimeout"), "10s");
     }
 
     private static void assertUriPortScheme(TrinoDriverUri parameters, int port, String scheme)

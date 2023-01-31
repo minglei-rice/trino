@@ -168,7 +168,8 @@ public class TestQueryRunner
                 Optional.empty(),
                 false,
                 false,
-                false);
+                false,
+                Optional.empty());
     }
 
     static PrintStream nullPrintStream()
