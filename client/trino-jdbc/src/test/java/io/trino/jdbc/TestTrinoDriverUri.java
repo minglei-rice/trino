@@ -184,6 +184,8 @@ public class TestTrinoDriverUri
 
         // cannot set mutually exclusive properties for non-conforming clients to true
         assertInvalid("jdbc:trino://localhost:8080?assumeLiteralNamesInMetadataCallsForNonConformingClients=true&assumeLiteralUnderscoreInMetadataCallsForNonConformingClients=true", "Connection property 'assumeLiteralNamesInMetadataCallsForNonConformingClients' is not allowed");
+
+        assertInvalid("jdbc:trino://localhost:8080?readTimeout=10max", "Connection property 'readTimeout' value is invalid:");
     }
 
     @Test(expectedExceptions = SQLException.class, expectedExceptionsMessageRegExp = "Connection property 'user' value is empty")
@@ -420,6 +422,22 @@ public class TestTrinoDriverUri
         TrinoDriverUri parameters = createDriverUri("jdbc:trino://localhost:8080?assumeLiteralUnderscoreInMetadataCallsForNonConformingClients=true");
         assertThat(parameters.isAssumeLiteralUnderscoreInMetadataCallsForNonConformingClients()).isTrue();
         assertThat(parameters.isAssumeLiteralNamesInMetadataCallsForNonConformingClients()).isFalse();
+    }
+
+    @Test
+    public void testDefaultReadTimeout()
+            throws SQLException
+    {
+        TrinoDriverUri parameters = createDriverUri("jdbc:trino://localhost:8080?password=");
+        assertEquals(parameters.getProperties().getProperty("readTimeout"), "1m");
+    }
+
+    @Test
+    public void testSetReadTimeout()
+            throws SQLException
+    {
+        TrinoDriverUri parameters = createDriverUri("jdbc:trino://localhost:8080?readTimeout=10s");
+        assertEquals(parameters.getProperties().getProperty("readTimeout"), "10s");
     }
 
     private static void assertUriPortScheme(TrinoDriverUri parameters, int port, String scheme)

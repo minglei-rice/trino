@@ -48,6 +48,7 @@ import static io.trino.client.OkHttpUtil.setupCookieJar;
 import static io.trino.client.OkHttpUtil.setupHttpProxy;
 import static io.trino.client.OkHttpUtil.setupInsecureSsl;
 import static io.trino.client.OkHttpUtil.setupKerberos;
+import static io.trino.client.OkHttpUtil.setupReadTimeout;
 import static io.trino.client.OkHttpUtil.setupSocksProxy;
 import static io.trino.client.OkHttpUtil.setupSsl;
 import static io.trino.client.OkHttpUtil.tokenAuth;
@@ -73,6 +74,7 @@ import static io.trino.jdbc.ConnectionProperties.KERBEROS_REMOTE_SERVICE_NAME;
 import static io.trino.jdbc.ConnectionProperties.KERBEROS_SERVICE_PRINCIPAL_PATTERN;
 import static io.trino.jdbc.ConnectionProperties.KERBEROS_USE_CANONICAL_HOSTNAME;
 import static io.trino.jdbc.ConnectionProperties.PASSWORD;
+import static io.trino.jdbc.ConnectionProperties.READ_TIMEOUT;
 import static io.trino.jdbc.ConnectionProperties.ROLES;
 import static io.trino.jdbc.ConnectionProperties.SESSION_PROPERTIES;
 import static io.trino.jdbc.ConnectionProperties.SESSION_USER;
@@ -240,6 +242,12 @@ public final class TrinoDriverUri
         return SOURCE.getValue(properties);
     }
 
+    public Optional<Duration> getReadTimeout()
+            throws SQLException
+    {
+        return READ_TIMEOUT.getValue(properties).map(value -> Duration.ofMillis(value.toMillis()));
+    }
+
     public boolean isCompressionDisabled()
             throws SQLException
     {
@@ -265,6 +273,7 @@ public final class TrinoDriverUri
             setupCookieJar(builder);
             setupSocksProxy(builder, SOCKS_PROXY.getValue(properties));
             setupHttpProxy(builder, HTTP_PROXY.getValue(properties));
+            setupReadTimeout(builder, getReadTimeout());
 
             // TODO: fix Tempto to allow empty passwords
             String password = PASSWORD.getValue(properties).orElse("");

@@ -41,6 +41,7 @@ import static io.trino.client.OkHttpUtil.basicAuth;
 import static io.trino.client.OkHttpUtil.setupCookieJar;
 import static io.trino.client.OkHttpUtil.setupHttpProxy;
 import static io.trino.client.OkHttpUtil.setupKerberos;
+import static io.trino.client.OkHttpUtil.setupReadTimeout;
 import static io.trino.client.OkHttpUtil.setupSocksProxy;
 import static io.trino.client.OkHttpUtil.setupSsl;
 import static io.trino.client.OkHttpUtil.setupTimeouts;
@@ -83,7 +84,8 @@ public class QueryRunner
             boolean kerberosUseCanonicalHostname,
             boolean delegatedKerberos,
             boolean externalAuthentication,
-            List<ExternalRedirectStrategy> externalRedirectHandlers)
+            List<ExternalRedirectStrategy> externalRedirectHandlers,
+            Optional<Duration> readTimeout)
     {
         this.session = new AtomicReference<>(requireNonNull(session, "session is null"));
         this.debug = debug;
@@ -104,6 +106,7 @@ public class QueryRunner
         setupBasicAuth(builder, session, user, password);
         setupTokenAuth(builder, session, accessToken);
         setupExternalAuth(builder, session, externalAuthentication, externalRedirectHandlers, sslSetup);
+        setupReadTimeout(builder, readTimeout);
 
         builder.addNetworkInterceptor(new HttpLoggingInterceptor(System.err::println).setLevel(networkLogging));
 

@@ -161,7 +161,8 @@ public class TestQueryRunner
                 false,
                 false,
                 false,
-                ImmutableList.of(PRINT));
+                ImmutableList.of(PRINT),
+                Optional.empty());
     }
 
     static PrintStream nullPrintStream()

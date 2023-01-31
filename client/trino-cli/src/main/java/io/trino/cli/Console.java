@@ -180,7 +180,8 @@ public class Console
                 !clientOptions.krb5DisableRemoteServiceHostnameCanonicalization,
                 false,
                 clientOptions.externalAuthentication,
-                clientOptions.externalAuthenticationRedirectHandler)) {
+                clientOptions.externalAuthenticationRedirectHandler,
+                clientOptions.readTimeout.map(value -> java.time.Duration.ofMillis(value.toMillis())))) {
             if (hasQuery) {
                 return executeCommand(
                         queryRunner,

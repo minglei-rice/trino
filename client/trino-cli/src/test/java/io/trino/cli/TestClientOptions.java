@@ -42,6 +42,7 @@ public class TestClientOptions
         assertEquals(session.getServer().toString(), "http://localhost:8080");
         assertEquals(session.getSource(), "trino-cli");
         assertEquals(session.getTimeZone(), ZoneId.systemDefault());
+        assertEquals(options.readTimeout, Optional.of(Duration.valueOf("1m")));
     }
 
     @Test
@@ -165,6 +166,13 @@ public class TestClientOptions
         assertEquals(options.extraCredentials, ImmutableList.of(
                 new ClientOptions.ClientExtraCredential("test.token.foo", "foo"),
                 new ClientOptions.ClientExtraCredential("test.token.bar", "bar")));
+    }
+
+    @Test
+    public void testReadTimeout()
+    {
+        Console console = createConsole("--read-timeout=5s");
+        assertEquals(console.clientOptions.readTimeout.get(), Duration.valueOf("5s"));
     }
 
     @Test
