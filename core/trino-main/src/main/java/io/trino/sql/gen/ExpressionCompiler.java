@@ -33,6 +33,7 @@ import org.weakref.jmx.Nested;
 
 import javax.inject.Inject;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -67,7 +68,8 @@ public class ExpressionCompiler
         this.pageFunctionCompiler = requireNonNull(pageFunctionCompiler, "pageFunctionCompiler is null");
         this.cursorProcessors = buildNonEvictableCache(CacheBuilder.newBuilder()
                         .recordStats()
-                        .maximumSize(1000),
+                        .maximumSize(1000)
+                        .expireAfterAccess(Duration.ofHours(1)),
                 CacheLoader.from(key -> compile(key.getFilter(), key.getProjections(), new CursorProcessorCompiler(functionManager), CursorProcessor.class)));
         this.cacheStatsMBean = new CacheStatsMBean(cursorProcessors);
     }

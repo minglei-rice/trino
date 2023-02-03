@@ -48,6 +48,7 @@ import org.weakref.jmx.Nested;
 import javax.inject.Inject;
 
 import java.lang.reflect.Constructor;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -82,7 +83,8 @@ public class JoinFilterFunctionCompiler
     private final NonEvictableLoadingCache<JoinFilterCacheKey, JoinFilterFunctionFactory> joinFilterFunctionFactories = buildNonEvictableCache(
             CacheBuilder.newBuilder()
                     .recordStats()
-                    .maximumSize(1000),
+                    .maximumSize(1000)
+                    .expireAfterAccess(Duration.ofHours(1)),
             CacheLoader.from(key -> internalCompileFilterFunctionFactory(key.getFilter(), key.getLeftBlocksSize())));
 
     @Managed

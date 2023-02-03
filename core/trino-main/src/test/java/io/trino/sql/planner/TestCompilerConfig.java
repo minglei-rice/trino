@@ -28,7 +28,8 @@ public class TestCompilerConfig
     public void testDefaults()
     {
         assertRecordedDefaults(recordDefaults(CompilerConfig.class)
-                .setExpressionCacheSize(10_000));
+                .setExpressionCacheSize(10_000)
+                .setExpressionCacheTTL(0));
     }
 
     @Test
@@ -36,10 +37,12 @@ public class TestCompilerConfig
     {
         Map<String, String> properties = ImmutableMap.<String, String>builder()
                 .put("compiler.expression-cache-size", "52")
+                .put("compiler.expression-cache-ttl", "600")
                 .buildOrThrow();
 
         CompilerConfig expected = new CompilerConfig()
-                .setExpressionCacheSize(52);
+                .setExpressionCacheSize(52)
+                .setExpressionCacheTTL(600);
 
         assertFullMapping(properties, expected);
     }

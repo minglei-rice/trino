@@ -62,6 +62,7 @@ import org.weakref.jmx.Nested;
 import javax.annotation.Nullable;
 import javax.inject.Inject;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -112,18 +113,25 @@ public class PageFunctionCompiler
     @Inject
     public PageFunctionCompiler(FunctionManager functionManager, CompilerConfig config)
     {
-        this(functionManager, config.getExpressionCacheSize());
+        this(functionManager, config.getExpressionCacheSize(), config.getExpressionCacheTTL());
     }
 
     public PageFunctionCompiler(FunctionManager functionManager, int expressionCacheSize)
     {
+        this(functionManager, expressionCacheSize, 0);
+    }
+
+    public PageFunctionCompiler(FunctionManager functionManager, int expressionCacheSize, int expressionCacheTTL)
+    {
         this.functionManager = requireNonNull(functionManager, "functionManager is null");
 
         if (expressionCacheSize > 0) {
+            CacheBuilder<Object, Object> builder = CacheBuilder.newBuilder().recordStats().maximumSize(expressionCacheSize);
+            if (expressionCacheTTL > 0) {
+                builder = builder.expireAfterAccess(Duration.ofSeconds(expressionCacheTTL));
+            }
             projectionCache = buildNonEvictableCache(
-                    CacheBuilder.newBuilder()
-                            .recordStats()
-                            .maximumSize(expressionCacheSize),
+                    builder,
                     CacheLoader.from(projection -> compileProjectionInternal(projection, Optional.empty())));
             projectionCacheStats = new CacheStatsMBean(projectionCache);
         }
@@ -133,10 +141,12 @@ public class PageFunctionCompiler
         }
 
         if (expressionCacheSize > 0) {
+            CacheBuilder<Object, Object> builder = CacheBuilder.newBuilder().recordStats().maximumSize(expressionCacheSize);
+            if (expressionCacheTTL > 0) {
+                builder = builder.expireAfterAccess(Duration.ofSeconds(expressionCacheTTL));
+            }
             filterCache = buildNonEvictableCache(
-                    CacheBuilder.newBuilder()
-                            .recordStats()
-                            .maximumSize(expressionCacheSize),
+                    builder,
                     CacheLoader.from(filter -> compileFilterInternal(filter, Optional.empty())));
             filterCacheStats = new CacheStatsMBean(filterCache);
         }

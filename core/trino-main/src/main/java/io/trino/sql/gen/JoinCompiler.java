@@ -60,6 +60,7 @@ import javax.inject.Inject;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.reflect.Constructor;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -108,14 +109,16 @@ public class JoinCompiler
     private final NonEvictableLoadingCache<CacheKey, LookupSourceSupplierFactory> lookupSourceFactories = buildNonEvictableCache(
             CacheBuilder.newBuilder()
                     .recordStats()
-                    .maximumSize(1000),
+                    .maximumSize(1000)
+                    .expireAfterAccess(Duration.ofHours(1)),
             CacheLoader.from(key ->
                     internalCompileLookupSourceFactory(key.getTypes(), key.getOutputChannels(), key.getJoinChannels(), key.getSortChannel())));
 
     private final NonEvictableLoadingCache<CacheKey, Class<? extends PagesHashStrategy>> hashStrategies = buildNonEvictableCache(
             CacheBuilder.newBuilder()
                     .recordStats()
-                    .maximumSize(1000),
+                    .maximumSize(1000)
+                    .expireAfterAccess(Duration.ofHours(1)),
             CacheLoader.from(key ->
                     internalCompileHashStrategy(key.getTypes(), key.getOutputChannels(), key.getJoinChannels(), key.getSortChannel())));
 

@@ -48,6 +48,7 @@ import org.weakref.jmx.Nested;
 import javax.inject.Inject;
 
 import java.lang.invoke.MethodHandle;
+import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
 
@@ -75,13 +76,15 @@ public class OrderingCompiler
     private final NonEvictableLoadingCache<PagesIndexComparatorCacheKey, PagesIndexOrdering> pagesIndexOrderings = buildNonEvictableCache(
             CacheBuilder.newBuilder()
                     .recordStats()
-                    .maximumSize(1000),
+                    .maximumSize(1000)
+                    .expireAfterAccess(Duration.ofHours(1)),
             CacheLoader.from(key -> internalCompilePagesIndexOrdering(key.getSortTypes(), key.getSortChannels(), key.getSortOrders())));
 
     private final NonEvictableLoadingCache<PagesIndexComparatorCacheKey, PageWithPositionComparator> pageWithPositionComparators = buildNonEvictableCache(
             CacheBuilder.newBuilder()
                     .recordStats()
-                    .maximumSize(1000),
+                    .maximumSize(1000)
+                    .expireAfterAccess(Duration.ofHours(1)),
             CacheLoader.from(key -> internalCompilePageWithPositionComparator(key.getSortTypes(), key.getSortChannels(), key.getSortOrders())));
 
     private final TypeOperators typeOperators;

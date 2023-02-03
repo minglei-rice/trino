@@ -23,6 +23,7 @@ import javax.validation.constraints.Min;
 public class CompilerConfig
 {
     private int expressionCacheSize = 10_000;
+    private int cacheTTL;
 
     @Min(0)
     public int getExpressionCacheSize()
@@ -35,6 +36,20 @@ public class CompilerConfig
     public CompilerConfig setExpressionCacheSize(int expressionCacheSize)
     {
         this.expressionCacheSize = expressionCacheSize;
+        return this;
+    }
+
+    @Min(0)
+    public int getExpressionCacheTTL()
+    {
+        return cacheTTL;
+    }
+
+    @Config("compiler.expression-cache-ttl")
+    @Description("TTL (in seconds) of cached compiled expressions")
+    public CompilerConfig setExpressionCacheTTL(int expressionCacheTTL)
+    {
+        this.cacheTTL = expressionCacheTTL;
         return this;
     }
 }
