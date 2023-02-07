@@ -13,6 +13,7 @@
  */
 package io.trino.likematcher;
 
+import java.util.Arrays;
 import java.util.List;
 
 import static com.google.common.base.Preconditions.checkArgument;
@@ -21,6 +22,8 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 class DenseDfaMatcher
         implements Matcher
 {
+    public static final int FAIL_STATE = -1;
+
     // The DFA is encoded as a sequence of transitions for each possible byte value for each state.
     // I.e., 256 transitions per state.
     // The content of the transitions array is the base offset into
@@ -33,9 +36,6 @@ class DenseDfaMatcher
     // For each state, whether it's an accepting state
     private final boolean[] accept;
 
-    // Artificial state to sink all invalid matches
-    private final int fail;
-
     private final boolean exact;
 
     /**
@@ -46,6 +46,7 @@ class DenseDfaMatcher
         DFA dfa = makeNfa(pattern).toDfa();
 
         int[] transitions = new int[dfa.transitions().size() * 256];
+        Arrays.fill(transitions, FAIL_STATE);
 
         for (int state = 0; state < dfa.transitions().size(); state++) {
             for (DFA.Transition transition : dfa.transitions().get(state)) {
@@ -58,15 +59,14 @@ class DenseDfaMatcher
             accept[state] = true;
         }
 
-        return new DenseDfaMatcher(transitions, dfa.start(), accept, 0, exact);
+        return new DenseDfaMatcher(transitions, dfa.start(), accept, exact);
     }
 
-    private DenseDfaMatcher(int[] transitions, int start, boolean[] accept, int fail, boolean exact)
+    private DenseDfaMatcher(int[] transitions, int start, boolean[] accept, boolean exact)
     {
         this.transitions = transitions;
         this.start = start;
         this.accept = accept;
-        this.fail = fail;
         this.exact = exact;
     }
 
@@ -90,7 +90,7 @@ class DenseDfaMatcher
             byte inputByte = input[i];
             state = transitions[state | (inputByte & 0xFF)];
 
-            if (state == fail) {
+            if (state == FAIL_STATE) {
                 return false;
             }
         }
@@ -109,7 +109,7 @@ class DenseDfaMatcher
             byte inputByte = input[i];
             state = transitions[state | (inputByte & 0xFF)];
 
-            if (state == fail) {
+            if (state == FAIL_STATE) {
                 return false;
             }
 
