@@ -19,6 +19,7 @@ import static com.google.common.base.Preconditions.checkArgument;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 class DenseDfaMatcher
+        implements Matcher
 {
     // The DFA is encoded as a sequence of transitions for each possible byte value for each state.
     // I.e., 256 transitions per state.
@@ -69,6 +70,7 @@ class DenseDfaMatcher
         this.exact = exact;
     }
 
+    @Override
     public boolean match(byte[] input, int offset, int length)
     {
         if (exact) {
