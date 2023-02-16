@@ -102,6 +102,7 @@ public class FeaturesConfig
     private boolean hideInaccessibleColumns;
     private boolean forceSpillingJoin;
     private boolean optimizeQueryWithMetadata = true;
+    private boolean approxSizeInBytesEnabled;
 
     public enum DataIntegrityVerification
     {
@@ -490,6 +491,19 @@ public class FeaturesConfig
     public FeaturesConfig setForceSpillingJoin(boolean forceSpillingJoin)
     {
         this.forceSpillingJoin = forceSpillingJoin;
+        return this;
+    }
+
+    public boolean isApproxSizeInBytesEnabled()
+    {
+        return approxSizeInBytesEnabled;
+    }
+
+    @Config("approx-size-in-bytes-enable")
+    @ConfigDescription("calculate approximate size in bytes enable")
+    public FeaturesConfig setApproxSizeInBytesEnabled(boolean approxSizeInBytesEnabled)
+    {
+        this.approxSizeInBytesEnabled = approxSizeInBytesEnabled;
         return this;
     }
 }

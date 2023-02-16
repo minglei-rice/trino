@@ -171,6 +171,12 @@ public class VariableWidthBlock
     }
 
     @Override
+    public long getApproxPositionsSizeInBytes(boolean[] positions, int selectedPositionsCount)
+    {
+        return getSizeInBytes() * selectedPositionsCount / getPositionCount();
+    }
+
+    @Override
     public long getRetainedSizeInBytes()
     {
         return retainedSizeInBytes;

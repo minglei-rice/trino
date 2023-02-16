@@ -64,7 +64,8 @@ public class TestFeaturesConfig
                 .setHideInaccessibleColumns(false)
                 .setAllowSetViewAuthorization(false)
                 .setForceSpillingJoin(false)
-                .setOptimizeQueryWithMetadata(true));
+                .setOptimizeQueryWithMetadata(true)
+                .setApproxSizeInBytesEnabled(false));
     }
 
     @Test
@@ -100,6 +101,7 @@ public class TestFeaturesConfig
                 .put("legacy.allow-set-view-authorization", "true")
                 .put("force-spilling-join-operator", "true")
                 .put("optimizer.optimize-query-with-metadata", "false")
+                .put("approx-size-in-bytes-enable", "true")
                 .buildOrThrow();
 
         FeaturesConfig expected = new FeaturesConfig()
@@ -131,7 +133,8 @@ public class TestFeaturesConfig
                 .setIncrementalHashArrayLoadFactorEnabled(false)
                 .setHideInaccessibleColumns(true)
                 .setAllowSetViewAuthorization(true)
-                .setForceSpillingJoin(true);
+                .setForceSpillingJoin(true)
+                .setApproxSizeInBytesEnabled(true);
         assertFullMapping(properties, expected);
     }
 }

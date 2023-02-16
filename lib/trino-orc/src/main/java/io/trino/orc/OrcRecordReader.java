@@ -40,6 +40,7 @@ import io.trino.orc.reader.ColumnReader;
 import io.trino.orc.stream.InputStreamSources;
 import io.trino.spi.Page;
 import io.trino.spi.block.Block;
+import io.trino.spi.block.DictionaryBlock;
 import io.trino.spi.type.Type;
 import org.joda.time.DateTimeZone;
 import org.openjdk.jol.info.ClassLayout;
@@ -89,6 +90,7 @@ public class OrcRecordReader
     private final long totalDataLength;
     private final long maxBlockBytes;
     private final ColumnMetadata<OrcType> orcTypes;
+    private final boolean approxSizeInBytesEnable;
     private long currentPosition;
     private long currentStripePosition;
     private int currentBatchSize;
@@ -181,6 +183,7 @@ public class OrcRecordReader
 
         requireNonNull(options, "options is null");
         this.maxBlockBytes = options.getMaxBlockSize().toBytes();
+        this.approxSizeInBytesEnable = options.isApproxSizeInBytesEnable();
 
         // sort stripes by file position
         List<StripeInfo> stripeInfos = new ArrayList<>();
@@ -459,7 +462,11 @@ public class OrcRecordReader
             return;
         }
 
+        if (approxSizeInBytesEnable && block instanceof DictionaryBlock db) {
+            db.enableApproxSizeInBytes();
+        }
         currentBytesPerCell[columnIndex] += block.getSizeInBytes() / currentBatchSize;
+
         if (maxBytesPerCell[columnIndex] < currentBytesPerCell[columnIndex]) {
             long delta = currentBytesPerCell[columnIndex] - maxBytesPerCell[columnIndex];
             maxCombinedBytesPerRow += delta;

@@ -152,4 +152,17 @@ public class OrcReaderConfig
         options = options.withNestedLazy(nestedLazy);
         return this;
     }
+
+    public boolean isApproxSizeInBytesEnable()
+    {
+        return options.isApproxSizeInBytesEnable();
+    }
+
+    @Config("hive.orc.approx-size-in-bytes-enable")
+    @ConfigDescription("Orc calculate approximate size in bytes enable")
+    public OrcReaderConfig setApproxSizeInBytesEnable(boolean approxSizeInBytesEnable)
+    {
+        options = options.withApproxSizeInBytesEnable(approxSizeInBytesEnable);
+        return this;
+    }
 }

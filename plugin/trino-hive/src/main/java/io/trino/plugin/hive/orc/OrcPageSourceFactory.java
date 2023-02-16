@@ -95,6 +95,7 @@ import static io.trino.plugin.hive.HiveSessionProperties.getOrcMaxMergeDistance;
 import static io.trino.plugin.hive.HiveSessionProperties.getOrcMaxReadBlockSize;
 import static io.trino.plugin.hive.HiveSessionProperties.getOrcStreamBufferSize;
 import static io.trino.plugin.hive.HiveSessionProperties.getOrcTinyStripeThreshold;
+import static io.trino.plugin.hive.HiveSessionProperties.isApproxSizeInBytesEnable;
 import static io.trino.plugin.hive.HiveSessionProperties.isOrcBloomFiltersEnabled;
 import static io.trino.plugin.hive.HiveSessionProperties.isOrcNestedLazy;
 import static io.trino.plugin.hive.HiveSessionProperties.isUseOrcColumnNames;
@@ -211,7 +212,8 @@ public class OrcPageSourceFactory
                         .withMaxReadBlockSize(getOrcMaxReadBlockSize(session))
                         .withLazyReadSmallRanges(getOrcLazyReadSmallRanges(session))
                         .withNestedLazy(isOrcNestedLazy(session))
-                        .withBloomFiltersEnabled(isOrcBloomFiltersEnabled(session)),
+                        .withBloomFiltersEnabled(isOrcBloomFiltersEnabled(session))
+                        .withApproxSizeInBytesEnable(isApproxSizeInBytesEnable(session)),
                 acidInfo,
                 bucketNumber,
                 originalFile,

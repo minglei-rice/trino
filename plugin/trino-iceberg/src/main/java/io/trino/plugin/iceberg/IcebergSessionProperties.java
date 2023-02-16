@@ -58,6 +58,7 @@ public final class IcebergSessionProperties
     private static final String ORC_MAX_READ_BLOCK_SIZE = "orc_max_read_block_size";
     private static final String ORC_LAZY_READ_SMALL_RANGES = "orc_lazy_read_small_ranges";
     private static final String ORC_NESTED_LAZY_ENABLED = "orc_nested_lazy_enabled";
+    private static final String ORC_APPROX_SIZE_IN_BYTES_ENABLED = "orc_approx_size_in_bytes_enabled";
     private static final String ORC_STRING_STATISTICS_LIMIT = "orc_string_statistics_limit";
     private static final String ORC_WRITER_VALIDATE_PERCENTAGE = "orc_writer_validate_percentage";
     private static final String ORC_WRITER_VALIDATE_MODE = "orc_writer_validate_mode";
@@ -143,6 +144,11 @@ public final class IcebergSessionProperties
                         ORC_NESTED_LAZY_ENABLED,
                         "Experimental: ORC: Lazily read nested data",
                         orcReaderConfig.isNestedLazy(),
+                        false))
+                .add(booleanProperty(
+                        ORC_APPROX_SIZE_IN_BYTES_ENABLED,
+                        "ORC: calculate approximate size in bytes enable",
+                        orcReaderConfig.isApproxSizeInBytesEnable(),
                         false))
                 .add(dataSizeProperty(
                         ORC_STRING_STATISTICS_LIMIT,
@@ -317,6 +323,11 @@ public final class IcebergSessionProperties
     public static boolean isOrcNestedLazy(ConnectorSession session)
     {
         return session.getProperty(ORC_NESTED_LAZY_ENABLED, Boolean.class);
+    }
+
+    public static boolean isApproxSizeInBytesEnable(ConnectorSession session)
+    {
+        return session.getProperty(ORC_APPROX_SIZE_IN_BYTES_ENABLED, Boolean.class);
     }
 
     public static DataSize getOrcStringStatisticsLimit(ConnectorSession session)

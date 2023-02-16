@@ -169,6 +169,7 @@ import static io.trino.plugin.iceberg.IcebergSessionProperties.getOrcMaxReadBloc
 import static io.trino.plugin.iceberg.IcebergSessionProperties.getOrcStreamBufferSize;
 import static io.trino.plugin.iceberg.IcebergSessionProperties.getOrcTinyStripeThreshold;
 import static io.trino.plugin.iceberg.IcebergSessionProperties.getParquetMaxReadBlockSize;
+import static io.trino.plugin.iceberg.IcebergSessionProperties.isApproxSizeInBytesEnable;
 import static io.trino.plugin.iceberg.IcebergSessionProperties.isOrcBloomFiltersEnabled;
 import static io.trino.plugin.iceberg.IcebergSessionProperties.isOrcNestedLazy;
 import static io.trino.plugin.iceberg.IcebergSessionProperties.isUseFileSizeFromMetadata;
@@ -625,7 +626,8 @@ public class IcebergPageSourceProvider
                                 .withMaxReadBlockSize(getOrcMaxReadBlockSize(session))
                                 .withLazyReadSmallRanges(getOrcLazyReadSmallRanges(session))
                                 .withNestedLazy(isOrcNestedLazy(session))
-                                .withBloomFiltersEnabled(isOrcBloomFiltersEnabled(session)),
+                                .withBloomFiltersEnabled(isOrcBloomFiltersEnabled(session))
+                                .withApproxSizeInBytesEnable(isApproxSizeInBytesEnable(session)),
                         fileFormatDataSourceStats,
                         typeManager,
                         nameMapping,

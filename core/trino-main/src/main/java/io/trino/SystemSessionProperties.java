@@ -181,6 +181,7 @@ public final class SystemSessionProperties
     public static final String ZERO_SAFE_DIVISION = "zero_safe_division";
     public static final String ANALYZE_ALIAS_IN_HAVING_CLAUSE_WITHOUT_RESTRICTION = "analyze_alias_in_having_clause_without_restriction";
     public static final String ALLOW_READ_AGG_INDEX_FILES = "allow_read_agg_index_files";
+    public static final String APPROX_SIZE_IN_BYTES_ENABLED = "approx_size_in_bytes_enabled";
     private final List<PropertyMetadata<?>> sessionProperties;
 
     public SystemSessionProperties()
@@ -895,6 +896,11 @@ public final class SystemSessionProperties
                         ALLOW_READ_AGG_INDEX_FILES,
                         "Allow read aggindex files",
                         true,
+                        false),
+                booleanProperty(
+                        APPROX_SIZE_IN_BYTES_ENABLED,
+                        "Whether calculate size in bytes approximately enabled",
+                        featuresConfig.isApproxSizeInBytesEnabled(),
                         false));
     }
 
@@ -1592,5 +1598,10 @@ public final class SystemSessionProperties
     public static boolean isAllowReadAggIndexFiles(Session session)
     {
         return session.getSystemProperty(ALLOW_READ_AGG_INDEX_FILES, Boolean.class);
+    }
+
+    public static boolean isApproxSizeInBytesEnable(Session session)
+    {
+        return session.getSystemProperty(APPROX_SIZE_IN_BYTES_ENABLED, Boolean.class);
     }
 }

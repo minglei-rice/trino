@@ -50,6 +50,7 @@ public class DictionaryBlock
     private volatile int uniqueIds = -1;
     // isSequentialIds is only valid when uniqueIds is computed
     private volatile boolean isSequentialIds;
+    private volatile boolean approxSizeInBytes;
     private final DictionaryId dictionarySourceId;
     private final boolean mayHaveNull;
 
@@ -256,6 +257,11 @@ public class DictionaryBlock
         return sizeInBytes;
     }
 
+    public void enableApproxSizeInBytes()
+    {
+        approxSizeInBytes = true;
+    }
+
     private void calculateCompactSize()
     {
         int uniqueIds = 0;
@@ -368,7 +374,7 @@ public class DictionaryBlock
 
     private long getSizeInBytesForSelectedPositions(boolean[] usedIds, int uniqueIds, int selectedPositions)
     {
-        long dictionarySize = dictionary.getPositionsSizeInBytes(usedIds, uniqueIds);
+        long dictionarySize = approxSizeInBytes ? dictionary.getApproxPositionsSizeInBytes(usedIds, uniqueIds) : dictionary.getPositionsSizeInBytes(usedIds, uniqueIds);
         if (uniqueIds == dictionary.getPositionCount() && this.sizeInBytes == -1) {
             // All positions in the dictionary are referenced, store the uniqueId count and sizeInBytes
             this.uniqueIds = uniqueIds;

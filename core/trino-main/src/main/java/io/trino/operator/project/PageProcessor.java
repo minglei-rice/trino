@@ -15,6 +15,8 @@ package io.trino.operator.project;
 
 import com.google.common.annotations.VisibleForTesting;
 import io.airlift.slice.SizeOf;
+import io.trino.FullConnectorSession;
+import io.trino.SystemSessionProperties;
 import io.trino.array.ReferenceCountMap;
 import io.trino.memory.context.LocalMemoryContext;
 import io.trino.operator.DriverYieldSignal;
@@ -170,6 +172,7 @@ public class PageProcessor
 
         private int outputPagePositions = -1;
         private long outputPageSizeInBytes;
+        private boolean isApproxSizeInBytesEnable;
 
         private ProjectSelectedPositions(
                 ConnectorSession session,
@@ -190,6 +193,9 @@ public class PageProcessor
             this.avoidPageMaterialization = avoidPageMaterialization;
             this.selectedPositions = selectedPositions;
             this.previouslyComputedResults = new Block[projections.size()];
+            if (session instanceof FullConnectorSession) {
+                isApproxSizeInBytesEnable = SystemSessionProperties.isApproxSizeInBytesEnable(((FullConnectorSession) session).getSession());
+            }
         }
 
         @Override
@@ -358,6 +364,9 @@ public class PageProcessor
 
                 if (!avoidPageMaterialization) {
                     blocks[i] = blocks[i].getLoadedBlock();
+                    if (isApproxSizeInBytesEnable && blocks[i] instanceof DictionaryBlock db) {
+                        db.enableApproxSizeInBytes();
+                    }
                     pageSize += blocks[i].getSizeInBytes();
                 }
             }
