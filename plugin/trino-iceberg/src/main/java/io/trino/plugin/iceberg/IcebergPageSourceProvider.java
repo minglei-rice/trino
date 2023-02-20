@@ -627,7 +627,7 @@ public class IcebergPageSourceProvider
             orcDataSource = new TrinoOrcDataSource(inputFile, options, stats);
 
             OrcReader reader = OrcReader.createOrcReader(orcDataSource, options)
-                    .orElseThrow(() -> new TrinoException(ICEBERG_BAD_DATA, "ORC file is zero length"));
+                    .orElseThrow(() -> new TrinoException(ICEBERG_BAD_DATA, format("ORC file %s is zero length", inputFile.location())));
 
             List<OrcColumn> fileColumns = reader.getRootColumn().getNestedColumns();
             if (nameMapping.isPresent() && !hasIds(reader.getRootColumn())) {
