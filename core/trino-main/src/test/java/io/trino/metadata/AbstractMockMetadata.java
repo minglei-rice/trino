@@ -201,7 +201,7 @@ public abstract class AbstractMockMetadata
     }
 
     @Override
-    public TableStatistics getTableStatistics(Session session, TableHandle tableHandle)
+    public TableStatistics getTableStatistics(Session session, TableHandle tableHandle, boolean skipColumnStats)
     {
         throw new UnsupportedOperationException();
     }

@@ -30,6 +30,7 @@ public class CachingTableStatsProvider
     private final Session session;
 
     private final Map<TableHandle, TableStatistics> cache = new WeakHashMap<>();
+    private final Map<TableHandle, TableStatistics> skipColStatsCache = new WeakHashMap<>();
 
     public CachingTableStatsProvider(Metadata metadata, Session session)
     {
@@ -38,11 +39,23 @@ public class CachingTableStatsProvider
     }
 
     @Override
-    public TableStatistics getTableStatistics(TableHandle tableHandle)
+    public TableStatistics getTableStatistics(TableHandle tableHandle, boolean skipColumnStats)
     {
         TableStatistics stats = cache.get(tableHandle);
-        if (stats == null) {
-            stats = metadata.getTableStatistics(session, tableHandle);
+        if (stats != null) {
+            return stats;
+        }
+        if (skipColumnStats) {
+            stats = skipColStatsCache.get(tableHandle);
+            if (stats != null) {
+                return stats;
+            }
+        }
+        stats = metadata.getTableStatistics(session, tableHandle, skipColumnStats);
+        if (skipColumnStats) {
+            skipColStatsCache.put(tableHandle, stats);
+        }
+        else {
             cache.put(tableHandle, stats);
         }
         return stats;

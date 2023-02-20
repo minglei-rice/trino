@@ -18,5 +18,5 @@ import io.trino.spi.statistics.TableStatistics;
 
 public interface TableStatsProvider
 {
-    TableStatistics getTableStatistics(TableHandle tableHandle);
+    TableStatistics getTableStatistics(TableHandle tableHandle, boolean skipColumnStats);
 }

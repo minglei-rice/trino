@@ -464,11 +464,11 @@ public final class MetadataManager
     }
 
     @Override
-    public TableStatistics getTableStatistics(Session session, TableHandle tableHandle)
+    public TableStatistics getTableStatistics(Session session, TableHandle tableHandle, boolean skipColumnStats)
     {
         CatalogHandle catalogHandle = tableHandle.getCatalogHandle();
         ConnectorMetadata metadata = getMetadata(session, catalogHandle);
-        TableStatistics tableStatistics = metadata.getTableStatistics(session.toConnectorSession(catalogHandle), tableHandle.getConnectorHandle());
+        TableStatistics tableStatistics = metadata.getTableStatistics(session.toConnectorSession(catalogHandle), tableHandle.getConnectorHandle(), skipColumnStats);
         verifyNotNull(tableStatistics, "%s returned null tableStatistics for %s", metadata, tableHandle);
         return tableStatistics;
     }

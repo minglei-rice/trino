@@ -153,7 +153,7 @@ public interface Metadata
     /**
      * Return statistics for specified table.
      */
-    TableStatistics getTableStatistics(Session session, TableHandle tableHandle);
+    TableStatistics getTableStatistics(Session session, TableHandle tableHandle, boolean skipColumnStats);
 
     /**
      * Get the relation names that match the specified table prefix (never null).

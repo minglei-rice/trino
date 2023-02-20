@@ -216,10 +216,10 @@ public class CountingAccessMetadata
     }
 
     @Override
-    public TableStatistics getTableStatistics(Session session, TableHandle tableHandle)
+    public TableStatistics getTableStatistics(Session session, TableHandle tableHandle, boolean skipColumnStats)
     {
         methodInvocations.add(Methods.GET_TABLE_STATISTICS);
-        return delegate.getTableStatistics(session, tableHandle);
+        return delegate.getTableStatistics(session, tableHandle, skipColumnStats);
     }
 
     @Override

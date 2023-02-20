@@ -40,5 +40,19 @@ public abstract class SimpleStatsRule<T extends PlanNode>
                 .map(estimate -> normalizer.normalize(estimate, node.getOutputSymbols(), types));
     }
 
+    @Override
+    public final Optional<PlanNodeStatsEstimate> calculate(T node, StatsProvider sourceStats, Lookup lookup, Session session, TypeProvider types,
+            TableStatsProvider tableStatsProvider, boolean skipColumnStats)
+    {
+        return doCalculate(node, sourceStats, lookup, session, types, tableStatsProvider, skipColumnStats)
+                .map(estimate -> normalizer.normalize(estimate, node.getOutputSymbols(), types));
+    }
+
     protected abstract Optional<PlanNodeStatsEstimate> doCalculate(T node, StatsProvider sourceStats, Lookup lookup, Session session, TypeProvider types, TableStatsProvider tableStatsProvider);
+
+    protected Optional<PlanNodeStatsEstimate> doCalculate(T node, StatsProvider sourceStats, Lookup lookup, Session session, TypeProvider types,
+            TableStatsProvider tableStatsProvider, boolean skipColumnStats)
+    {
+        return doCalculate(node, sourceStats, lookup, session, types, tableStatsProvider);
+    }
 }

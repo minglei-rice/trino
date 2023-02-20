@@ -61,12 +61,12 @@ public class TableStatisticsMaker
         this.icebergTable = icebergTable;
     }
 
-    public static TableStatistics getTableStatistics(TypeManager typeManager, ConnectorSession session, IcebergTableHandle tableHandle, Table icebergTable)
+    public static TableStatistics getTableStatistics(TypeManager typeManager, ConnectorSession session, IcebergTableHandle tableHandle, Table icebergTable, boolean skipColumnStats)
     {
-        return new TableStatisticsMaker(typeManager, session, icebergTable).makeTableStatistics(tableHandle);
+        return new TableStatisticsMaker(typeManager, session, icebergTable).makeTableStatistics(tableHandle, skipColumnStats);
     }
 
-    private TableStatistics makeTableStatistics(IcebergTableHandle tableHandle)
+    private TableStatistics makeTableStatistics(IcebergTableHandle tableHandle, boolean skipColumnStats)
     {
         if (tableHandle.getSnapshotId().isEmpty()) {
             return TableStatistics.builder()
@@ -91,8 +91,11 @@ public class TableStatisticsMaker
 
         TableScan tableScan = icebergTable.newScan()
                 .filter(toIcebergExpression(enforcedPredicate))
-                .useSnapshot(tableHandle.getSnapshotId().get())
-                .includeColumnStats();
+                .useSnapshot(tableHandle.getSnapshotId().get());
+
+        if (!skipColumnStats) {
+            tableScan = tableScan.includeColumnStats();
+        }
         IcebergStatistics.Builder icebergStatisticsBuilder = new IcebergStatistics.Builder(columns, typeManager);
         boolean accurate = tableHandle.getUnenforcedPredicate().isAll();
         try (CloseableIterable<FileScanTask> fileScanTasks = tableScan.planFiles()) {

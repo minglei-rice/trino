@@ -53,11 +53,18 @@ public class TableScanStatsRule
     @Override
     protected Optional<PlanNodeStatsEstimate> doCalculate(TableScanNode node, StatsProvider sourceStats, Lookup lookup, Session session, TypeProvider types, TableStatsProvider tableStatsProvider)
     {
+        return doCalculate(node, sourceStats, lookup, session, types, tableStatsProvider, false);
+    }
+
+    @Override
+    protected Optional<PlanNodeStatsEstimate> doCalculate(TableScanNode node, StatsProvider sourceStats, Lookup lookup, Session session, TypeProvider types,
+            TableStatsProvider tableStatsProvider, boolean skipColumnStats)
+    {
         if (isStatisticsPrecalculationForPushdownEnabled(session) && node.getStatistics().isPresent()) {
             return node.getStatistics();
         }
 
-        TableStatistics tableStatistics = tableStatsProvider.getTableStatistics(node.getTable());
+        TableStatistics tableStatistics = tableStatsProvider.getTableStatistics(node.getTable(), skipColumnStats);
 
         Map<Symbol, SymbolStatsEstimate> outputSymbolStats = new HashMap<>();
 

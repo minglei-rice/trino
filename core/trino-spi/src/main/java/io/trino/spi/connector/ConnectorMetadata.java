@@ -318,6 +318,14 @@ public interface ConnectorMetadata
     }
 
     /**
+     * Get statistics for table for given filtering constraint.
+     */
+    default TableStatistics getTableStatistics(ConnectorSession session, ConnectorTableHandle tableHandle, boolean skipColumnStats)
+    {
+        return getTableStatistics(session, tableHandle);
+    }
+
+    /**
      * Creates a schema.
      */
     default void createSchema(ConnectorSession session, String schemaName, Map<String, Object> properties, TrinoPrincipal owner)

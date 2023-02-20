@@ -182,7 +182,7 @@ public class RewriteOnlyMinMaxCountPlan
             @Override
             public Void visitTableScan(TableScanNode node, Void context)
             {
-                this.consumer.accept(node, new TableScanStatsRule(statsNormalizer).calculate(node, statsProvider, lookup, session, typeProvider, tableStatsProvider).get());
+                this.consumer.accept(node, new TableScanStatsRule(statsNormalizer).calculate(node, statsProvider, lookup, session, typeProvider, tableStatsProvider, skipColumnStats).get());
                 return visitPlan(node, context);
             }
         }
@@ -784,7 +784,7 @@ public class RewriteOnlyMinMaxCountPlan
             if (!node.getAggregations().isEmpty()) {
                 countConstantOnly = node.getAggregations().values().stream().allMatch(
                         aggregation -> "count".equalsIgnoreCase(aggregation.getResolvedFunction().getSignature().getName()) &&
-                                aggregation.getArguments().size() == 0);
+                                aggregation.getArguments().isEmpty());
             }
 
             if (AggregationNode.Step.PARTIAL == node.getStep()) {
