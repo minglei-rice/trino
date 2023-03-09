@@ -243,6 +243,7 @@ import io.trino.sql.planner.iterative.rule.UnwrapDateTruncInComparison;
 import io.trino.sql.planner.iterative.rule.UnwrapRowSubscript;
 import io.trino.sql.planner.iterative.rule.UnwrapSingleColumnRowInApply;
 import io.trino.sql.planner.iterative.rule.UseNonPartitionedJoinLookupSource;
+import io.trino.sql.planner.iterative.rule.ZeroSafeDivision;
 import io.trino.sql.planner.iterative.rule.bigquery.ForbidCrossJoin;
 import io.trino.sql.planner.iterative.rule.bigquery.OrderByFullTable;
 import io.trino.sql.planner.optimizations.AddExchanges;
@@ -840,6 +841,15 @@ public class PlanOptimizers
                         statsCalculator,
                         costCalculator,
                         ImmutableSet.of(new PushCorrColFilterIntoTableScan(plannerContext, typeAnalyzer))));
+
+        // zero safe division
+        builder.add(
+                new IterativeOptimizer(
+                        plannerContext,
+                        ruleStats,
+                        statsCalculator,
+                        costCalculator,
+                        ImmutableSet.copyOf(new ZeroSafeDivision().rules())));
 
         if (!forceSingleNode) {
             builder.add(new IterativeOptimizer(

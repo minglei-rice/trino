@@ -22,6 +22,8 @@ import static java.util.Objects.requireNonNull;
 public class LongLiteral
         extends Literal
 {
+    public static final LongLiteral ZERO = new LongLiteral("0");
+
     private final long value;
 
     public LongLiteral(String value)

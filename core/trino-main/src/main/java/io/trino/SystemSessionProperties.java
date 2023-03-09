@@ -178,6 +178,7 @@ public final class SystemSessionProperties
     public static final String FORBID_CROSS_JOIN = "forbid_cross_join";
     public static final String ORDER_BY_FULL_TABLE = "order_by_full_table";
     public static final String PUSHDOWN_CORR_COL_FILTERS = "pushdown_corr_col_filters";
+    public static final String ZERO_SAFE_DIVISION = "zero_safe_division";
     private final List<PropertyMetadata<?>> sessionProperties;
 
     public SystemSessionProperties()
@@ -877,6 +878,11 @@ public final class SystemSessionProperties
                         PUSHDOWN_CORR_COL_FILTERS,
                         "Whether to pushdown filters on correlated columns",
                         true,
+                        false),
+                booleanProperty(
+                        ZERO_SAFE_DIVISION,
+                        "Whether to return null for division by zero errors",
+                        false,
                         false));
     }
 
