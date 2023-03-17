@@ -1262,7 +1262,8 @@ public class IcebergMetadata
     private void removeOrphanMetadataFiles(Table table, ConnectorSession session, SchemaTableName schemaTableName, long expireTimestamp)
     {
         ImmutableSet<String> manifests = stream(table.snapshots())
-                .flatMap(snapshot -> snapshot.allManifests(table.io()).stream())
+                // TODO use new api when iceberg upgrade to 1.0.0
+                .flatMap(snapshot -> snapshot.allManifests().stream())
                 .map(ManifestFile::path)
                 .collect(toImmutableSet());
         List<String> manifestLists = ReachableFileUtil.manifestListLocations(table);
@@ -1947,7 +1948,8 @@ public class IcebergMetadata
             Table icebergTable = catalog.loadTable(session, table.getSchemaTableName());
 
             Set<Integer> partitionSpecIds = table.getSnapshotId().map(
-                            snapshot -> icebergTable.snapshot(snapshot).allManifests(icebergTable.io()).stream()
+                            // TODO use new api when iceberg upgrade to 1.0.0
+                            snapshot -> icebergTable.snapshot(snapshot).allManifests().stream()
                                     .map(ManifestFile::partitionSpecId)
                                     .collect(toImmutableSet()))
                     // No snapshot, so no data. This case doesn't matter.

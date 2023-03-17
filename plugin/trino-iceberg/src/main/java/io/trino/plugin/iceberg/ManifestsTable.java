@@ -114,7 +114,8 @@ public class ManifestsTable
 
         Map<Integer, PartitionSpec> partitionSpecsById = icebergTable.specs();
 
-        snapshot.allManifests(icebergTable.io()).forEach(file -> {
+        // TODO use new api when iceberg upgrade to 1.0.0
+        snapshot.allManifests().forEach(file -> {
             pagesBuilder.beginRow();
             pagesBuilder.appendVarchar(file.path());
             pagesBuilder.appendBigint(file.length());

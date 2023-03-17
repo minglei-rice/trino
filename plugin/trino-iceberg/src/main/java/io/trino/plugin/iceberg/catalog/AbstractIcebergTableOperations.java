@@ -39,6 +39,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 
+import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static io.trino.plugin.hive.HiveType.toHiveType;
@@ -52,7 +53,6 @@ import static org.apache.iceberg.TableMetadataParser.getFileExtension;
 import static org.apache.iceberg.TableProperties.METADATA_COMPRESSION;
 import static org.apache.iceberg.TableProperties.METADATA_COMPRESSION_DEFAULT;
 import static org.apache.iceberg.TableProperties.WRITE_METADATA_LOCATION;
-import static org.apache.iceberg.util.LocationUtil.stripTrailingSlash;
 
 @NotThreadSafe
 public abstract class AbstractIcebergTableOperations
@@ -272,5 +272,16 @@ public abstract class AbstractIcebergTableOperations
                         toHiveType(HiveSchemaUtil.convert(column.type())),
                         Optional.empty()))
                 .collect(toImmutableList());
+    }
+
+    public static String stripTrailingSlash(String path)
+    {
+        checkArgument(path != null && path.length() > 0, "path must not be null or empty");
+
+        String result = path;
+        while (result.endsWith("/")) {
+            result = result.substring(0, result.length() - 1);
+        }
+        return result;
     }
 }

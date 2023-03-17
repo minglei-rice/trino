@@ -391,7 +391,35 @@
                         <ignoredResourcePattern>about.html</ignoredResourcePattern>
                         <ignoredResourcePattern>iceberg-build.properties</ignoredResourcePattern>
                         <ignoredResourcePattern>mozilla/public-suffix-list.txt</ignoredResourcePattern>
+                        <ignoredResourcePattern></ignoredResourcePattern>
                     </ignoredResourcePatterns>
+                    <ignoredDependencies>
+                        <dependency>
+                            <groupId>commons-logging</groupId>
+                            <artifactId>commons-logging</artifactId>
+                        </dependency>
+                       <dependency>
+                           <groupId>org.slf4j</groupId>
+                           <artifactId>jcl-over-slf4j</artifactId>
+                       </dependency>
+                    </ignoredDependencies>
+                </configuration>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-enforcer-plugin</artifactId>
+                <configuration>
+                    <rules>
+                        <requireUpperBoundDeps>
+                            <excludes combine.children="append">
+                                <exclude>org.apache.httpcomponents:httpclient</exclude>
+                                <exclude>org.apache.httpcomponents:httpcore</exclude>
+                                <exclude>org.apache.lucene:lucene-analyzers-common</exclude>
+                                <exclude>org.apache.lucene:lucene-core</exclude>
+                            </excludes>
+                        </requireUpperBoundDeps>
+                    </rules>
                 </configuration>
             </plugin>
         </plugins>

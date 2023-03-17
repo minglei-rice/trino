@@ -391,6 +391,9 @@
                             <excludes combine.children="append">
                                 <exclude>com.google.guava:guava</exclude>
                             </excludes>
+                            <excludes combine.children="append">
+                                <exclude>org.apache.lucene:lucene-analyzers-common</exclude>
+                            </excludes>
                         </requireUpperBoundDeps>
                     </rules>
                 </configuration>
