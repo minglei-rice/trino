@@ -391,7 +391,6 @@
                         <ignoredResourcePattern>about.html</ignoredResourcePattern>
                         <ignoredResourcePattern>iceberg-build.properties</ignoredResourcePattern>
                         <ignoredResourcePattern>mozilla/public-suffix-list.txt</ignoredResourcePattern>
-                        <ignoredResourcePattern></ignoredResourcePattern>
                     </ignoredResourcePatterns>
                     <ignoredDependencies>
                         <dependency>
