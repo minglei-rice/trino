@@ -13,6 +13,8 @@
  */
 package io.trino.plugin.iceberg.catalog;
 
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import io.airlift.log.Logger;
 import io.trino.plugin.hive.metastore.Column;
 import io.trino.plugin.hive.metastore.StorageFormat;
@@ -37,6 +39,7 @@ import javax.annotation.concurrent.NotThreadSafe;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static com.google.common.base.Preconditions.checkArgument;
@@ -78,6 +81,9 @@ public abstract class AbstractIcebergTableOperations
     protected String currentMetadataLocation;
     protected boolean shouldRefresh = true;
     protected int version = -1;
+
+    private static final Cache<String, AtomicReference<TableMetadata>> TABLE_METADATA_CACHE = Caffeine.newBuilder()
+            .maximumSize(1000).expireAfterAccess(1, TimeUnit.MINUTES).build();
 
     protected AbstractIcebergTableOperations(
             FileIO fileIo,
@@ -216,13 +222,19 @@ public abstract class AbstractIcebergTableOperations
             return;
         }
 
-        AtomicReference<TableMetadata> newMetadata = new AtomicReference<>();
-        Tasks.foreach(newLocation)
-                .retry(20)
-                .exponentialBackoff(100, 5000, 600000, 4.0)
-                .stopRetryOn(org.apache.iceberg.exceptions.NotFoundException.class) // qualified name, as this is NOT the io.trino.spi.connector.NotFoundException
-                .run(metadataLocation -> newMetadata.set(
-                        TableMetadataParser.read(fileIo, io().newInputFile(metadataLocation))));
+        AtomicReference<TableMetadata> newMetadata = TABLE_METADATA_CACHE.get(newLocation, location -> {
+            AtomicReference<TableMetadata> metadata = new AtomicReference<>();
+            long start = System.currentTimeMillis();
+            log.info("Start to read tableMetadata [%s],", newLocation);
+            Tasks.foreach(newLocation)
+                    .retry(20)
+                    .exponentialBackoff(100, 5000, 600000, 4.0)
+                    .stopRetryOn(org.apache.iceberg.exceptions.NotFoundException.class) // qualified name, as this is NOT the io.trino.spi.connector.NotFoundException
+                    .run(metadataLocation -> metadata.set(
+                            TableMetadataParser.read(fileIo, io().newInputFile(metadataLocation))));
+            log.info("End to read tableMetadata [%s], time spend [%s] ms", newLocation, System.currentTimeMillis() - start);
+            return metadata;
+        });
 
         String newUUID = newMetadata.get().uuid();
         if (currentMetadata != null) {
