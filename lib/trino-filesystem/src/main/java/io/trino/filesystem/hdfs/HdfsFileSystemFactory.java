@@ -46,4 +46,9 @@ public class HdfsFileSystemFactory
     {
         return new HdfsFileSystem(environment, new HdfsContext(session));
     }
+
+    public HdfsEnvironment getEnvironment()
+    {
+        return environment;
+    }
 }

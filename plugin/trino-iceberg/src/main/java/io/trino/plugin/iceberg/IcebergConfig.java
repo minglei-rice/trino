@@ -67,6 +67,7 @@ public class IcebergConfig
     private boolean deleteSchemaLocationsFallback;
     private double minimumAssignedSplitWeight = 0.05;
     private Optional<String> materializedViewsStorageSchema = Optional.empty();
+    private boolean readIndicesSwitchOn;
 
     public CatalogType getCatalogType()
     {
@@ -320,6 +321,18 @@ public class IcebergConfig
     public IcebergConfig setMaterializedViewsStorageSchema(String materializedViewsStorageSchema)
     {
         this.materializedViewsStorageSchema = Optional.ofNullable(materializedViewsStorageSchema);
+        return this;
+    }
+
+    public boolean isReadIndicesSwitchOn()
+    {
+        return readIndicesSwitchOn;
+    }
+
+    @Config("iceberg.read-indices-switch-on")
+    public IcebergConfig setReadIndicesSwitchOn(boolean readIndicesSwitchOn)
+    {
+        this.readIndicesSwitchOn = readIndicesSwitchOn;
         return this;
     }
 }

@@ -18,12 +18,17 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.base.MoreObjects.ToStringHelper;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import io.airlift.log.Logger;
 import io.trino.plugin.iceberg.delete.DeleteFile;
 import io.trino.spi.HostAddress;
 import io.trino.spi.SplitWeight;
 import io.trino.spi.connector.ConnectorSplit;
+import org.apache.iceberg.FileScanTask;
 import org.openjdk.jol.info.ClassLayout;
 
+import java.io.ByteArrayInputStream;
+import java.io.ObjectInputStream;
+import java.util.Base64;
 import java.util.List;
 
 import static com.google.common.base.MoreObjects.toStringHelper;
@@ -34,6 +39,7 @@ import static java.util.Objects.requireNonNull;
 public class IcebergSplit
         implements ConnectorSplit
 {
+    private static final Logger log = Logger.get(IcebergSplit.class);
     private static final int INSTANCE_SIZE = toIntExact(ClassLayout.parseClass(IcebergSplit.class).instanceSize());
 
     private final String path;
@@ -47,6 +53,10 @@ public class IcebergSplit
     private final String partitionDataJson;
     private final List<DeleteFile> deletes;
     private final SplitWeight splitWeight;
+    private final String fileScanTaskEncode;
+    private FileScanTask fileScanTask;
+    private boolean isSkippedByIndex;
+    private long indexReadTime;
 
     @JsonCreator
     public IcebergSplit(
@@ -60,7 +70,8 @@ public class IcebergSplit
             @JsonProperty("partitionSpecJson") String partitionSpecJson,
             @JsonProperty("partitionDataJson") String partitionDataJson,
             @JsonProperty("deletes") List<DeleteFile> deletes,
-            @JsonProperty("splitWeight") SplitWeight splitWeight)
+            @JsonProperty("splitWeight") SplitWeight splitWeight,
+            @JsonProperty("fileScanTaskEncode") String fileScanTaskEncode)
     {
         this.path = requireNonNull(path, "path is null");
         this.start = start;
@@ -73,6 +84,7 @@ public class IcebergSplit
         this.partitionDataJson = requireNonNull(partitionDataJson, "partitionDataJson is null");
         this.deletes = ImmutableList.copyOf(requireNonNull(deletes, "deletes is null"));
         this.splitWeight = requireNonNull(splitWeight, "splitWeight is null");
+        this.fileScanTaskEncode = fileScanTaskEncode;
     }
 
     @Override
@@ -185,5 +197,51 @@ public class IcebergSplit
                     .mapToLong(DeleteFile::recordCount).sum());
         }
         return helper.toString();
+    }
+
+    @JsonProperty
+    public String getFileScanTaskEncode()
+    {
+        return fileScanTaskEncode;
+    }
+
+    public FileScanTask decodeFileScanTask()
+    {
+        if (fileScanTask != null) {
+            return fileScanTask;
+        }
+
+        if (getFileScanTaskEncode() != null && !getFileScanTaskEncode().isBlank()) {
+            byte[] decode = Base64.getDecoder().decode(getFileScanTaskEncode());
+            try (ObjectInputStream ob = new ObjectInputStream(new ByteArrayInputStream(decode))) {
+                fileScanTask = (FileScanTask) ob.readObject();
+            }
+            catch (Exception e) {
+                log.error(e, "Decode fileScanTask error");
+            }
+        }
+        return fileScanTask;
+    }
+
+    public void setIsSkippedByIndex(boolean isSkippedByIndex)
+    {
+        this.isSkippedByIndex = isSkippedByIndex;
+    }
+
+    public void setIndexReadTime(long indexReadTime)
+    {
+        this.indexReadTime = indexReadTime;
+    }
+
+    @Override
+    public boolean isSkippedByIndex()
+    {
+        return isSkippedByIndex;
+    }
+
+    @Override
+    public long getIndexReadTime()
+    {
+        return indexReadTime;
     }
 }

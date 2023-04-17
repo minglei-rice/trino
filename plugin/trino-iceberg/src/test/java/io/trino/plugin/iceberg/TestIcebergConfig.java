@@ -58,7 +58,8 @@ public class TestIcebergConfig
                 .setDeleteSchemaLocationsFallback(false)
                 .setTargetMaxFileSize(DataSize.of(1, GIGABYTE))
                 .setMinimumAssignedSplitWeight(0.05)
-                .setMaterializedViewsStorageSchema(null));
+                .setMaterializedViewsStorageSchema(null)
+                .setReadIndicesSwitchOn(false));
     }
 
     @Test
@@ -83,6 +84,7 @@ public class TestIcebergConfig
                 .put("iceberg.target-max-file-size", "1MB")
                 .put("iceberg.minimum-assigned-split-weight", "0.01")
                 .put("iceberg.materialized-views.storage-schema", "mv_storage_schema")
+                .put("iceberg.read-indices-switch-on", "true")
                 .buildOrThrow();
 
         IcebergConfig expected = new IcebergConfig()
@@ -103,8 +105,8 @@ public class TestIcebergConfig
                 .setDeleteSchemaLocationsFallback(true)
                 .setTargetMaxFileSize(DataSize.of(1, MEGABYTE))
                 .setMinimumAssignedSplitWeight(0.01)
-                .setMaterializedViewsStorageSchema("mv_storage_schema");
-
+                .setMaterializedViewsStorageSchema("mv_storage_schema")
+                .setReadIndicesSwitchOn(true);
         assertFullMapping(properties, expected);
     }
 }

@@ -78,6 +78,7 @@ public final class IcebergSessionProperties
     private static final String MINIMUM_ASSIGNED_SPLIT_WEIGHT = "minimum_assigned_split_weight";
     public static final String EXPIRE_SNAPSHOTS_MIN_RETENTION = "expire_snapshots_min_retention";
     public static final String REMOVE_ORPHAN_FILES_MIN_RETENTION = "remove_orphan_files_min_retention";
+    private static final String READ_INDICES_SWITCH_ON = "read_indices_switch_on";
 
     private final List<PropertyMetadata<?>> sessionProperties;
 
@@ -252,6 +253,11 @@ public final class IcebergSessionProperties
                         "Minimal retention period for remove_orphan_files procedure",
                         icebergConfig.getRemoveOrphanFilesMinRetention(),
                         false))
+                .add(booleanProperty(
+                        READ_INDICES_SWITCH_ON,
+                        "Switch to read iceberg indices, default false",
+                        icebergConfig.isReadIndicesSwitchOn(),
+                        false))
                 .build();
     }
 
@@ -416,5 +422,10 @@ public final class IcebergSessionProperties
     public static double getMinimumAssignedSplitWeight(ConnectorSession session)
     {
         return session.getProperty(MINIMUM_ASSIGNED_SPLIT_WEIGHT, Double.class);
+    }
+
+    public static boolean isReadIndicesSwitchOn(ConnectorSession session)
+    {
+        return session.getProperty(READ_INDICES_SWITCH_ON, Boolean.class);
     }
 }

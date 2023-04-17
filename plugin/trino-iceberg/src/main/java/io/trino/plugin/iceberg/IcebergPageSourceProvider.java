@@ -20,10 +20,14 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.graph.Traverser;
 import io.airlift.json.JsonCodec;
+import io.airlift.log.Logger;
 import io.airlift.slice.Slice;
 import io.trino.filesystem.TrinoFileSystem;
 import io.trino.filesystem.TrinoFileSystemFactory;
 import io.trino.filesystem.TrinoInputFile;
+import io.trino.filesystem.hdfs.HdfsFileSystem;
+import io.trino.filesystem.hdfs.HdfsFileSystemFactory;
+import io.trino.hdfs.HdfsContext;
 import io.trino.memory.context.AggregatedMemoryContext;
 import io.trino.orc.OrcColumn;
 import io.trino.orc.OrcCorruptionException;
@@ -85,6 +89,8 @@ import io.trino.spi.type.TypeManager;
 import org.apache.avro.file.DataFileStream;
 import org.apache.avro.generic.GenericDatumReader;
 import org.apache.hadoop.hdfs.BlockMissingException;
+import org.apache.iceberg.FileScanTask;
+import org.apache.iceberg.MatchResult;
 import org.apache.iceberg.MetadataColumns;
 import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.PartitionSpecParser;
@@ -197,8 +203,8 @@ import static org.joda.time.DateTimeZone.UTC;
 public class IcebergPageSourceProvider
         implements ConnectorPageSourceProvider
 {
+    private static final Logger log = Logger.get(IcebergPageSourceProvider.class);
     private static final String AVRO_FIELD_ID = "field-id";
-
     private final TrinoFileSystemFactory fileSystemFactory;
     private final FileFormatDataSourceStats fileFormatDataSourceStats;
     private final OrcReaderOptions orcReaderOptions;
@@ -243,6 +249,23 @@ public class IcebergPageSourceProvider
     {
         IcebergSplit split = (IcebergSplit) connectorSplit;
         IcebergTableHandle table = (IcebergTableHandle) connectorTable;
+
+        if (fileSystemFactory instanceof HdfsFileSystemFactory fs) {
+            HdfsContext hdfsContext = new HdfsContext(session);
+            FileScanTask fileScanTask = split.decodeFileScanTask();
+            if (fileScanTask != null) {
+                long start = System.currentTimeMillis();
+                HdfsFileSystem hdfsFileSystem = new HdfsFileSystem(fs.getEnvironment(), hdfsContext);
+                MatchResult indexMatchResult = fileScanTask.isRequired(hdfsFileSystem.toFileIo(), false);
+                split.setIsSkippedByIndex(!indexMatchResult.result());
+                split.setIndexReadTime(System.currentTimeMillis() - start);
+                if (split.isSkippedByIndex()) {
+                    log.info("Indices hit for file : %s, split skipped, time spent : %s ms", fileScanTask.file().path(), split.getIndexReadTime());
+                    return new EmptyPageSource();
+                }
+                log.info("Indices missed for file : %s, time spent : %s ms", fileScanTask.file().path(), System.currentTimeMillis() - start);
+            }
+        }
 
         List<IcebergColumnHandle> icebergColumns = columns.stream()
                 .map(IcebergColumnHandle.class::cast)

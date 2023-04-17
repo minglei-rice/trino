@@ -27,13 +27,17 @@ import io.trino.spi.connector.Constraint;
 import io.trino.spi.connector.DynamicFilter;
 import io.trino.spi.connector.FixedSplitSource;
 import io.trino.spi.type.TypeManager;
+import org.apache.iceberg.IndexSpec;
 import org.apache.iceberg.Table;
+import org.apache.iceberg.TableProperties;
 import org.apache.iceberg.TableScan;
+import org.apache.iceberg.util.PropertyUtil;
 
 import javax.inject.Inject;
 
 import static io.trino.plugin.iceberg.IcebergSessionProperties.getDynamicFilteringWaitTimeout;
 import static io.trino.plugin.iceberg.IcebergSessionProperties.getMinimumAssignedSplitWeight;
+import static io.trino.plugin.iceberg.IcebergSessionProperties.isReadIndicesSwitchOn;
 import static java.util.Objects.requireNonNull;
 
 public class IcebergSplitManager
@@ -75,6 +79,10 @@ public class IcebergSplitManager
 
         TableScan tableScan = icebergTable.newScan()
                 .useSnapshot(table.getSnapshotId().get());
+        boolean indicesEnabled = isIndicesEnabled(tableScan, session);
+        if (indicesEnabled) {
+            tableScan = tableScan.includeIndexStats();
+        }
         IcebergSplitSource splitSource = new IcebergSplitSource(
                 hdfsEnvironment,
                 new HdfsContext(session),
@@ -86,8 +94,23 @@ public class IcebergSplitManager
                 constraint,
                 typeManager,
                 table.isRecordScannedFiles(),
-                getMinimumAssignedSplitWeight(session));
+                getMinimumAssignedSplitWeight(session),
+                indicesEnabled);
 
         return new ClassLoaderSafeConnectorSplitSource(splitSource, IcebergSplitManager.class.getClassLoader());
+    }
+
+    private boolean isIndicesEnabled(TableScan tableScan, ConnectorSession session)
+    {
+        // Only when both table level indices and trino session indices property are enabled, then indices is enabled
+        boolean indicesEnable = PropertyUtil.propertyAsBoolean(tableScan.table().properties(), TableProperties.HEURISTIC_INDEX_ENABLED_ON_READ,
+                TableProperties.HEURISTIC_INDEX_ENABLED_ON_READ_DEFAULT) && isReadIndicesSwitchOn(session);
+        if (indicesEnable) {
+            // check the table has a valid IndexSpec
+            IndexSpec indexSpec = tableScan.table().indexSpec();
+            return indexSpec != null && !indexSpec.isUnIndexed();
+        }
+
+        return false;
     }
 }

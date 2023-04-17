@@ -19,6 +19,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterators;
 import com.google.common.io.Closer;
+import io.airlift.log.Logger;
 import io.airlift.units.DataSize;
 import io.airlift.units.Duration;
 import io.trino.hdfs.HdfsContext;
@@ -52,9 +53,12 @@ import org.apache.iceberg.util.TableScanUtil;
 
 import javax.annotation.Nullable;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.ObjectOutputStream;
 import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -93,6 +97,8 @@ import static org.apache.iceberg.types.Conversions.fromByteBuffer;
 public class IcebergSplitSource
         implements ConnectorSplitSource
 {
+    private static final Logger log = Logger.get(IcebergSplitSource.class);
+
     private static final ConnectorSplitBatch EMPTY_BATCH = new ConnectorSplitBatch(ImmutableList.of(), false);
     private static final ConnectorSplitBatch NO_MORE_SPLITS_BATCH = new ConnectorSplitBatch(ImmutableList.of(), true);
 
@@ -106,6 +112,7 @@ public class IcebergSplitSource
     private final long dynamicFilteringWaitTimeoutMillis;
     private final Stopwatch dynamicFilterWaitStopwatch;
     private final Constraint constraint;
+    private final boolean indicesEnable;
     private final TypeManager typeManager;
     private final Closer closer = Closer.create();
     private final double minimumAssignedSplitWeight;
@@ -131,7 +138,8 @@ public class IcebergSplitSource
             Constraint constraint,
             TypeManager typeManager,
             boolean recordScannedFiles,
-            double minimumAssignedSplitWeight)
+            double minimumAssignedSplitWeight,
+            boolean indicesEnabled)
     {
         this.hdfsEnvironment = requireNonNull(hdfsEnvironment, "hdfsEnvironment is null");
         this.hdfsContext = requireNonNull(hdfsContext, "hdfsContext is null");
@@ -149,6 +157,7 @@ public class IcebergSplitSource
         this.dataColumnPredicate = tableHandle.getEnforcedPredicate().filter((column, domain) -> !isMetadataColumnId(column.getId()));
         this.pathDomain = getPathDomain(tableHandle.getEnforcedPredicate());
         this.fileModifiedTimeDomain = getFileModifiedTimePathDomain(tableHandle.getEnforcedPredicate());
+        this.indicesEnable = indicesEnabled;
     }
 
     @Override
@@ -222,7 +231,7 @@ public class IcebergSplitSource
                     continue;
                 }
             }
-            IcebergSplit icebergSplit = toIcebergSplit(scanTask);
+            IcebergSplit icebergSplit = toIcebergSplit(scanTask, indicesEnable);
 
             Schema fileSchema = scanTask.spec().schema();
             Map<Integer, Optional<String>> partitionKeys = getPartitionKeys(scanTask);
@@ -424,8 +433,18 @@ public class IcebergSplitSource
         return true;
     }
 
-    private IcebergSplit toIcebergSplit(FileScanTask task)
+    private IcebergSplit toIcebergSplit(FileScanTask task, boolean enabled)
     {
+        String fileScanTaskEncode = null;
+        if (enabled && task.file().indices() != null && !task.file().indices().isEmpty()) {
+            try (ByteArrayOutputStream ba = new ByteArrayOutputStream(); ObjectOutputStream ob = new ObjectOutputStream(ba)) {
+                ob.writeObject(task);
+                fileScanTaskEncode = Base64.getEncoder().encodeToString(ba.toByteArray());
+            }
+            catch (Exception e) {
+                log.error(e, "Encode fileScanTask error %s", task.file().path());
+            }
+        }
         return new IcebergSplit(
                 task.file().path().toString(),
                 task.start(),
@@ -439,7 +458,8 @@ public class IcebergSplitSource
                 task.deletes().stream()
                         .map(DeleteFile::fromIceberg)
                         .collect(toImmutableList()),
-                SplitWeight.fromProportion(Math.min(Math.max((double) task.length() / tableScan.targetSplitSize(), minimumAssignedSplitWeight), 1.0)));
+                SplitWeight.fromProportion(Math.min(Math.max((double) task.length() / tableScan.targetSplitSize(), minimumAssignedSplitWeight), 1.0)),
+                fileScanTaskEncode);
     }
 
     private static Domain getPathDomain(TupleDomain<IcebergColumnHandle> effectivePredicate)

@@ -31,7 +31,7 @@ import static io.trino.filesystem.hdfs.HadoopPaths.hadoopPath;
 import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
 
-class HdfsFileSystem
+public class HdfsFileSystem
         implements TrinoFileSystem
 {
     private final HdfsEnvironment environment;
