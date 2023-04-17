@@ -26,7 +26,7 @@ package:
   stage: package
   script:
     - mvn -T 4 -pl -docs clean package -DskipTests -Djava.io.tmpdir=/data/tmp
-    - mvn -T 4 deploy -pl client/trino-jdbc,core/trino-main -DskipTests -Djava.io.tmpdir=/data/tmp
+    - mvn -T 4 deploy -pl client/trino-jdbc,core/trino-main,-plugin/trino-hive-hadoop2 -am -DskipTests -Djava.io.tmpdir=/data/tmp
     - mkdir -p $ARTIFACTS_PATH
     - mv ./core/trino-server/target/trino-server-*.tar.gz $ARTIFACTS_PATH
     - mv ./client/trino-cli/target/trino-cli-*-executable.jar $ARTIFACTS_PATH
