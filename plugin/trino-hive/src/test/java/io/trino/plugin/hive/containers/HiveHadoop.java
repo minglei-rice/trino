@@ -20,6 +20,7 @@ import io.airlift.log.Logger;
 import io.trino.testing.TestingProperties;
 import io.trino.testing.containers.BaseTestContainer;
 import org.testcontainers.containers.Network;
+import org.testcontainers.utility.MountableFile;
 
 import java.util.Map;
 import java.util.Optional;
@@ -49,6 +50,7 @@ public class HiveHadoop
             String hostName,
             Set<Integer> ports,
             Map<String, String> filesToMount,
+            Map<MountableFile, String> mountableFiles,
             Map<String, String> envVars,
             Optional<Network> network,
             int startupRetryLimit)
@@ -58,6 +60,7 @@ public class HiveHadoop
                 hostName,
                 ports,
                 filesToMount,
+                mountableFiles,
                 envVars,
                 network,
                 startupRetryLimit);
@@ -111,7 +114,7 @@ public class HiveHadoop
         @Override
         public HiveHadoop build()
         {
-            return new HiveHadoop(image, hostName, exposePorts, filesToMount, envVars, network, startupRetryLimit);
+            return new HiveHadoop(image, hostName, exposePorts, filesToMount, mountableFiles, envVars, network, startupRetryLimit);
         }
     }
 }

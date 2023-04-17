@@ -10,7 +10,7 @@
 
     <groupId>io.trino</groupId>
     <artifactId>trino-root</artifactId>
-    <version>400</version>
+    <version>400-bili-0.1-SNAPSHOT</version>
 
     <name>trino-root</name>
     <description>Trino</description>
@@ -85,6 +85,7 @@
         <air.test.jvmsize>3g</air.test.jvmsize>
 
         <air.javadoc.lint>-missing</air.javadoc.lint>
+        <air.test.jvm.additional-arguments>-Djava.io.tmpdir=/data/tmp -Djava.util.logging.config.file=${project.basedir}/src/test/resources/logging.properties</air.test.jvm.additional-arguments>
     </properties>
 
     <modules>
@@ -181,6 +182,39 @@
         <module>testing/trino-testing-services</module>
         <module>testing/trino-tests</module>
     </modules>
+
+    <repositories>
+        <repository>
+            <id>confluent</id>
+            <url>https://packages.confluent.io/maven/</url>
+            <snapshots>
+                <enabled>false</enabled>
+            </snapshots>
+        </repository>
+        <repository>
+            <id>bilibili-nexus-releases</id>
+            <url>https://nexus.bilibili.co/content/repositories/releases/</url>
+        </repository>
+        <repository>
+            <id>bilibili-nexus-snapshots</id>
+            <url>https://nexus.bilibili.co/content/repositories/snapshots/</url>
+        </repository>
+
+    </repositories>
+
+    <distributionManagement>
+        <repository>
+            <id>bilibili-nexus-releases</id>
+            <name>Nexus Release Repository</name>
+            <url>https://nexus.bilibili.co/content/repositories/releases/</url>
+        </repository>
+
+        <snapshotRepository>
+            <id>bilibili-nexus-snapshots</id>
+            <name>Nexus Snapshot Repository</name>
+            <url>https://nexus.bilibili.co/content/repositories/snapshots/</url>
+        </snapshotRepository>
+    </distributionManagement>
 
     <dependencyManagement>
         <dependencies>
@@ -2028,9 +2062,6 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <configuration>
-                    <argLine>
-                        -Djava.util.logging.config.file=${project.basedir}/src/test/resources/logging.properties
-                    </argLine>
                     <!-- some modules have no tests -->
                     <failIfNoTests>false</failIfNoTests>
                     <includes>

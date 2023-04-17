@@ -18,14 +18,15 @@ import io.trino.testing.containers.Minio;
 import io.trino.testing.minio.MinioClient;
 import io.trino.util.AutoCloseableCloser;
 import org.testcontainers.containers.Network;
+import org.testcontainers.utility.MountableFile;
 
 import java.util.List;
 import java.util.Map;
 
 import static com.google.common.base.Preconditions.checkState;
-import static io.trino.testing.containers.TestContainers.getPathFromClassPathResource;
 import static java.util.Objects.requireNonNull;
 import static org.testcontainers.containers.Network.newNetwork;
+import static org.testcontainers.utility.MountableFile.forClasspathResource;
 
 public class HiveMinioDataLake
         implements AutoCloseable
@@ -57,10 +58,11 @@ public class HiveMinioDataLake
 
     public HiveMinioDataLake(String bucketName, String hiveHadoopImage)
     {
-        this(bucketName, ImmutableMap.of("/etc/hadoop/conf/core-site.xml", getPathFromClassPathResource("hive_minio_datalake/hive-core-site.xml")), hiveHadoopImage);
+        this(bucketName, ImmutableMap.of(),
+                ImmutableMap.of(forClasspathResource("hive_minio_datalake/hive-core-site.xml", 33188), "/etc/hadoop/conf/core-site.xml"), hiveHadoopImage);
     }
 
-    public HiveMinioDataLake(String bucketName, Map<String, String> hiveHadoopFilesToMount, String hiveHadoopImage)
+    public HiveMinioDataLake(String bucketName, Map<String, String> hiveHadoopFilesToMount, Map<MountableFile, String> mountableFiles, String hiveHadoopImage)
     {
         this.bucketName = requireNonNull(bucketName, "bucketName is null");
         Network network = closer.register(newNetwork());
@@ -77,8 +79,14 @@ public class HiveMinioDataLake
         HiveHadoop.Builder hiveHadoopBuilder = HiveHadoop.builder()
                 .withImage(hiveHadoopImage)
                 .withNetwork(network)
-                .withFilesToMount(hiveHadoopFilesToMount);
+                .withFilesToMount(hiveHadoopFilesToMount)
+                .withMountableFiles(mountableFiles);
         this.hiveHadoop = closer.register(hiveHadoopBuilder.build());
+    }
+
+    public HiveMinioDataLake(String bucketName, Map<String, String> hiveHadoopFilesToMount, String hiveHadoopImage)
+    {
+        this(bucketName, hiveHadoopFilesToMount, ImmutableMap.of(), hiveHadoopImage);
     }
 
     public HiveMinioDataLake start()

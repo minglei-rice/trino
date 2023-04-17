@@ -1,31 +1,39 @@
+# refer to https://docs.gitlab.com/ee/ci/yaml/
 stages:
   - test
   - package
 
+variables:
+  ARTIFACTS_PATH : ./release
+  MAVEN_OPTS: "-Xmx6g -Xms6g"
+
+before_script:
+  - unset HADOOP_HOME HADOOP_CONF_DIR HIVE_HOME SPARK_HOME FLINK_HOME
+  - export JAVA_HOME=/data/sdk/jdk-17.0.4
+  - export M2_HOME=/opt/maven/apache-maven-3.8.1
+  - export PATH=$PATH:$JAVA_HOME/bin:$M2_HOME/bin
+
 test:
   stage: test
-  resource_group: ci
   script:
-    - export PATH=$PATH:$JAVA_HOME/bin:/opt/maven/apache-maven-3.8.1/bin
-    - ./mvnw -pl -docs clean install -DskipTests
-    - ./mvnw -pl -plugin/trino-pinot,-plugin/trino-phoenix,-plugin/trino-redshift,-testing/trino-test-jdbc-compatibility-old-server,-plugin/trino-redis,-plugin/trino-kudu,-plugin/trino-mongodb,-plugin/trino-oracle,-plugin/trino-phoenix5,-plugin/trino-postgresql,-plugin/trino-sqlserver,-plugin/trino-teradata-functions,-plugin/trino-accumulo,-plugin/trino-druid,-plugin/trino-atop,-plugin/trino-bigquery,-plugin/trino-cassandra,-plugin/trino-kafka,-testing/trino-testing-kafka,-plugin/trino-memsql,-plugin/trino-kinesis,-plugin/trino-geospatial,-plugin/trino-accumulo-iterators,-plugin/trino-prometheus,-plugin/trino-elasticsearch,-plugin/trino-google-sheets,-core/trino-server-rpm,-docs verify
+    - mvn -T 4 -pl -docs clean install -DskipTests -Djava.io.tmpdir=/data/tmp
+    - mvn -pl -plugin/trino-delta-lake,-plugin/trino-session-property-managers,-plugin/trino-pinot,-lib/trino-phoenix5-patched,-plugin/trino-ml,-plugin/trino-memory,-plugin/trino-mariadb,-plugin/trino-exchange-filesystem,-plugin/trino-password-authenticators,-/plugin/trino-mysql,-plugin/trino-singlestore,-plugin/trino-redshift,-testing/trino-test-jdbc-compatibility-old-server,-plugin/trino-redis,-plugin/trino-kudu,-plugin/trino-mongodb,-plugin/trino-oracle,-plugin/trino-phoenix5,-plugin/trino-postgresql,-plugin/trino-sqlserver,-plugin/trino-teradata-functions,-plugin/trino-accumulo,-plugin/trino-druid,-plugin/trino-atop,-plugin/trino-bigquery,-plugin/trino-cassandra,-plugin/trino-kafka,-testing/trino-testing-kafka,-testing/trino-faulttolerant-tests,-plugin/trino-kinesis,-plugin/trino-geospatial,-plugin/trino-accumulo-iterators,-plugin/trino-prometheus,-plugin/trino-elasticsearch,-plugin/trino-google-sheets,-core/trino-server-rpm,-docs verify -Djava.io.tmpdir=/data/tmp
   only:
     - merge_requests
     - branches
 
 package:
   stage: package
-  resource_group: ci
   script:
-    - export PATH=$PATH:$JAVA_HOME/bin:/opt/maven/apache-maven-3.8.1/bin
-    - ./mvnw -pl -docs clean package -DskipTests
-    - mv ./core/trino-server/target/trino-server-*.tar.gz ./core/trino-server/target/trino-server.tar.gz
-    - mv ./client/trino-cli/target/trino-cli-*-executable.jar ./client/trino-cli/target/trino-cli-executable.jar
+    - mvn -T 4 -pl -docs clean package -DskipTests -Djava.io.tmpdir=/data/tmp
+    - mvn -T 4 deploy -pl client/trino-jdbc,core/trino-main -DskipTests -Djava.io.tmpdir=/data/tmp
+    - mkdir -p $ARTIFACTS_PATH
+    - mv ./core/trino-server/target/trino-server-*.tar.gz $ARTIFACTS_PATH
+    - mv ./client/trino-cli/target/trino-cli-*-executable.jar $ARTIFACTS_PATH
   only:
     - tags
     - branches
   artifacts:
     paths:
-      - ./core/trino-server/target/trino-server.tar.gz
-      - ./client/trino-cli/target/trino-cli-executable.jar
+      - $ARTIFACTS_PATH
     expire_in: 2 week

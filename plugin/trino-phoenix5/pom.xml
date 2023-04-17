@@ -5,7 +5,7 @@
     <parent>
         <groupId>io.trino</groupId>
         <artifactId>trino-root</artifactId>
-        <version>400</version>
+        <version>400-bili-0.1-SNAPSHOT</version>
         <relativePath>../../pom.xml</relativePath>
     </parent>
 
@@ -409,11 +409,20 @@
             <plugin>
                 <artifactId>maven-dependency-plugin</artifactId>
                 <configuration>
-                <ignoredNonTestScopedDependencies>
-                    <!-- TODO(https://github.com/trinodb/trino/issues/13051): remove this -->
-                    <ignoredDependency>org.apache.phoenix:phoenix-client-embedded-hbase-2.2</ignoredDependency>
-                </ignoredNonTestScopedDependencies>
+                    <ignoredNonTestScopedDependencies>
+                        <!-- TODO(https://github.com/trinodb/trino/issues/13051): remove this -->
+                        <ignoredDependency>org.apache.phoenix:phoenix-client-embedded-hbase-2.2</ignoredDependency>
+                    </ignoredNonTestScopedDependencies>
+                    <skip>true</skip>
                 </configuration>
+                <executions>
+                    <execution>
+                        <id>analyze</id>
+                        <goals>
+                            <goal>analyze-only</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
 
             <plugin>

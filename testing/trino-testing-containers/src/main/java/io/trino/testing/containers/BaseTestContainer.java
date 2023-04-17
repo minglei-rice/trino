@@ -13,6 +13,7 @@
  */
 package io.trino.testing.containers;
 
+import com.github.dockerjava.api.command.CreateContainerCmd;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.net.HostAndPort;
@@ -25,6 +26,7 @@ import org.testcontainers.containers.Network;
 import org.testcontainers.containers.output.OutputFrame;
 import org.testcontainers.containers.startupcheck.IsRunningStartupCheckStrategy;
 import org.testcontainers.containers.wait.strategy.Wait;
+import org.testcontainers.utility.MountableFile;
 
 import java.io.IOException;
 import java.time.Duration;
@@ -49,6 +51,7 @@ public abstract class BaseTestContainer
     private final String hostName;
     private final Set<Integer> ports;
     private final Map<String, String> filesToMount;
+    private final Map<MountableFile, String> mountableFiles;
     private final Map<String, String> envVars;
     private final Optional<Network> network;
     private final int startupRetryLimit;
@@ -64,12 +67,26 @@ public abstract class BaseTestContainer
             Optional<Network> network,
             int startupRetryLimit)
     {
+        this(image, hostName, ports, filesToMount, ImmutableMap.of(), envVars, network, startupRetryLimit);
+    }
+
+    protected BaseTestContainer(
+            String image,
+            String hostName,
+            Set<Integer> ports,
+            Map<String, String> filesToMount,
+            Map<MountableFile, String> mountableFiles,
+            Map<String, String> envVars,
+            Optional<Network> network,
+            int startupRetryLimit)
+    {
         checkArgument(startupRetryLimit > 0, "startupRetryLimit needs to be greater or equal to 0");
         this.log = Logger.get(this.getClass());
         this.container = new GenericContainer<>(requireNonNull(image, "image is null"));
         this.ports = requireNonNull(ports, "ports is null");
         this.hostName = requireNonNull(hostName, "hostName is null");
         this.filesToMount = requireNonNull(filesToMount, "filesToMount is null");
+        this.mountableFiles = requireNonNull(mountableFiles, "mountableFiles is null");
         this.envVars = requireNonNull(envVars, "envVars is null");
         this.network = requireNonNull(network, "network is null");
         this.startupRetryLimit = startupRetryLimit;
@@ -82,8 +99,15 @@ public abstract class BaseTestContainer
             container.addExposedPort(port);
         }
         filesToMount.forEach((dockerPath, filePath) -> container.withCopyFileToContainer(forHostPath(filePath), dockerPath));
+        mountableFiles.forEach((mountableFile, dockerPath) -> container.withCopyFileToContainer(mountableFile, dockerPath));
         container.withEnv(envVars);
-        container.withCreateContainerCmdModifier(c -> c.withHostName(hostName))
+        // Something wrong with the CI docker env, explicitly specify network alias to avoid issues with container hostname resolution
+        container.withCreateContainerCmdModifier(c -> {
+            CreateContainerCmd cmd = c.withHostName(hostName);
+            if (network.isPresent()) {
+                cmd.withAliases(hostName);
+            }
+        })
                 .withStartupCheckStrategy(new IsRunningStartupCheckStrategy())
                 .waitingFor(Wait.forListeningPort())
                 .withStartupTimeout(Duration.ofMinutes(5));
@@ -169,6 +193,7 @@ public abstract class BaseTestContainer
         protected String hostName;
         protected Set<Integer> exposePorts = ImmutableSet.of();
         protected Map<String, String> filesToMount = ImmutableMap.of();
+        protected Map<MountableFile, String> mountableFiles = ImmutableMap.of();
         protected Map<String, String> envVars = ImmutableMap.of();
         protected Optional<Network> network = Optional.empty();
         protected int startupRetryLimit = 1;
@@ -202,6 +227,13 @@ public abstract class BaseTestContainer
         public SELF withFilesToMount(Map<String, String> filesToMount)
         {
             this.filesToMount = filesToMount;
+            return self;
+        }
+
+        // similar to withFilesToMount, but allows users to construct MountableFile on their own
+        public SELF withMountableFiles(Map<MountableFile, String> mountableFiles)
+        {
+            this.mountableFiles = mountableFiles;
             return self;
         }
 

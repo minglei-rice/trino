@@ -185,5 +185,4 @@ public class TestIcebergIndex
         }
         return DataFiles.builder(table.spec()).copy(sourceFile).withIndexFile(indexFiles).build();
     }
-
 }
