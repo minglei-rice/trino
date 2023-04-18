@@ -255,6 +255,7 @@ import io.trino.sql.planner.optimizations.OptimizerStats;
 import io.trino.sql.planner.optimizations.PlanOptimizer;
 import io.trino.sql.planner.optimizations.PredicatePushDown;
 import io.trino.sql.planner.optimizations.ReplicateJoinAndSemiJoinInDelete;
+import io.trino.sql.planner.optimizations.RewriteOnlyMinMaxCountPlan;
 import io.trino.sql.planner.optimizations.StatsRecordingPlanOptimizer;
 import io.trino.sql.planner.optimizations.TransformQuantifiedComparisonApplyToCorrelatedJoin;
 import io.trino.sql.planner.optimizations.UnaliasSymbolReferences;
@@ -967,6 +968,19 @@ public class PlanOptimizers
                         new AddIntermediateAggregations(),
                         new RemoveRedundantIdentityProjections())));
         // DO NOT add optimizers that change the plan shape (computations) after this point
+
+        // The following two optimizers should be applied after added intermediate aggregations, and
+        // SHOULD NOT be moved down.
+        builder.add(new RewriteOnlyMinMaxCountPlan(plannerContext, typeAnalyzer));
+        builder.add(new IterativeOptimizer(
+                plannerContext,
+                ruleStats,
+                statsCalculator,
+                costCalculator,
+                ImmutableSet.<Rule<?>>builder()
+                        .addAll(new SimplifyExpressions(plannerContext, typeAnalyzer).rules())
+                        .addAll(new UnwrapCastInComparison(plannerContext, typeAnalyzer).rules())
+                        .build()));
 
         // Remove any remaining sugar
         builder.add(new IterativeOptimizer(

@@ -152,9 +152,18 @@ public class QueryExplainer
 
     public Plan getLogicalPlan(Session session, Statement statement, List<Expression> parameters, WarningCollector warningCollector)
     {
+        return getLogicalPlan(session, statement, OPTIMIZED_AND_VALIDATED, parameters, warningCollector, true);
+    }
+
+    public Plan getLogicalPlan(Session session, Statement statement, LogicalPlanner.Stage stage, List<Expression> parameters, WarningCollector warningCollector, boolean collectPlanStatistics)
+    {
         // analyze statement
         Analysis analysis = analyze(session, statement, parameters, warningCollector);
+        return getLogicalPlan(session, analysis, stage, warningCollector, collectPlanStatistics);
+    }
 
+    public Plan getLogicalPlan(Session session, Analysis analysis, LogicalPlanner.Stage stage, WarningCollector warningCollector, boolean collectPlanStatistics)
+    {
         PlanNodeIdAllocator idAllocator = new PlanNodeIdAllocator();
 
         // plan statement

@@ -157,6 +157,7 @@ public final class SystemSessionProperties
     public static final String RETRY_MAX_DELAY = "retry_max_delay";
     public static final String RETRY_DELAY_SCALE_FACTOR = "retry_delay_scale_factor";
     public static final String HIDE_INACCESSIBLE_COLUMNS = "hide_inaccessible_columns";
+
     public static final String FAULT_TOLERANT_EXECUTION_TARGET_TASK_INPUT_SIZE = "fault_tolerant_execution_target_task_input_size";
     public static final String FAULT_TOLERANT_EXECUTION_MIN_TASK_SPLIT_COUNT = "fault_tolerant_execution_min_task_split_count";
     public static final String FAULT_TOLERANT_EXECUTION_TARGET_TASK_SPLIT_COUNT = "fault_tolerant_execution_target_task_split_count";
@@ -173,7 +174,7 @@ public final class SystemSessionProperties
     public static final String JOIN_PARTITIONED_BUILD_MIN_ROW_COUNT = "join_partitioned_build_min_row_count";
     public static final String USE_EXACT_PARTITIONING = "use_exact_partitioning";
     public static final String FORCE_SPILLING_JOIN = "force_spilling_join";
-
+    public static final String QUERY_OPTIMIZE_WITH_METADATA_ENABLED = "query_optimize_with_metadata_enabled";
     private final List<PropertyMetadata<?>> sessionProperties;
 
     public SystemSessionProperties()
@@ -853,6 +854,11 @@ public final class SystemSessionProperties
                         FORCE_SPILLING_JOIN,
                         "Force the usage of spliing join operator in favor of the non-spilling one, even if spill is not enabled",
                         featuresConfig.isForceSpillingJoin(),
+                        false),
+                booleanProperty(
+                        QUERY_OPTIMIZE_WITH_METADATA_ENABLED,
+                        "Optimizing queries by leveraging metadata",
+                        featuresConfig.isOptimizeQueryWithMetadata(),
                         false));
     }
 
@@ -1525,5 +1531,10 @@ public final class SystemSessionProperties
     public static boolean isForceSpillingOperator(Session session)
     {
         return session.getSystemProperty(FORCE_SPILLING_JOIN, Boolean.class);
+    }
+
+    public static boolean isQueryOptimizeWithMetadataEnabled(Session session)
+    {
+        return session.getSystemProperty(QUERY_OPTIMIZE_WITH_METADATA_ENABLED, Boolean.class);
     }
 }

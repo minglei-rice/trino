@@ -101,6 +101,7 @@ public class FeaturesConfig
 
     private boolean hideInaccessibleColumns;
     private boolean forceSpillingJoin;
+    private boolean optimizeQueryWithMetadata = true;
 
     public enum DataIntegrityVerification
     {
@@ -409,6 +410,18 @@ public class FeaturesConfig
     public FeaturesConfig setLateMaterializationEnabled(boolean lateMaterializationEnabled)
     {
         this.lateMaterializationEnabled = lateMaterializationEnabled;
+        return this;
+    }
+
+    public boolean isOptimizeQueryWithMetadata()
+    {
+        return optimizeQueryWithMetadata;
+    }
+
+    @Config("optimizer.optimize-query-with-metadata")
+    public FeaturesConfig setOptimizeQueryWithMetadata(boolean optimizeQueryWithMetadata)
+    {
+        this.optimizeQueryWithMetadata = optimizeQueryWithMetadata;
         return this;
     }
 

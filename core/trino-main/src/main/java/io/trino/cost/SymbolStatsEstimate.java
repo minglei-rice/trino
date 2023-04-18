@@ -39,6 +39,7 @@ public class SymbolStatsEstimate
     private final double nullsFraction;
     private final double averageRowSize;
     private final double distinctValuesCount;
+    private final double accurateNullsCount;
 
     public static SymbolStatsEstimate unknown()
     {
@@ -57,6 +58,17 @@ public class SymbolStatsEstimate
             @JsonProperty("nullsFraction") double nullsFraction,
             @JsonProperty("averageRowSize") double averageRowSize,
             @JsonProperty("distinctValuesCount") double distinctValuesCount)
+    {
+        this(lowValue, highValue, nullsFraction, averageRowSize, distinctValuesCount, NaN);
+    }
+
+    public SymbolStatsEstimate(
+            double lowValue,
+            double highValue,
+            double nullsFraction,
+            double averageRowSize,
+            double distinctValuesCount,
+            double accurateNullsCount)
     {
         checkArgument(
                 lowValue <= highValue || (isNaN(lowValue) && isNaN(highValue)),
@@ -79,6 +91,7 @@ public class SymbolStatsEstimate
         checkArgument(distinctValuesCount >= 0 || isNaN(distinctValuesCount), "Distinct values count should be non-negative, got: %s", distinctValuesCount);
         // TODO normalize distinctValuesCount for an empty range (or validate it is already normalized)
         this.distinctValuesCount = distinctValuesCount;
+        this.accurateNullsCount = accurateNullsCount;
     }
 
     @JsonProperty
@@ -129,6 +142,11 @@ public class SymbolStatsEstimate
     public SymbolStatsEstimate mapDistinctValuesCount(Function<Double, Double> mappingFunction)
     {
         return buildFrom(this).setDistinctValuesCount(mappingFunction.apply(distinctValuesCount)).build();
+    }
+
+    public double getAccurateNullsCount()
+    {
+        return accurateNullsCount;
     }
 
     public boolean isUnknown()
@@ -199,6 +217,7 @@ public class SymbolStatsEstimate
         private double nullsFraction = NaN;
         private double averageRowSize = NaN;
         private double distinctValuesCount = NaN;
+        private double accurateNullsCount = NaN;
 
         public Builder setStatisticsRange(StatisticRange range)
         {
@@ -237,9 +256,15 @@ public class SymbolStatsEstimate
             return this;
         }
 
+        public Builder setAccurateNullsCount(double accurateNullsCount)
+        {
+            this.accurateNullsCount = accurateNullsCount;
+            return this;
+        }
+
         public SymbolStatsEstimate build()
         {
-            return new SymbolStatsEstimate(lowValue, highValue, nullsFraction, averageRowSize, distinctValuesCount);
+            return new SymbolStatsEstimate(lowValue, highValue, nullsFraction, averageRowSize, distinctValuesCount, accurateNullsCount);
         }
     }
 }

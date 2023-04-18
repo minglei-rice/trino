@@ -63,7 +63,8 @@ public class TestFeaturesConfig
                 .setIncrementalHashArrayLoadFactorEnabled(true)
                 .setHideInaccessibleColumns(false)
                 .setAllowSetViewAuthorization(false)
-                .setForceSpillingJoin(false));
+                .setForceSpillingJoin(false)
+                .setOptimizeQueryWithMetadata(true));
     }
 
     @Test
@@ -98,6 +99,7 @@ public class TestFeaturesConfig
                 .put("hide-inaccessible-columns", "true")
                 .put("legacy.allow-set-view-authorization", "true")
                 .put("force-spilling-join-operator", "true")
+                .put("optimizer.optimize-query-with-metadata", "false")
                 .buildOrThrow();
 
         FeaturesConfig expected = new FeaturesConfig()
@@ -125,6 +127,7 @@ public class TestFeaturesConfig
                 .setLateMaterializationEnabled(true)
                 .setOmitDateTimeTypePrecision(true)
                 .setLegacyCatalogRoles(true)
+                .setOptimizeQueryWithMetadata(false)
                 .setIncrementalHashArrayLoadFactorEnabled(false)
                 .setHideInaccessibleColumns(true)
                 .setAllowSetViewAuthorization(true)

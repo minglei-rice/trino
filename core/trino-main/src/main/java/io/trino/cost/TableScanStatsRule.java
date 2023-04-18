@@ -103,6 +103,7 @@ public class TableScanStatsRule
             result.setLowValue(range.getMin());
             result.setHighValue(range.getMax());
         });
+        result.setAccurateNullsCount(columnStatistics.getAccurateNullsCount().getValue());
         return result.build();
     }
 }
