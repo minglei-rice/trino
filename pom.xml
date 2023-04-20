@@ -85,7 +85,7 @@
         <air.test.jvmsize>6g</air.test.jvmsize>
 
         <air.javadoc.lint>-missing</air.javadoc.lint>
-        <air.test.jvm.additional-arguments>-Djava.io.tmpdir=/data/tmp -Djava.util.logging.config.file=${project.basedir}/src/test/resources/logging.properties</air.test.jvm.additional-arguments>
+        <air.test.jvm.additional-arguments>-Djava.util.logging.config.file=${project.basedir}/src/test/resources/logging.properties</air.test.jvm.additional-arguments>
     </properties>
 
     <modules>

@@ -94,7 +94,7 @@ public class TableStatisticsMaker
                 .useSnapshot(tableHandle.getSnapshotId().get())
                 .includeColumnStats();
         IcebergStatistics.Builder icebergStatisticsBuilder = new IcebergStatistics.Builder(columns, typeManager);
-        boolean accurate = tableHandle.getUnenforcedPredicate().getDomains().isEmpty() || tableHandle.getUnenforcedPredicate().isAll();
+        boolean accurate = tableHandle.getUnenforcedPredicate().isAll();
         try (CloseableIterable<FileScanTask> fileScanTasks = tableScan.planFiles()) {
             for (FileScanTask fileScanTask : fileScanTasks) {
                 icebergStatisticsBuilder.acceptDataFile(fileScanTask.file(), fileScanTask.spec());

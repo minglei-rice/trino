@@ -175,13 +175,14 @@ public class PlanNodeStatsEstimate
         }
         PlanNodeStatsEstimate that = (PlanNodeStatsEstimate) o;
         return Double.compare(outputRowCount, that.outputRowCount) == 0 &&
-                Objects.equals(symbolStatistics, that.symbolStatistics);
+                Objects.equals(symbolStatistics, that.symbolStatistics) &&
+                accurate == that.accurate;
     }
 
     @Override
     public int hashCode()
     {
-        return Objects.hash(outputRowCount, symbolStatistics);
+        return Objects.hash(outputRowCount, symbolStatistics, accurate);
     }
 
     public static Builder builder()

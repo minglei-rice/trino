@@ -40,7 +40,7 @@ public final class TableStatistics
 
     public TableStatistics(Estimate rowCount, Map<ColumnHandle, ColumnStatistics> columnStatistics)
     {
-        this(rowCount, columnStatistics, true);
+        this(rowCount, columnStatistics, false);
     }
 
     public TableStatistics(Estimate rowCount, Map<ColumnHandle, ColumnStatistics> columnStatistics, boolean accurate)
@@ -84,13 +84,14 @@ public final class TableStatistics
         }
         TableStatistics that = (TableStatistics) o;
         return Objects.equals(rowCount, that.rowCount) &&
-                Objects.equals(columnStatistics, that.columnStatistics);
+                Objects.equals(columnStatistics, that.columnStatistics) &&
+                isAccurate() == that.isAccurate();
     }
 
     @Override
     public int hashCode()
     {
-        return Objects.hash(rowCount, columnStatistics);
+        return Objects.hash(rowCount, columnStatistics, isAccurate());
     }
 
     @Override

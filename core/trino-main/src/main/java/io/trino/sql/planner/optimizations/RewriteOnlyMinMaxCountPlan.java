@@ -274,8 +274,7 @@ public class RewriteOnlyMinMaxCountPlan
             if (isCandidatePlan()) {
                 Map<PlanNodeId, PlanNodeStatsEstimate> tableScanStats =
                         TableScanStatsExtractor.extract(node, session, runtimeTypes, countConstantOnly, tableStatsProvider);
-                // TODO: Support more table scans, specially for UNION.
-                if (tableScanStats.size() == 1 && verifyTableScanStats(tableScanStats)) {
+                if (verifyTableScanStats(tableScanStats)) {
                     rewrittenNode = rewritePlan(node, tableScanStats.values().stream().findFirst().get());
                 }
             }
@@ -410,22 +409,38 @@ public class RewriteOnlyMinMaxCountPlan
          */
         private boolean verifyTableScanStats(Map<PlanNodeId, PlanNodeStatsEstimate> estimates)
         {
-            for (PlanNodeStatsEstimate estimate : estimates.values()) {
-                if (!estimate.isAccurate()) {
-                    return false;
-                }
-                if (!isFinite(estimate.getOutputRowCount())) {
-                    return false;
-                }
+            // TODO: Support more table scans, specially for UNION.
+            if (estimates.size() != 1) {
+                return false;
+            }
+            PlanNodeStatsEstimate estimate = estimates.values().stream().findFirst().get();
+            if (!estimate.isAccurate()) {
+                return false;
+            }
+            if (!isFinite(estimate.getOutputRowCount())) {
+                return false;
+            }
 
-                for (Map.Entry<Symbol, SymbolStatsEstimate> entry : estimate.getSymbolStatistics().entrySet()) {
-                    Symbol columnSymbol = entry.getKey();
-                    SymbolStatsEstimate columnEstimate = entry.getValue();
-                    if (aggregation2columns.getOrDefault(AggregationQueryRewrite.FunctionName.COUNT, new HashSet<>()).contains(columnSymbol) && !isFinite(columnEstimate.getAccurateNullsCount()) ||
-                            aggregation2columns.getOrDefault(AggregationQueryRewrite.FunctionName.MIN, new HashSet<>()).contains(columnSymbol) && !isFinite(columnEstimate.getLowValue()) ||
-                            aggregation2columns.getOrDefault(AggregationQueryRewrite.FunctionName.MAX, new HashSet<>()).contains(columnSymbol) && !isFinite(columnEstimate.getHighValue())) {
+            for (FunctionName functionName : aggregation2columns.keySet()) {
+                Set<Symbol> symbols = aggregation2columns.get(functionName);
+                switch (functionName) {
+                    case COUNT:
+                        if (symbols.stream().anyMatch(s -> !isFinite(estimate.getSymbolStatistics(s).getAccurateNullsCount()))) {
+                            return false;
+                        }
+                        break;
+                    case MAX:
+                        if (symbols.stream().anyMatch(s -> !isFinite(estimate.getSymbolStatistics(s).getHighValue()))) {
+                            return false;
+                        }
+                        break;
+                    case MIN:
+                        if (symbols.stream().anyMatch(s -> !isFinite(estimate.getSymbolStatistics(s).getLowValue()))) {
+                            return false;
+                        }
+                        break;
+                    default:
                         return false;
-                    }
                 }
             }
             return true;
@@ -480,8 +495,7 @@ public class RewriteOnlyMinMaxCountPlan
                     throw new RuntimeException(String.format("Could not determine the symbol %s reference from the analyzed expressions!", expr.toString()));
                 }
             }
-            if (expr instanceof ArithmeticBinaryExpression) {
-                ArithmeticBinaryExpression abe = (ArithmeticBinaryExpression) expr;
+            if (expr instanceof ArithmeticBinaryExpression abe) {
                 return new ArithmeticBinaryExpression(
                         abe.getOperator(),
                         computeExpression(abe.getLeft(), planNodeStatsEstimate),
@@ -778,10 +792,7 @@ public class RewriteOnlyMinMaxCountPlan
                     aggregation.getArguments().forEach(expr -> {
                         String resolvedFuncName = aggregation.getResolvedFunction().getSignature().getName();
                         AggregationQueryRewrite.FunctionName functionName = toFunctionName.apply(resolvedFuncName);
-                        if (!aggregation2columns.containsKey(functionName)) {
-                            aggregation2columns.put(functionName, new HashSet<>());
-                        }
-                        aggregation2columns.get(functionName).add(Symbol.from(expr));
+                        aggregation2columns.computeIfAbsent(functionName, k -> new HashSet<>()).add(Symbol.from(expr));
                     });
                 }
             }
