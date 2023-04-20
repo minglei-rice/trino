@@ -24,7 +24,6 @@ import io.trino.cost.SymbolStatsEstimate;
 import io.trino.cost.TableScanStatsRule;
 import io.trino.cost.TableStatsProvider;
 import io.trino.execution.warnings.WarningCollector;
-import io.trino.metadata.Metadata;
 import io.trino.spi.StandardErrorCode;
 import io.trino.spi.TrinoException;
 import io.trino.spi.connector.ConnectorCapabilities;
@@ -143,10 +142,10 @@ public class RewriteOnlyMinMaxCountPlan
 
     private static class TableScanStatsExtractor
     {
-        public static Map<PlanNodeId, PlanNodeStatsEstimate> extract(PlanNode node, Metadata metadata, Session session, TypeProvider types, boolean skipColumnStats, TableStatsProvider tableStatsProvider)
+        public static Map<PlanNodeId, PlanNodeStatsEstimate> extract(PlanNode node, Session session, TypeProvider types, boolean skipColumnStats, TableStatsProvider tableStatsProvider)
         {
             ImmutableMap.Builder<PlanNodeId, PlanNodeStatsEstimate> estimates = ImmutableMap.builder();
-            node.accept(new TableScanStatsExtractor.Visitor(metadata, new StatsNormalizer(), null, Lookup.noLookup(), session, types, estimates::put, skipColumnStats, tableStatsProvider), null);
+            node.accept(new TableScanStatsExtractor.Visitor(new StatsNormalizer(), null, Lookup.noLookup(), session, types, estimates::put, skipColumnStats, tableStatsProvider), null);
             return estimates.buildOrThrow();
         }
 
@@ -163,7 +162,6 @@ public class RewriteOnlyMinMaxCountPlan
             private TableStatsProvider tableStatsProvider;
 
             public Visitor(
-                    Metadata metadata,
                     StatsNormalizer statsNormalizer,
                     StatsProvider statsProvider,
                     Lookup lookup, Session session,
@@ -275,7 +273,7 @@ public class RewriteOnlyMinMaxCountPlan
             PlanNode rewrittenNode = node;
             if (isCandidatePlan()) {
                 Map<PlanNodeId, PlanNodeStatsEstimate> tableScanStats =
-                        TableScanStatsExtractor.extract(node, plannerContext.getMetadata(), session, runtimeTypes, countConstantOnly, tableStatsProvider);
+                        TableScanStatsExtractor.extract(node, session, runtimeTypes, countConstantOnly, tableStatsProvider);
                 // TODO: Support more table scans, specially for UNION.
                 if (tableScanStats.size() == 1 && verifyTableScanStats(tableScanStats)) {
                     rewrittenNode = rewritePlan(node, tableScanStats.values().stream().findFirst().get());
@@ -413,6 +411,9 @@ public class RewriteOnlyMinMaxCountPlan
         private boolean verifyTableScanStats(Map<PlanNodeId, PlanNodeStatsEstimate> estimates)
         {
             for (PlanNodeStatsEstimate estimate : estimates.values()) {
+                if (!estimate.isAccurate()) {
+                    return false;
+                }
                 if (!isFinite(estimate.getOutputRowCount())) {
                     return false;
                 }

@@ -31,6 +31,8 @@ public final class TableStatistics
     private final Estimate rowCount;
     private final Map<ColumnHandle, ColumnStatistics> columnStatistics;
 
+    private final boolean accurate;
+
     public static TableStatistics empty()
     {
         return EMPTY;
@@ -38,11 +40,22 @@ public final class TableStatistics
 
     public TableStatistics(Estimate rowCount, Map<ColumnHandle, ColumnStatistics> columnStatistics)
     {
+        this(rowCount, columnStatistics, true);
+    }
+
+    public TableStatistics(Estimate rowCount, Map<ColumnHandle, ColumnStatistics> columnStatistics, boolean accurate)
+    {
         this.rowCount = requireNonNull(rowCount, "rowCount cannot be null");
         if (!rowCount.isUnknown() && rowCount.getValue() < 0) {
             throw new IllegalArgumentException(format("rowCount must be greater than or equal to 0: %s", rowCount.getValue()));
         }
         this.columnStatistics = unmodifiableMap(requireNonNull(columnStatistics, "columnStatistics cannot be null"));
+        this.accurate = accurate;
+    }
+
+    public boolean isAccurate()
+    {
+        return accurate;
     }
 
     public Estimate getRowCount()
@@ -99,9 +112,17 @@ public final class TableStatistics
         private Estimate rowCount = Estimate.unknown();
         private Map<ColumnHandle, ColumnStatistics> columnStatisticsMap = new LinkedHashMap<>();
 
+        private boolean accurate;
+
         public Builder setRowCount(Estimate rowCount)
         {
             this.rowCount = requireNonNull(rowCount, "rowCount cannot be null");
+            return this;
+        }
+
+        public Builder setAccurate(boolean accurate)
+        {
+            this.accurate = accurate;
             return this;
         }
 
@@ -115,7 +136,7 @@ public final class TableStatistics
 
         public TableStatistics build()
         {
-            return new TableStatistics(rowCount, columnStatisticsMap);
+            return new TableStatistics(rowCount, columnStatisticsMap, accurate);
         }
     }
 }

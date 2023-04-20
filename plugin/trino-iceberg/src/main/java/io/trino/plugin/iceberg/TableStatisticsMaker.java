@@ -93,10 +93,15 @@ public class TableStatisticsMaker
                 .filter(toIcebergExpression(enforcedPredicate))
                 .useSnapshot(tableHandle.getSnapshotId().get())
                 .includeColumnStats();
-
         IcebergStatistics.Builder icebergStatisticsBuilder = new IcebergStatistics.Builder(columns, typeManager);
+        boolean accurate = tableHandle.getUnenforcedPredicate().getDomains().isEmpty() || tableHandle.getUnenforcedPredicate().isAll();
         try (CloseableIterable<FileScanTask> fileScanTasks = tableScan.planFiles()) {
-            fileScanTasks.forEach(fileScanTask -> icebergStatisticsBuilder.acceptDataFile(fileScanTask.file(), fileScanTask.spec()));
+            for (FileScanTask fileScanTask : fileScanTasks) {
+                icebergStatisticsBuilder.acceptDataFile(fileScanTask.file(), fileScanTask.spec());
+                if (!fileScanTask.deletes().isEmpty()) {
+                    accurate = false;
+                }
+            }
         }
         catch (IOException e) {
             throw new UncheckedIOException(e);
@@ -142,7 +147,7 @@ public class TableStatisticsMaker
                             .orElseGet(Estimate::unknown));
             columnHandleBuilder.put(columnHandle, columnBuilder.build());
         }
-        return new TableStatistics(Estimate.of(recordCount), columnHandleBuilder.buildOrThrow());
+        return new TableStatistics(Estimate.of(recordCount), columnHandleBuilder.buildOrThrow(), accurate);
     }
 
     private Map<Integer, Long> readNdvs(Table icebergTable)

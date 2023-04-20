@@ -44,9 +44,16 @@ public class PlanNodeStatsEstimate
     private final double outputRowCount;
     private final PMap<Symbol, SymbolStatsEstimate> symbolStatistics;
 
+    private final boolean accurate;
+
     public static PlanNodeStatsEstimate unknown()
     {
         return UNKNOWN;
+    }
+
+    public boolean isAccurate()
+    {
+        return accurate;
     }
 
     @JsonCreator
@@ -54,14 +61,15 @@ public class PlanNodeStatsEstimate
             @JsonProperty("outputRowCount") double outputRowCount,
             @JsonProperty("symbolStatistics") Map<Symbol, SymbolStatsEstimate> symbolStatistics)
     {
-        this(outputRowCount, HashTreePMap.from(requireNonNull(symbolStatistics, "symbolStatistics is null")));
+        this(outputRowCount, HashTreePMap.from(requireNonNull(symbolStatistics, "symbolStatistics is null")), true);
     }
 
-    private PlanNodeStatsEstimate(double outputRowCount, PMap<Symbol, SymbolStatsEstimate> symbolStatistics)
+    private PlanNodeStatsEstimate(double outputRowCount, PMap<Symbol, SymbolStatsEstimate> symbolStatistics, boolean accurate)
     {
         checkArgument(isNaN(outputRowCount) || outputRowCount >= 0, "outputRowCount cannot be negative");
         this.outputRowCount = outputRowCount;
         this.symbolStatistics = symbolStatistics;
+        this.accurate = accurate;
     }
 
     /**
@@ -183,7 +191,7 @@ public class PlanNodeStatsEstimate
 
     public static Builder buildFrom(PlanNodeStatsEstimate other)
     {
-        return new Builder(other.getOutputRowCount(), other.symbolStatistics);
+        return new Builder(other.getOutputRowCount(), other.symbolStatistics, other.accurate);
     }
 
     public static final class Builder
@@ -191,20 +199,29 @@ public class PlanNodeStatsEstimate
         private double outputRowCount;
         private PMap<Symbol, SymbolStatsEstimate> symbolStatistics;
 
+        private boolean accurate;
+
         public Builder()
         {
-            this(NaN, HashTreePMap.empty());
+            this(NaN, HashTreePMap.empty(), true);
         }
 
-        private Builder(double outputRowCount, PMap<Symbol, SymbolStatsEstimate> symbolStatistics)
+        private Builder(double outputRowCount, PMap<Symbol, SymbolStatsEstimate> symbolStatistics, boolean accurate)
         {
             this.outputRowCount = outputRowCount;
             this.symbolStatistics = symbolStatistics;
+            this.accurate = accurate;
         }
 
         public Builder setOutputRowCount(double outputRowCount)
         {
             this.outputRowCount = outputRowCount;
+            return this;
+        }
+
+        public Builder setAccurate(boolean accurate)
+        {
+            this.accurate = accurate;
             return this;
         }
 
@@ -228,7 +245,7 @@ public class PlanNodeStatsEstimate
 
         public PlanNodeStatsEstimate build()
         {
-            return new PlanNodeStatsEstimate(outputRowCount, symbolStatistics);
+            return new PlanNodeStatsEstimate(outputRowCount, symbolStatistics, accurate);
         }
     }
 }
