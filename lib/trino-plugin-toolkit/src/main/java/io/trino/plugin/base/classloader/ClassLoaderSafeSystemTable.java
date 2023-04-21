@@ -24,6 +24,8 @@ import io.trino.spi.predicate.TupleDomain;
 
 import javax.inject.Inject;
 
+import java.util.List;
+
 import static java.util.Objects.requireNonNull;
 
 public class ClassLoaderSafeSystemTable
@@ -60,6 +62,18 @@ public class ClassLoaderSafeSystemTable
     {
         try (ThreadContextClassLoader ignored = new ThreadContextClassLoader(classLoader)) {
             return delegate.cursor(transactionHandle, session, constraint);
+        }
+    }
+
+    @Override
+    public RecordCursor cursorForSpecificColumns(
+            ConnectorTransactionHandle transactionHandle,
+            ConnectorSession session,
+            TupleDomain<Integer> constraint,
+            List<Integer> userToSystemFieldIndex)
+    {
+        try (ThreadContextClassLoader ignored = new ThreadContextClassLoader(classLoader)) {
+            return delegate.cursorForSpecificColumns(transactionHandle, session, constraint, userToSystemFieldIndex);
         }
     }
 
