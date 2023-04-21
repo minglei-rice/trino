@@ -66,6 +66,7 @@ import io.trino.sql.tree.ExplainAnalyze;
 import io.trino.sql.tree.Expression;
 import io.trino.sql.tree.Identifier;
 import io.trino.sql.tree.LikePredicate;
+import io.trino.sql.tree.Limit;
 import io.trino.sql.tree.LongLiteral;
 import io.trino.sql.tree.Node;
 import io.trino.sql.tree.NodeRef;
@@ -291,8 +292,9 @@ public final class ShowQueriesRewrite
             return simpleQuery(
                     selectList(aliasedName("table_name", "Table")),
                     from(schema.getCatalogName(), TABLES.getSchemaTableName()),
-                    predicate,
-                    ordering(ascending("table_name")));
+                    Optional.of(predicate),
+                    ordering(ascending("table_name")),
+                    new Limit(new LongLiteral(String.valueOf(Integer.MAX_VALUE))));
         }
 
         @Override
@@ -434,7 +436,8 @@ public final class ShowQueriesRewrite
                     selectList(aliasedName("schema_name", "Schema")),
                     from(catalog, SCHEMATA.getSchemaTableName()),
                     predicate,
-                    Optional.of(ordering(ascending("schema_name"))));
+                    ordering(ascending("schema_name")),
+                    new Limit(new LongLiteral(String.valueOf(Integer.MAX_VALUE))));
         }
 
         @Override

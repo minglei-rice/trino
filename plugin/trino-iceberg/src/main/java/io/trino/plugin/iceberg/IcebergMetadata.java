@@ -44,6 +44,7 @@ import io.trino.plugin.iceberg.procedure.IcebergRemoveOrphanFilesHandle;
 import io.trino.plugin.iceberg.procedure.IcebergTableExecuteHandle;
 import io.trino.plugin.iceberg.procedure.IcebergTableProcedureId;
 import io.trino.plugin.iceberg.util.DataFileWithDeleteFiles;
+import io.trino.spi.StandardErrorCode;
 import io.trino.spi.TrinoException;
 import io.trino.spi.block.Block;
 import io.trino.spi.connector.Assignment;
@@ -2102,6 +2103,32 @@ public class IcebergMetadata
                 newProjections,
                 outputAssignments,
                 false));
+    }
+
+    /**
+     * Determine if there is a filter on a table. For partition table require at least one partition filter,
+     * for non-partitioned table no filter is required.
+     */
+    @Override
+    public void validateScan(ConnectorSession session, ConnectorTableHandle handle)
+    {
+        IcebergTableHandle table = (IcebergTableHandle) handle;
+        Table icebergTable = catalog.loadTable(session, table.getSchemaTableName());
+        if (icebergTable.spec().isUnpartitioned()) {
+            return;
+        }
+        if (IcebergSessionProperties.isFilterOnPartitionTable(session)
+                // which means the enforcedPredicate doesn't have any filtering effect
+                // The reason is that the meaning of TupleDomain.all() is alwaysTrue,
+                // and alwaysTrue means that it cannot provide any filtering effect.
+                && table.getEnforcedPredicate().equals(TupleDomain.all())) {
+            throw new TrinoException(
+                    StandardErrorCode.QUERY_REJECTED,
+                    format("Filter required on %s.%s for at least one partition column, if you actually want query run without partition filter, " +
+                                    "please set session iceberg.query_partition_filter_required to false.",
+                            table.getSchemaName(),
+                            table.getTableName()));
+        }
     }
 
     private static IcebergColumnHandle createProjectedColumnHandle(IcebergColumnHandle column, List<Integer> indices, io.trino.spi.type.Type projectedColumnType)

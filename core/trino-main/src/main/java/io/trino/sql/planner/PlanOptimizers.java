@@ -242,6 +242,8 @@ import io.trino.sql.planner.iterative.rule.UnwrapDateTruncInComparison;
 import io.trino.sql.planner.iterative.rule.UnwrapRowSubscript;
 import io.trino.sql.planner.iterative.rule.UnwrapSingleColumnRowInApply;
 import io.trino.sql.planner.iterative.rule.UseNonPartitionedJoinLookupSource;
+import io.trino.sql.planner.iterative.rule.bigquery.ForbidCrossJoin;
+import io.trino.sql.planner.iterative.rule.bigquery.OrderByFullTable;
 import io.trino.sql.planner.optimizations.AddExchanges;
 import io.trino.sql.planner.optimizations.AddLocalExchanges;
 import io.trino.sql.planner.optimizations.BeginTableWrite;
@@ -449,6 +451,7 @@ public class PlanOptimizers
                                         new RemoveRedundantOffset(),
                                         new RemoveRedundantSort(),
                                         new RemoveRedundantSortBelowLimitWithTies(),
+                                        new OrderByFullTable(), // must be run after MergeLimitWithSort, MergeLimitOverProjectWithSort, RemoveRedundantSort
                                         new RemoveRedundantTopN(),
                                         new RemoveRedundantDistinctLimit(),
                                         new ReplaceRedundantJoinWithSource(),
@@ -535,6 +538,12 @@ public class PlanOptimizers
                                 new TransformCorrelatedDistinctAggregationWithoutProjection(plannerContext),
                                 new TransformCorrelatedGroupedAggregationWithProjection(plannerContext),
                                 new TransformCorrelatedGroupedAggregationWithoutProjection(plannerContext))),
+                new IterativeOptimizer(
+                        plannerContext,
+                        ruleStats,
+                        statsCalculator,
+                        costCalculator,
+                        ImmutableSet.of(new EliminateCrossJoins(plannerContext, typeAnalyzer), new ForbidCrossJoin())), // must be run before PredicatePushDown
                 new IterativeOptimizer(
                         plannerContext,
                         ruleStats,

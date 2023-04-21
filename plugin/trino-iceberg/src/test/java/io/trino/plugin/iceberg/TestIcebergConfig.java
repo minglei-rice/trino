@@ -60,7 +60,8 @@ public class TestIcebergConfig
                 .setMinimumAssignedSplitWeight(0.05)
                 .setMaterializedViewsStorageSchema(null)
                 .setReadIndicesSwitchOn(false)
-                .setGenerateSplitsAsync(true));
+                .setGenerateSplitsAsync(true)
+                .setQueryPartitionFilterRequired(false));
     }
 
     @Test
@@ -87,6 +88,7 @@ public class TestIcebergConfig
                 .put("iceberg.materialized-views.storage-schema", "mv_storage_schema")
                 .put("iceberg.read-indices-switch-on", "true")
                 .put("iceberg.generate-splits-async", "false")
+                .put("iceberg.query-partition-filter-required", "true")
                 .buildOrThrow();
 
         IcebergConfig expected = new IcebergConfig()
@@ -109,7 +111,8 @@ public class TestIcebergConfig
                 .setMinimumAssignedSplitWeight(0.01)
                 .setMaterializedViewsStorageSchema("mv_storage_schema")
                 .setReadIndicesSwitchOn(true)
-                .setGenerateSplitsAsync(false);
+                .setGenerateSplitsAsync(false)
+                .setQueryPartitionFilterRequired(true);
         assertFullMapping(properties, expected);
     }
 }

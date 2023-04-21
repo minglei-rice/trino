@@ -80,6 +80,7 @@ public final class IcebergSessionProperties
     public static final String REMOVE_ORPHAN_FILES_MIN_RETENTION = "remove_orphan_files_min_retention";
     private static final String READ_INDICES_SWITCH_ON = "read_indices_switch_on";
     private static final String GENERATE_SPLITS_ASYNC = "generate_splits_async";
+    private static final String QUERY_PARTITION_FILTER_REQUIRED = "query_partition_filter_required";
 
     private final List<PropertyMetadata<?>> sessionProperties;
 
@@ -264,6 +265,11 @@ public final class IcebergSessionProperties
                         "Whether source splits should be generated asynchronously",
                         icebergConfig.isGenerateSplitsAsync(),
                         false))
+                .add(booleanProperty(
+                        QUERY_PARTITION_FILTER_REQUIRED,
+                        "Whether there is a filter on partition table",
+                        icebergConfig.isQueryPartitionFilterRequired(),
+                        false))
                 .build();
     }
 
@@ -438,5 +444,10 @@ public final class IcebergSessionProperties
     public static boolean isGenerateSplitsAsync(ConnectorSession session)
     {
         return session.getProperty(GENERATE_SPLITS_ASYNC, Boolean.class);
+    }
+
+    public static boolean isFilterOnPartitionTable(ConnectorSession session)
+    {
+        return session.getProperty(QUERY_PARTITION_FILTER_REQUIRED, Boolean.class);
     }
 }

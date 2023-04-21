@@ -175,6 +175,8 @@ public final class SystemSessionProperties
     public static final String USE_EXACT_PARTITIONING = "use_exact_partitioning";
     public static final String FORCE_SPILLING_JOIN = "force_spilling_join";
     public static final String QUERY_OPTIMIZE_WITH_METADATA_ENABLED = "query_optimize_with_metadata_enabled";
+    public static final String FORBID_CROSS_JOIN = "forbid_cross_join";
+    public static final String ORDER_BY_FULL_TABLE = "order_by_full_table";
     private final List<PropertyMetadata<?>> sessionProperties;
 
     public SystemSessionProperties()
@@ -859,6 +861,16 @@ public final class SystemSessionProperties
                         QUERY_OPTIMIZE_WITH_METADATA_ENABLED,
                         "Optimizing queries by leveraging metadata",
                         featuresConfig.isOptimizeQueryWithMetadata(),
+                        false),
+                booleanProperty(
+                        FORBID_CROSS_JOIN,
+                        "Whether Join type forbid cross join",
+                        false,
+                        false),
+                booleanProperty(
+                        ORDER_BY_FULL_TABLE,
+                        "whether forbid order by full table.",
+                        false,
                         false));
     }
 
@@ -1536,5 +1548,15 @@ public final class SystemSessionProperties
     public static boolean isQueryOptimizeWithMetadataEnabled(Session session)
     {
         return session.getSystemProperty(QUERY_OPTIMIZE_WITH_METADATA_ENABLED, Boolean.class);
+    }
+
+    public static boolean forbidCrossJoin(Session session)
+    {
+        return session.getSystemProperty(FORBID_CROSS_JOIN, Boolean.class);
+    }
+
+    public static boolean orderByFullTable(Session session)
+    {
+        return session.getSystemProperty(ORDER_BY_FULL_TABLE, Boolean.class);
     }
 }
