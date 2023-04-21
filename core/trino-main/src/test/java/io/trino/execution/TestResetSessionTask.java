@@ -17,6 +17,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import io.trino.Session;
+import io.trino.connector.CatalogName;
 import io.trino.connector.MockConnectorFactory;
 import io.trino.execution.warnings.WarningCollector;
 import io.trino.metadata.Metadata;
@@ -43,6 +44,8 @@ import static io.trino.testing.TestingSession.testSessionBuilder;
 import static java.util.Collections.emptyList;
 import static java.util.concurrent.Executors.newCachedThreadPool;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNull;
 
 public class TestResetSessionTask
 {
@@ -61,6 +64,11 @@ public class TestResetSessionTask
                                 "foo",
                                 "test property",
                                 null,
+                                false),
+                        stringProperty(
+                                "sys",
+                                "system property should be override at runtime",
+                                null,
                                 false))))
                 .build();
 
@@ -70,6 +78,11 @@ public class TestResetSessionTask
                         .withSessionProperty(stringProperty(
                                 "baz",
                                 "test property",
+                                null,
+                                false))
+                        .withSessionProperty(stringProperty(
+                                "sess",
+                                "system property should be override at runtime",
                                 null,
                                 false))
                         .build(),
@@ -96,6 +109,15 @@ public class TestResetSessionTask
                 .setCatalogSessionProperty(CATALOG_NAME, "baz", "blah")
                 .build();
 
+        assertNull(session.getSystemProperties().get("sys"));
+
+        sessionPropertyManager.addRuntimeSystemSessionProperty("sys", "override");
+        sessionPropertyManager.addRuntimeConnectorSessionProperty(new CatalogName(CATALOG_NAME), "sess", "override");
+
+        Session sessionWithRuntimeProperties = testSessionBuilder(sessionPropertyManager).build();
+        assertEquals(sessionWithRuntimeProperties.getSystemProperties().get("sys"), "override");
+        assertEquals(sessionWithRuntimeProperties.getCatalogProperties(CATALOG_NAME).get("sess"), "override");
+
         QueryStateMachine stateMachine = QueryStateMachine.begin(
                 Optional.empty(),
                 "reset foo",
@@ -119,5 +141,22 @@ public class TestResetSessionTask
 
         Set<String> sessionProperties = stateMachine.getResetSessionProperties();
         assertEquals(sessionProperties, ImmutableSet.of(CATALOG_NAME + ".baz"));
+
+        getFutureValue(new ResetSessionTask(metadata, sessionPropertyManager).execute(
+                new ResetSession(QualifiedName.of("global", "sys")),
+                stateMachine,
+                emptyList(),
+                WarningCollector.NOOP));
+
+        getFutureValue(new ResetSessionTask(metadata, sessionPropertyManager).execute(
+                new ResetSession(QualifiedName.of("global", CATALOG_NAME, "sess")),
+                stateMachine,
+                emptyList(),
+                WarningCollector.NOOP));
+
+        Set<String> resetRuntimeSessionProperties = stateMachine.getResetRuntimeSessionProperties();
+        assertFalse(resetRuntimeSessionProperties.contains("global.sys"));
+        assertFalse(resetRuntimeSessionProperties.contains(String.join(".", "global", CATALOG_NAME, "sess")));
+        assertEquals(resetRuntimeSessionProperties.size(), 2);
     }
 }

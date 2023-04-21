@@ -16,6 +16,8 @@ package io.trino.execution;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import io.trino.Session;
+import io.trino.connector.CatalogName;
 import io.trino.connector.MockConnectorFactory;
 import io.trino.execution.warnings.WarningCollector;
 import io.trino.metadata.Metadata;
@@ -51,11 +53,13 @@ import static io.trino.spi.session.PropertyMetadata.enumProperty;
 import static io.trino.spi.session.PropertyMetadata.integerProperty;
 import static io.trino.spi.session.PropertyMetadata.stringProperty;
 import static io.trino.spi.type.VarcharType.VARCHAR;
+import static io.trino.testing.TestingSession.testSessionBuilder;
 import static java.lang.String.format;
 import static java.util.Collections.emptyList;
 import static java.util.concurrent.Executors.newCachedThreadPool;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNull;
 
 public class TestSetSessionTask
 {
@@ -83,6 +87,11 @@ public class TestSetSessionTask
                                 "foo",
                                 "test property",
                                 null,
+                                false),
+                        stringProperty(
+                                "sys",
+                                "test property",
+                                null,
                                 false))))
                 .build();
 
@@ -104,6 +113,11 @@ public class TestSetSessionTask
                                 "size_property",
                                 "size enum property",
                                 Size.class,
+                                null,
+                                false))
+                        .withSessionProperty(stringProperty(
+                                "sess",
+                                "session property that should be override at runtime",
                                 null,
                                 false))
                         .build(),
@@ -203,5 +217,37 @@ public class TestSetSessionTask
 
         Map<String, String> sessionProperties = stateMachine.getSetSessionProperties();
         assertEquals(sessionProperties, ImmutableMap.of(qualifiedPropName.toString(), expectedValue));
+    }
+
+    @Test
+    public void testSetSessionWithGlobalProperties()
+    {
+        assertNull(TEST_SESSION.getSystemProperties().get("sys"));
+        QualifiedName qualifiedPropName = QualifiedName.of("global", "sys");
+
+        QueryStateMachine stateMachine = QueryStateMachine.begin(
+                Optional.empty(),
+                format("set %s = 'old_value'", qualifiedPropName),
+                Optional.empty(),
+                TEST_SESSION,
+                URI.create("fake://uri"),
+                new ResourceGroupId("test"),
+                false,
+                transactionManager,
+                accessControl,
+                executor,
+                metadata,
+                WarningCollector.NOOP,
+                Optional.empty());
+        getFutureValue(new SetSessionTask(plannerContext, accessControl, sessionPropertyManager).execute(new SetSession(qualifiedPropName, new StringLiteral("override")), stateMachine, ImmutableList.of(), WarningCollector.NOOP));
+        Map<String, String> runtimeSessionProperties = stateMachine.getRuntimeSessionProperties();
+        assertEquals(runtimeSessionProperties.get("sys"), "override");
+
+        qualifiedPropName = QualifiedName.of("global", CATALOG_NAME, "sess");
+        getFutureValue(new SetSessionTask(plannerContext, accessControl, sessionPropertyManager).execute(new SetSession(qualifiedPropName, new StringLiteral("override")), stateMachine, ImmutableList.of(), WarningCollector.NOOP));
+        assertEquals(runtimeSessionProperties.get(String.join(".", CATALOG_NAME, "sess")), "override");
+
+        Session sessionWithRuntimeProperties = testSessionBuilder(sessionPropertyManager).build();
+        assertEquals(sessionWithRuntimeProperties.getSystemProperties().get("sys"), "override");
     }
 }

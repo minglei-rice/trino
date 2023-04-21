@@ -22,6 +22,7 @@ import io.airlift.units.DataSize;
 import io.airlift.units.Duration;
 import io.trino.client.ProtocolHeaders;
 import io.trino.connector.CatalogHandle;
+import io.trino.connector.CatalogName;
 import io.trino.metadata.SessionPropertyManager;
 import io.trino.security.AccessControl;
 import io.trino.security.SecurityContext;
@@ -126,18 +127,33 @@ public final class Session
         this.clientCapabilities = ImmutableSet.copyOf(requireNonNull(clientCapabilities, "clientCapabilities is null"));
         this.resourceEstimates = requireNonNull(resourceEstimates, "resourceEstimates is null");
         this.start = start;
-        this.systemProperties = ImmutableMap.copyOf(requireNonNull(systemProperties, "systemProperties is null"));
         this.sessionPropertyManager = requireNonNull(sessionPropertyManager, "sessionPropertyManager is null");
         this.preparedStatements = requireNonNull(preparedStatements, "preparedStatements is null");
         this.protocolHeaders = requireNonNull(protocolHeaders, "protocolHeaders is null");
 
-        requireNonNull(catalogProperties, "catalogProperties is null");
-        ImmutableMap.Builder<String, Map<String, String>> catalogPropertiesBuilder = ImmutableMap.builder();
-        catalogProperties.entrySet().stream()
-                .map(entry -> Maps.immutableEntry(entry.getKey(), ImmutableMap.copyOf(entry.getValue())))
-                .forEach(catalogPropertiesBuilder::put);
-        this.catalogProperties = catalogPropertiesBuilder.buildOrThrow();
+        // Runtime properties have higher privileges. Considering these properties are from set session task,
+        // this override action would be duplicate in that session.
+        Map<String, String> finalSystemProperties = new HashMap<>();
+        finalSystemProperties.putAll(requireNonNull(systemProperties, "systemProperties is null"));
+        finalSystemProperties.putAll(sessionPropertyManager.getRuntimeSystemSessionProperties());
+        this.systemProperties = ImmutableMap.copyOf(finalSystemProperties);
 
+        Map<CatalogName, Map<String, String>> mergedConnectorProperties = new HashMap<>();
+        catalogProperties.forEach((catalogName, properties) -> mergedConnectorProperties.put(new CatalogName(catalogName), new HashMap<>(properties)));
+        sessionPropertyManager.getAllRuntimeConnectorSessionProperties().forEach((catalogName, propertyMap) -> {
+            if (mergedConnectorProperties.containsKey(catalogName)) {
+                mergedConnectorProperties.get(catalogName).putAll(propertyMap);
+            }
+            else {
+                mergedConnectorProperties.put(catalogName, new HashMap<>(propertyMap));
+            }
+        });
+        ImmutableMap.Builder<String, Map<String, String>> mergedConnectorPropertiesBuilder = ImmutableMap.builder();
+        mergedConnectorProperties.entrySet()
+                .stream()
+                .map(entry -> Maps.immutableEntry(entry.getKey().getCatalogName(), ImmutableMap.copyOf(entry.getValue())))
+                .forEach(mergedConnectorPropertiesBuilder::put);
+        this.catalogProperties = mergedConnectorPropertiesBuilder.build();
         checkArgument(catalog.isPresent() || schema.isEmpty(), "schema is set but catalog is not");
     }
 
