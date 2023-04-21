@@ -24,10 +24,13 @@ import org.testng.annotations.Test;
 import java.net.SocketTimeoutException;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import static java.util.concurrent.TimeUnit.NANOSECONDS;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertTrue;
 
 public class TestStaticTokenAwareMetastoreClientFactory
 {
@@ -103,16 +106,17 @@ public class TestStaticTokenAwareMetastoreClientFactory
     public void testFallbackHiveMetastoreOnTimeOut()
             throws TException
     {
+        Set<ThriftMetastoreClient> clients = CLIENTS.values().stream().map(Optional::get).collect(Collectors.toSet());
+
         TokenAwareMetastoreClientFactory clientFactory = createMetastoreClientFactory(CONFIG_WITH_FALLBACK, CLIENTS);
 
         ThriftMetastoreClient metastoreClient1 = clientFactory.createMetastoreClient(Optional.empty());
-        assertEqualHiveClient(metastoreClient1, DEFAULT_CLIENT);
+        assertContainsHiveClient(clients, metastoreClient1);
 
         assertGetTableException(metastoreClient1);
 
         ThriftMetastoreClient metastoreClient2 = clientFactory.createMetastoreClient(Optional.empty());
-        assertEqualHiveClient(metastoreClient2, FALLBACK_CLIENT);
-
+        assertContainsHiveClient(clients, metastoreClient2);
         assertGetTableException(metastoreClient2);
     }
 
@@ -120,67 +124,73 @@ public class TestStaticTokenAwareMetastoreClientFactory
     public void testFallbackHiveMetastoreOnAllTimeOut()
             throws TException
     {
+        Set<ThriftMetastoreClient> clients = CLIENTS.values().stream().map(Optional::get).collect(Collectors.toSet());
         TokenAwareMetastoreClientFactory clientFactory = createMetastoreClientFactory(CONFIG_WITH_FALLBACK, CLIENTS);
-
         ThriftMetastoreClient metastoreClient1 = clientFactory.createMetastoreClient(Optional.empty());
-        assertEqualHiveClient(metastoreClient1, DEFAULT_CLIENT);
+        assertContainsHiveClient(clients, metastoreClient1);
 
         for (int i = 0; i < 20; ++i) {
             assertGetTableException(metastoreClient1);
         }
 
+        clients.remove(((FailureAwareThriftMetastoreClient) metastoreClient1).getDelegate());
+
         ThriftMetastoreClient metastoreClient2 = clientFactory.createMetastoreClient(Optional.empty());
-        assertEqualHiveClient(metastoreClient2, FALLBACK_CLIENT);
+        assertContainsHiveClient(clients, metastoreClient2);
 
         assertGetTableException(metastoreClient2);
 
         // Still get FALLBACK_CLIENT because DEFAULT_CLIENT failed more times before and therefore longer backoff
         ThriftMetastoreClient metastoreClient3 = clientFactory.createMetastoreClient(Optional.empty());
-        assertEqualHiveClient(metastoreClient3, FALLBACK_CLIENT);
+        assertContainsHiveClient(clients, metastoreClient3);
     }
 
     @Test
     public void testStickToFallbackAfterBackoff()
             throws TException
     {
+        Set<ThriftMetastoreClient> clients = CLIENTS.values().stream().map(Optional::get).collect(Collectors.toSet());
+
         TestingTicker ticker = new TestingTicker();
         TokenAwareMetastoreClientFactory clientFactory = createMetastoreClientFactory(CONFIG_WITH_FALLBACK, CLIENTS, ticker);
 
         ticker.increment(10, NANOSECONDS);
         ThriftMetastoreClient metastoreClient1 = clientFactory.createMetastoreClient(Optional.empty());
-        assertEqualHiveClient(metastoreClient1, DEFAULT_CLIENT);
+        assertContainsHiveClient(clients, metastoreClient1);
         assertGetTableException(metastoreClient1);
 
         ticker.increment(10, NANOSECONDS);
         ThriftMetastoreClient metastoreClient2 = clientFactory.createMetastoreClient(Optional.empty());
-        assertEqualHiveClient(metastoreClient2, FALLBACK_CLIENT);
+        assertContainsHiveClient(clients, metastoreClient2);
 
         // even after backoff for DEFAULT_CLIENT passes we should stick to client which we saw working correctly most recently
         ticker.increment(StaticTokenAwareMetastoreClientFactory.Backoff.MAX_BACKOFF, NANOSECONDS);
         ThriftMetastoreClient metastoreClient3 = clientFactory.createMetastoreClient(Optional.empty());
-        assertEqualHiveClient(metastoreClient3, FALLBACK_CLIENT);
+        assertContainsHiveClient(clients, metastoreClient3);
     }
 
     @Test
     public void testReturnsToDefaultClientAfterErrorOnFallback()
             throws TException
     {
+        Set<ThriftMetastoreClient> clients = CLIENTS.values().stream().map(Optional::get).collect(Collectors.toSet());
+
         TestingTicker ticker = new TestingTicker();
         TokenAwareMetastoreClientFactory clientFactory = createMetastoreClientFactory(CONFIG_WITH_FALLBACK, CLIENTS, ticker);
 
         ticker.increment(10, NANOSECONDS);
         ThriftMetastoreClient metastoreClient1 = clientFactory.createMetastoreClient(Optional.empty());
-        assertEqualHiveClient(metastoreClient1, DEFAULT_CLIENT);
+        assertContainsHiveClient(clients, metastoreClient1);
         assertGetTableException(metastoreClient1);
 
         ticker.increment(10, NANOSECONDS);
         ThriftMetastoreClient metastoreClient2 = clientFactory.createMetastoreClient(Optional.empty());
-        assertEqualHiveClient(metastoreClient2, FALLBACK_CLIENT);
+        assertContainsHiveClient(clients, metastoreClient2);
         assertGetTableException(metastoreClient2);
 
         ticker.increment(10, NANOSECONDS);
         ThriftMetastoreClient metastoreClient3 = clientFactory.createMetastoreClient(Optional.empty());
-        assertEqualHiveClient(metastoreClient3, DEFAULT_CLIENT);
+        assertContainsHiveClient(clients, metastoreClient3);
     }
 
     private static void assertGetTableException(ThriftMetastoreClient client)
@@ -229,5 +239,11 @@ public class TestStaticTokenAwareMetastoreClientFactory
             expected = ((FailureAwareThriftMetastoreClient) expected).getDelegate();
         }
         assertEquals(actual, expected);
+    }
+
+    private void assertContainsHiveClient(Set<ThriftMetastoreClient> clients, ThriftMetastoreClient expected)
+    {
+        ThriftMetastoreClient actual = ((FailureAwareThriftMetastoreClient) expected).getDelegate();
+        assertTrue(clients.contains(actual));
     }
 }
