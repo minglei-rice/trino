@@ -64,7 +64,6 @@ import io.trino.sql.planner.plan.MarkDistinctNode;
 import io.trino.sql.planner.plan.OffsetNode;
 import io.trino.sql.planner.plan.OutputNode;
 import io.trino.sql.planner.plan.PlanNode;
-import io.trino.sql.planner.plan.PlanNodeId;
 import io.trino.sql.planner.plan.PlanVisitor;
 import io.trino.sql.planner.plan.ProjectNode;
 import io.trino.sql.planner.plan.RowNumberNode;
@@ -142,9 +141,9 @@ public class RewriteOnlyMinMaxCountPlan
 
     private static class TableScanStatsExtractor
     {
-        public static Map<PlanNodeId, PlanNodeStatsEstimate> extract(PlanNode node, Session session, TypeProvider types, boolean skipColumnStats, TableStatsProvider tableStatsProvider)
+        public static Map<TableScanNode, PlanNodeStatsEstimate> extract(PlanNode node, Session session, TypeProvider types, boolean skipColumnStats, TableStatsProvider tableStatsProvider)
         {
-            ImmutableMap.Builder<PlanNodeId, PlanNodeStatsEstimate> estimates = ImmutableMap.builder();
+            ImmutableMap.Builder<TableScanNode, PlanNodeStatsEstimate> estimates = ImmutableMap.builder();
             node.accept(new TableScanStatsExtractor.Visitor(new StatsNormalizer(), null, Lookup.noLookup(), session, types, estimates::put, skipColumnStats, tableStatsProvider), null);
             return estimates.buildOrThrow();
         }
@@ -158,15 +157,15 @@ public class RewriteOnlyMinMaxCountPlan
             private final Session session;
             private final TypeProvider typeProvider;
             private final boolean skipColumnStats;
-            private final BiConsumer<PlanNodeId, PlanNodeStatsEstimate> consumer;
-            private TableStatsProvider tableStatsProvider;
+            private final BiConsumer<TableScanNode, PlanNodeStatsEstimate> consumer;
+            private final TableStatsProvider tableStatsProvider;
 
             public Visitor(
                     StatsNormalizer statsNormalizer,
                     StatsProvider statsProvider,
                     Lookup lookup, Session session,
                     TypeProvider typeProvider,
-                    BiConsumer<PlanNodeId, PlanNodeStatsEstimate> consumer,
+                    BiConsumer<TableScanNode, PlanNodeStatsEstimate> consumer,
                     boolean skipColumnStats,
                     TableStatsProvider tableStatsProvider)
             {
@@ -183,7 +182,7 @@ public class RewriteOnlyMinMaxCountPlan
             @Override
             public Void visitTableScan(TableScanNode node, Void context)
             {
-                this.consumer.accept(node.getId(), new TableScanStatsRule(statsNormalizer).calculate(node, statsProvider, lookup, session, typeProvider, tableStatsProvider).get());
+                this.consumer.accept(node, new TableScanStatsRule(statsNormalizer).calculate(node, statsProvider, lookup, session, typeProvider, tableStatsProvider).get());
                 return visitPlan(node, context);
             }
         }
@@ -241,11 +240,12 @@ public class RewriteOnlyMinMaxCountPlan
                         .put(AggregationQueryRewrite.FunctionName.MAX, type -> (tableEstimate, columnEstimate) ->
                                 new Cast(toStringLiteral(type, columnEstimate.getHighValue()), toSqlType(type)))
                         .buildOrThrow();
-        private final Map<Symbol, AggregationNode.Aggregation> symbol2aggregation = new HashMap<>();
-        private final Map<AggregationQueryRewrite.FunctionName, Set<Symbol>> aggregation2columns = new HashMap<>();
+        private final Map<Symbol, AggregationNode.Aggregation> symbolToAgg = new HashMap<>();
+        private final Map<AggregationQueryRewrite.FunctionName, Set<Symbol>> funcNameToArgSymbols = new HashMap<>();
         private final Map<Symbol, SymbolReference> symbolMappings = new HashMap<>();
-        private final Map<Symbol, Expression> symbol2constantExpressions = new HashMap<>();
-        private final Map<Symbol, Expression> symbol2complexExpressions = new HashMap<>();
+        // symbols that represent a constant expression
+        private final Map<Symbol, Expression> symbolToConstExpr = new HashMap<>();
+        private final Map<Symbol, Expression> symbolToComplexExpr = new HashMap<>();
         private final Set<Symbol> tableOutputColumns = new HashSet<>();
 
         private final PlannerContext plannerContext;
@@ -272,7 +272,7 @@ public class RewriteOnlyMinMaxCountPlan
 
             PlanNode rewrittenNode = node;
             if (isCandidatePlan()) {
-                Map<PlanNodeId, PlanNodeStatsEstimate> tableScanStats =
+                Map<TableScanNode, PlanNodeStatsEstimate> tableScanStats =
                         TableScanStatsExtractor.extract(node, session, runtimeTypes, countConstantOnly, tableStatsProvider);
                 if (verifyTableScanStats(tableScanStats)) {
                     rewrittenNode = rewritePlan(node, tableScanStats.values().stream().findFirst().get());
@@ -302,11 +302,11 @@ public class RewriteOnlyMinMaxCountPlan
 
         private void clean()
         {
-            symbol2aggregation.clear();
-            aggregation2columns.clear();
+            symbolToAgg.clear();
+            funcNameToArgSymbols.clear();
             symbolMappings.clear();
-            symbol2constantExpressions.clear();
-            symbol2complexExpressions.clear();
+            symbolToConstExpr.clear();
+            symbolToComplexExpr.clear();
             tableOutputColumns.clear();
         }
 
@@ -361,7 +361,7 @@ public class RewriteOnlyMinMaxCountPlan
          */
         private boolean verifyVisitedExpressions()
         {
-            return !symbol2aggregation.isEmpty() && symbol2aggregation.values()
+            return !symbolToAgg.isEmpty() && symbolToAgg.values()
                     .stream()
                     .allMatch(aggregation -> aggregation.getArguments().stream().allMatch(argument -> {
                         if (!(argument instanceof SymbolReference)) {
@@ -371,7 +371,7 @@ public class RewriteOnlyMinMaxCountPlan
                         boolean isColumnReference = tableOutputColumns.contains(resolvedSymbol);
                         boolean isComputingOnValidColumn = isComputableSymbol(resolvedSymbol) ||
                                 AggregationQueryRewrite.FunctionName.COUNT == toFunctionName.apply(aggregation.getResolvedFunction().getSignature().getName());
-                        return symbol2constantExpressions.containsKey(resolvedSymbol) || isColumnReference && isComputingOnValidColumn;
+                        return symbolToConstExpr.containsKey(resolvedSymbol) || isColumnReference && isComputingOnValidColumn;
                     }));
         }
 
@@ -407,7 +407,7 @@ public class RewriteOnlyMinMaxCountPlan
          * If a table estimate has infinite output row count or have NaN values on any column estimated,
          * the table statistics should not be trustworthy.
          */
-        private boolean verifyTableScanStats(Map<PlanNodeId, PlanNodeStatsEstimate> estimates)
+        private boolean verifyTableScanStats(Map<TableScanNode, PlanNodeStatsEstimate> estimates)
         {
             // TODO: Support more table scans, specially for UNION.
             if (estimates.size() != 1) {
@@ -421,21 +421,24 @@ public class RewriteOnlyMinMaxCountPlan
                 return false;
             }
 
-            for (FunctionName functionName : aggregation2columns.keySet()) {
-                Set<Symbol> symbols = aggregation2columns.get(functionName);
+            TableScanNode tableScanNode = estimates.keySet().stream().findFirst().get();
+            List<Symbol> tsOutputSymbols = tableScanNode.getOutputSymbols();
+            for (FunctionName functionName : funcNameToArgSymbols.keySet()) {
+                // verify whether each table column argument has valid stats
+                Set<Symbol> symbols = funcNameToArgSymbols.get(functionName);
                 switch (functionName) {
                     case COUNT:
-                        if (symbols.stream().anyMatch(s -> !isFinite(estimate.getSymbolStatistics(s).getAccurateNullsCount()))) {
+                        if (symbols.stream().map(this::resolveSymbolRecursively).anyMatch(s -> tsOutputSymbols.contains(s) && !isFinite(estimate.getSymbolStatistics(s).getAccurateNullsCount()))) {
                             return false;
                         }
                         break;
                     case MAX:
-                        if (symbols.stream().anyMatch(s -> !isFinite(estimate.getSymbolStatistics(s).getHighValue()))) {
+                        if (symbols.stream().map(this::resolveSymbolRecursively).anyMatch(s -> tsOutputSymbols.contains(s) && !isFinite(estimate.getSymbolStatistics(s).getHighValue()))) {
                             return false;
                         }
                         break;
                     case MIN:
-                        if (symbols.stream().anyMatch(s -> !isFinite(estimate.getSymbolStatistics(s).getLowValue()))) {
+                        if (symbols.stream().map(this::resolveSymbolRecursively).anyMatch(s -> tsOutputSymbols.contains(s) && !isFinite(estimate.getSymbolStatistics(s).getLowValue()))) {
                             return false;
                         }
                         break;
@@ -482,14 +485,14 @@ public class RewriteOnlyMinMaxCountPlan
         {
             if (expr instanceof SymbolReference) {
                 Symbol resolvedSymbol = resolveSymbolRecursively(Symbol.from(expr));
-                if (symbol2aggregation.containsKey(resolvedSymbol)) {
-                    return computeAggregationExpression(symbol2aggregation.get(resolvedSymbol), planNodeStatsEstimate);
+                if (symbolToAgg.containsKey(resolvedSymbol)) {
+                    return computeAggregationExpression(symbolToAgg.get(resolvedSymbol), planNodeStatsEstimate);
                 }
-                else if (symbol2constantExpressions.containsKey(resolvedSymbol)) {
-                    return computeExpression(symbol2constantExpressions.get(resolvedSymbol), planNodeStatsEstimate);
+                else if (symbolToConstExpr.containsKey(resolvedSymbol)) {
+                    return computeExpression(symbolToConstExpr.get(resolvedSymbol), planNodeStatsEstimate);
                 }
-                else if (symbol2complexExpressions.containsKey(resolvedSymbol)) {
-                    return computeExpression(symbol2complexExpressions.get(resolvedSymbol), planNodeStatsEstimate);
+                else if (symbolToComplexExpr.containsKey(resolvedSymbol)) {
+                    return computeExpression(symbolToComplexExpr.get(resolvedSymbol), planNodeStatsEstimate);
                 }
                 else {
                     throw new RuntimeException(String.format("Could not determine the symbol %s reference from the analyzed expressions!", expr.toString()));
@@ -535,8 +538,8 @@ public class RewriteOnlyMinMaxCountPlan
 
             Symbol resolvedArgumentSymbol = resolveSymbolRecursively(Symbol.from(argument.get()));
 
-            if (symbol2constantExpressions.containsKey(resolvedArgumentSymbol)) {
-                Expression constantExpression = symbol2constantExpressions.get(resolvedArgumentSymbol);
+            if (symbolToConstExpr.containsKey(resolvedArgumentSymbol)) {
+                Expression constantExpression = symbolToConstExpr.get(resolvedArgumentSymbol);
                 switch (toFunctionName.apply(resolvedFuncName)) {
                     case COUNT:
                         Map<NodeRef<Expression>, Type> expressionTypes = typeAnalyzer.getTypes(session, getRuntimeTypes(), constantExpression);
@@ -757,10 +760,10 @@ public class RewriteOnlyMinMaxCountPlan
                         symbolMappings.putIfAbsent(symbol, (SymbolReference) expr);
                     }
                     else if (isConstantExpression(expr)) {
-                        symbol2constantExpressions.put(symbol, expr);
+                        symbolToConstExpr.put(symbol, expr);
                     }
                     else if (expr instanceof ArithmeticBinaryExpression) {
-                        symbol2complexExpressions.put(symbol, expr);
+                        symbolToComplexExpr.put(symbol, expr);
                     }
                     else {
                         visitPlan(node, false);
@@ -786,13 +789,13 @@ public class RewriteOnlyMinMaxCountPlan
 
             if (AggregationNode.Step.PARTIAL == node.getStep()) {
                 // PARTIAL node has the pairs of column symbol to aggregation
-                symbol2aggregation.putAll(node.getAggregations());
+                symbolToAgg.putAll(node.getAggregations());
 
                 for (AggregationNode.Aggregation aggregation : node.getAggregations().values()) {
                     aggregation.getArguments().forEach(expr -> {
                         String resolvedFuncName = aggregation.getResolvedFunction().getSignature().getName();
                         AggregationQueryRewrite.FunctionName functionName = toFunctionName.apply(resolvedFuncName);
-                        aggregation2columns.computeIfAbsent(functionName, k -> new HashSet<>()).add(Symbol.from(expr));
+                        funcNameToArgSymbols.computeIfAbsent(functionName, k -> new HashSet<>()).add(Symbol.from(expr));
                     });
                 }
             }
@@ -813,14 +816,14 @@ public class RewriteOnlyMinMaxCountPlan
                                 return false;
                             }
                             Symbol symbol = Symbol.from(expr);
-                            if (symbol2constantExpressions.containsKey(symbol)) {
+                            if (symbolToConstExpr.containsKey(symbol)) {
                                 return true;
                             }
                             if (AggregationNode.Step.PARTIAL == step) {
                                 return tableOutputColumns.contains(symbol);
                             }
                             else {
-                                return symbol2aggregation.containsKey(symbol);
+                                return symbolToAgg.containsKey(symbol);
                             }
                         });
                     }
