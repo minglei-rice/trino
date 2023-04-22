@@ -1122,6 +1122,14 @@ public class ClassLoaderSafeConnectorMetadata
     }
 
     @Override
+    public Optional<List<JoinCondition>> joinExprToConditions(ConnectorExpression joinCondition, Map<String, ColumnHandle> leftAssignments, Map<String, ColumnHandle> rightAssignments)
+    {
+        try (ThreadContextClassLoader ignored = new ThreadContextClassLoader(classLoader)) {
+            return delegate.joinExprToConditions(joinCondition, leftAssignments, rightAssignments);
+        }
+    }
+
+    @Override
     protected Object clone()
             throws CloneNotSupportedException
     {
