@@ -41,7 +41,11 @@ public class TestDirectExchangeClientConfig
                 .setPageBufferClientMaxCallbackThreads(25)
                 .setClientThreads(25)
                 .setAcknowledgePages(true)
-                .setDeduplicationBufferSize(DataSize.of(32, Unit.MEGABYTE)));
+                .setDeduplicationBufferSize(DataSize.of(32, Unit.MEGABYTE))
+                .setIdleTimeout(new Duration(30, TimeUnit.SECONDS))
+                .setRequestTimeout(new Duration(10, TimeUnit.SECONDS))
+                .setMaxConnectionsPerServer(250)
+                .setMaxContentLength(DataSize.of(32, Unit.MEGABYTE)));
     }
 
     @Test
@@ -57,6 +61,10 @@ public class TestDirectExchangeClientConfig
                 .put("exchange.page-buffer-client.max-callback-threads", "16")
                 .put("exchange.acknowledge-pages", "false")
                 .put("exchange.deduplication-buffer-size", "2MB")
+                .put("exchange.http-client.idle-timeout", "50s")
+                .put("exchange.http-client.request-timeout", "20s")
+                .put("exchange.http-client.max-connections-per-server", "10")
+                .put("exchange.http-client.max-content-length", "512MB")
                 .buildOrThrow();
 
         DirectExchangeClientConfig expected = new DirectExchangeClientConfig()
@@ -68,7 +76,11 @@ public class TestDirectExchangeClientConfig
                 .setClientThreads(2)
                 .setPageBufferClientMaxCallbackThreads(16)
                 .setAcknowledgePages(false)
-                .setDeduplicationBufferSize(DataSize.of(2, Unit.MEGABYTE));
+                .setDeduplicationBufferSize(DataSize.of(2, Unit.MEGABYTE))
+                .setIdleTimeout(new Duration(50, TimeUnit.SECONDS))
+                .setRequestTimeout(new Duration(20, TimeUnit.SECONDS))
+                .setMaxConnectionsPerServer(10)
+                .setMaxContentLength(DataSize.of(512, Unit.MEGABYTE));
 
         assertFullMapping(properties, expected);
     }

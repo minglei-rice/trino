@@ -26,6 +26,9 @@ import javax.validation.constraints.NotNull;
 
 import java.util.concurrent.TimeUnit;
 
+import static io.airlift.units.DataSize.Unit.MEGABYTE;
+import static java.util.concurrent.TimeUnit.SECONDS;
+
 public class DirectExchangeClientConfig
 {
     private DataSize maxBufferSize = DataSize.of(32, Unit.MEGABYTE);
@@ -36,6 +39,11 @@ public class DirectExchangeClientConfig
     private int pageBufferClientMaxCallbackThreads = 25;
     private boolean acknowledgePages = true;
     private DataSize deduplicationBufferSize = DataSize.of(32, Unit.MEGABYTE);
+
+    private Duration idleTimeout = new Duration(30, SECONDS);
+    private Duration requestTimeout = new Duration(10, SECONDS);
+    private int maxConnectionsPerServer = 250;
+    private DataSize maxContentLength = DataSize.of(32, MEGABYTE);
 
     @NotNull
     public DataSize getMaxBufferSize()
@@ -152,6 +160,54 @@ public class DirectExchangeClientConfig
     public DirectExchangeClientConfig setDeduplicationBufferSize(DataSize deduplicationBufferSize)
     {
         this.deduplicationBufferSize = deduplicationBufferSize;
+        return this;
+    }
+
+    public Duration getIdleTimeout()
+    {
+        return idleTimeout;
+    }
+
+    @Config("exchange.http-client.idle-timeout")
+    public DirectExchangeClientConfig setIdleTimeout(Duration idleTimeout)
+    {
+        this.idleTimeout = idleTimeout;
+        return this;
+    }
+
+    public Duration getRequestTimeout()
+    {
+        return requestTimeout;
+    }
+
+    @Config("exchange.http-client.request-timeout")
+    public DirectExchangeClientConfig setRequestTimeout(Duration requestTimeout)
+    {
+        this.requestTimeout = requestTimeout;
+        return this;
+    }
+
+    public int getMaxConnectionsPerServer()
+    {
+        return maxConnectionsPerServer;
+    }
+
+    @Config("exchange.http-client.max-connections-per-server")
+    public DirectExchangeClientConfig setMaxConnectionsPerServer(int maxConnectionsPerServer)
+    {
+        this.maxConnectionsPerServer = maxConnectionsPerServer;
+        return this;
+    }
+
+    public DataSize getMaxContentLength()
+    {
+        return maxContentLength;
+    }
+
+    @Config("exchange.http-client.max-content-length")
+    public DirectExchangeClientConfig setMaxContentLength(DataSize maxContentLength)
+    {
+        this.maxContentLength = maxContentLength;
         return this;
     }
 }
