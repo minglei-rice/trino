@@ -1161,14 +1161,14 @@ public class TestEventListenerBasic
                         ImmutableList.of(),
                         ImmutableList.of(),
                         ImmutableList.of(new JsonRenderedNode(
-                                "98",
+                                "100",
                                 "Limit",
                                 ImmutableMap.of("count", "10", "withTies", "", "inputPreSortedBy", "[]"),
                                 ImmutableList.of(typedSymbol("symbol_1", "double")),
                                 ImmutableList.of(),
                                 ImmutableList.of(),
                                 ImmutableList.of(new JsonRenderedNode(
-                                        "171",
+                                        "175",
                                         "LocalExchange",
                                         ImmutableMap.of(
                                                 "partitioning", "[connectorHandleType = SystemPartitioningHandle, partitioning = SINGLE, function = SINGLE]",
@@ -1179,7 +1179,7 @@ public class TestEventListenerBasic
                                         ImmutableList.of(),
                                         ImmutableList.of(),
                                         ImmutableList.of(new JsonRenderedNode(
-                                                "138",
+                                                "142",
                                                 "RemoteSource",
                                                 ImmutableMap.of("sourceFragmentIds", "[1]"),
                                                 ImmutableList.of(typedSymbol("symbol_1", "double")),
@@ -1187,7 +1187,7 @@ public class TestEventListenerBasic
                                                 ImmutableList.of(),
                                                 ImmutableList.of()))))))),
                 "1", new JsonRenderedNode(
-                        "137",
+                        "141",
                         "LimitPartial",
                         ImmutableMap.of(
                                 "count", "10",
