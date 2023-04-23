@@ -42,10 +42,9 @@ public class TestMergeFunctions
         RUNNER.installPlugin(new ClickHouseFunctionsPlugin());
     }
 
-    @Override
-    protected TestingFunctionResolution createFunctionResolution()
+    public TestMergeFunctions()
     {
-        return new TestingFunctionResolution(RUNNER.getTransactionManager(), RUNNER.getPlannerContext());
+        super(new TestingFunctionResolution(RUNNER.getTransactionManager(), RUNNER.getPlannerContext()));
     }
 
     @Override

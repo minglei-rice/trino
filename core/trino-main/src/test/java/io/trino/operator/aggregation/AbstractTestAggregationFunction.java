@@ -47,17 +47,17 @@ public abstract class AbstractTestAggregationFunction
 
     protected AbstractTestAggregationFunction()
     {
-        functionResolution = new TestingFunctionResolution();
+        this(new TestingFunctionResolution());
     }
 
     protected AbstractTestAggregationFunction(FunctionBundle functions)
     {
-        functionResolution = new TestingFunctionResolution(functions);
+        this(new TestingFunctionResolution(functions));
     }
 
-    protected TestingFunctionResolution createFunctionResolution()
+    protected AbstractTestAggregationFunction(TestingFunctionResolution functionResolution)
     {
-        return new TestingFunctionResolution();
+        this.functionResolution = functionResolution;
     }
 
     protected abstract Block[] getSequenceBlocks(int start, int length);
