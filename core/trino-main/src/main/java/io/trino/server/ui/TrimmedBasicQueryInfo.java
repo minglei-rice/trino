@@ -35,7 +35,7 @@ import static java.util.Objects.requireNonNull;
 @Immutable
 public class TrimmedBasicQueryInfo
 {
-    private static final int MAX_QUERY_PREVIEW_LENGTH = 300;
+    private static final int MAX_QUERY_PREVIEW_LENGTH = 10000;
 
     private final QueryId queryId;
     private final String sessionUser;

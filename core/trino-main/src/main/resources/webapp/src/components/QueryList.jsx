@@ -67,7 +67,7 @@ export class QueryListItem extends React.Component {
             }
         }
 
-        return formattedQueryText;
+        return truncateString(formattedQueryText, 300);
     }
 
     render() {
