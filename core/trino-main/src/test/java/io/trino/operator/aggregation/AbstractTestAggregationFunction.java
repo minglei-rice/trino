@@ -55,6 +55,11 @@ public abstract class AbstractTestAggregationFunction
         functionResolution = new TestingFunctionResolution(functions);
     }
 
+    protected TestingFunctionResolution createFunctionResolution()
+    {
+        return new TestingFunctionResolution();
+    }
+
     protected abstract Block[] getSequenceBlocks(int start, int length);
 
     protected abstract String getFunctionName();
