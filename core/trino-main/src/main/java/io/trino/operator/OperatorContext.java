@@ -526,6 +526,7 @@ public class OperatorContext
     public static Metrics getConnectorMetrics(Metrics connectorMetrics, long physicalInputReadTimeNanos, long physicalInputDataSizeInBytes)
     {
         Metrics.Accumulator accumulator = Metrics.accumulator();
+        accumulator.add(connectorMetrics);
 
         if (physicalInputReadTimeNanos > 0) {
             accumulator.add(new Metrics(ImmutableMap.of(
