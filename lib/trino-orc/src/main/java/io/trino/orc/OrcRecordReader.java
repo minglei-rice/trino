@@ -564,11 +564,11 @@ public class OrcRecordReader
                     if (column != null) {
                         column.startStripe(fileTimeZone, dictionaryStreamSources, columnEncodings);
                     }
-
-                    rowGroups = stripe.getRowGroups().iterator();
                 }
-                orcDataSourceMemoryUsage.setBytes(orcDataSource.getRetainedSize());
+
+                rowGroups = stripe.getRowGroups().iterator();
             }
+            orcDataSourceMemoryUsage.setBytes(orcDataSource.getRetainedSize());
         }
     }
 

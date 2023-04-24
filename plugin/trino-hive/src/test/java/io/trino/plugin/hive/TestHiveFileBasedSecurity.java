@@ -49,8 +49,10 @@ public class TestHiveFileBasedSecurity
     @AfterClass(alwaysRun = true)
     public void tearDown()
     {
-        queryRunner.close();
-        queryRunner = null;
+        if (queryRunner != null) {
+            queryRunner.close();
+            queryRunner = null;
+        }
     }
 
     @Test
