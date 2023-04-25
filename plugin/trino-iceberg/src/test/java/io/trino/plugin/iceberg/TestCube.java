@@ -110,15 +110,16 @@ public class TestCube
         queryRunner.execute(TEST_SESSION, "create table customer(c_custkey bigint, c_city varchar)");
         queryRunner.execute(TEST_SESSION, "create table supplier(s_city varchar, s_suppkey bigint)");
 
-        // t1 is a fact table
-        queryRunner.execute(TEST_SESSION, "create table t1(id bigint, id1 bigint, log_date varchar) with (partitioning = ARRAY['log_date'])");
-        queryRunner.execute(TEST_SESSION, "create table t2(id bigint, age bigint, flag bigint, miles bigint)");
-        queryRunner.execute(TEST_SESSION, "create table t3(id bigint, height bigint)");
-
         queryRunner.execute(TEST_SESSION, "INSERT INTO p_lineorder (v_revenue, lo_orderdate, lo_discount, lo_quantity, lo_custkey, lo_suppkey, lo_revenue) VALUES (100, 20230101, 5, 10, 1, 1, 500)");
         queryRunner.execute(TEST_SESSION, "INSERT INTO dates (d_datekey, d_year, d_yearmonth) VALUES (20230101, 2023, '2023-01')");
         queryRunner.execute(TEST_SESSION, "INSERT INTO customer (c_custkey, c_city) VALUES (1, 'New York')");
         queryRunner.execute(TEST_SESSION, "INSERT INTO supplier (s_city, s_suppkey) VALUES ('Los Angeles', 1)");
+
+        // t1 is a fact table
+        queryRunner.execute(TEST_SESSION, "create table t1(id bigint, id1 bigint, id2 bigint, foo bigint, log_date varchar) with (partitioning = ARRAY['log_date'])");
+        queryRunner.execute(TEST_SESSION, "create table t2(id bigint, age bigint, flag bigint, miles bigint)");
+        queryRunner.execute(TEST_SESSION, "create table t3(id bigint, height bigint)");
+
         queryRunner.execute(TEST_SESSION, "INSERT INTO t1 (id, id1, log_date) VALUES (1, 1, '2023-01-01')");
         queryRunner.execute(TEST_SESSION, "INSERT INTO t2 (id, age, flag, miles) VALUES (1, 30, 1, 1000)");
         queryRunner.execute(TEST_SESSION, "INSERT INTO t3 (id, height) VALUES (1, 180)");
@@ -138,7 +139,8 @@ public class TestCube
 
     private Schema buildFactTable()
     {
-        return new Schema(optional(1, "v_revenue", Types.LongType.get()),
+        return new Schema(
+                optional(1, "v_revenue", Types.LongType.get()),
                 optional(2, "lo_orderdate", Types.LongType.get()),
                 optional(3, "lo_discount", Types.LongType.get()),
                 optional(4, "lo_quantity", Types.LongType.get()),
@@ -149,12 +151,37 @@ public class TestCube
 
     private Schema buildFactT1()
     {
-        return new Schema(optional(1, "id", Types.LongType.get()),
-                optional(2, "id1", Types.LongType.get()));
+        return new Schema(
+                optional(1, "id", Types.LongType.get()),
+                optional(2, "id1", Types.LongType.get()),
+                optional(3, "id2", Types.LongType.get()),
+                optional(4, "foo", Types.LongType.get()),
+                optional(5, "log_date", Types.StringType.get()));
     }
 
     @Test
-    public void testQueryRewrite()
+    public void testSingleTable()
+    {
+        createTables();
+        Table table = loadIcebergTable("t1");
+        List<AggregationHolder> measuresAgg = new ArrayList<>();
+        AggregationHolder aggMin = new AggregationHolder(Functions.Min.get(), "id1");
+        AggregationHolder aggMax = new AggregationHolder(Functions.Max.get(), "id");
+        measuresAgg.add(aggMin);
+        measuresAgg.add(aggMax);
+        table.updateAggregationIndexSpec()
+                .addAggregationIndex("aggIndex1", Arrays.asList("id2", "log_date"), measuresAgg)
+                .commit();
+        assertExplain(TEST_SESSION,
+                "EXPLAIN select min(id1),MAX(id) from t1 where log_date='20220101'", "\\Qiceberg:tpch.t1$dataAggIndex{aggIndexId=1");
+        assertExplain(TEST_SESSION,
+                "EXPLAIN select min(id1),MAX(id) from t1 where id2 = 17 and log_date='20220101'",
+                "\\Qiceberg:tpch.t1$dataAggIndex{aggIndexId=1");
+        dropTables();
+    }
+
+    @Test
+    public void testStarSchema()
     {
         createTables();
         Table table = loadIcebergTable("t1");
@@ -166,7 +193,7 @@ public class TestCube
         table.updateCorrelatedColumnsSpec().addCorrelatedColumns(buildCorrColsForDuplicateName_t2()).commit();
         table.updateCorrelatedColumnsSpec().addCorrelatedColumns(buildCorrColsForDuplicateName_t3()).commit();
         table.updateAggregationIndexSpec()
-                .addAggregationIndex("aggIndex1", Arrays.asList("age", "flag", "height", "log_date"), measuresAgg)
+                .addAggregationIndex("aggIndex1", Arrays.asList("age", "flag", "height", "log_date", "id2", "foo"), measuresAgg)
                 .commit();
         assertExplain(TEST_SESSION,
                 "EXPLAIN select min(id1),MAX(t1.id) from t1 left join t2 on t2.id = t1.id where t2.age = 16 and log_date='20220101'",
@@ -175,10 +202,10 @@ public class TestCube
                 "EXPLAIN select age, count(*) from t1 left join t2 on t2.id = t1.id  group by age",
                 "\\QLeftJoin");
         assertExplain(TEST_SESSION,
-                "EXPLAIN select min(id1) from t1 left join t2 on t2.id = t1.id where t2.age = 16 and t1.log_date='20220101' group by age",
+                "EXPLAIN select min(id1) from t1 left join t2 on t2.id = t1.id where t2.age = 16 and log_date='20220101' group by age",
                 "\\Qiceberg:tpch.t1$dataAggIndex{aggIndexId=1");
         assertExplain(TEST_SESSION,
-                "EXPLAIN select max(t1.id) from t1 left join t2 on t1.id = t2.id left join t3 on t1.id1 = t3.id where t2.age = 16 and t1.log_date='20220101' and t3.height = 170",
+                "EXPLAIN select max(t1.id) from t1 left join t2 on t1.id = t2.id left join t3 on t1.id1 = t3.id where t2.age = 16 and t3.height = 170 and log_date='20220101'",
                 "\\Qiceberg:tpch.t1$dataAggIndex{aggIndexId=1");
         // grouping sets is not supported
         assertExplain(TEST_SESSION,
@@ -188,6 +215,13 @@ public class TestCube
         assertExplain(TEST_SESSION,
                 "EXPLAIN select min(id1) from t1 left join t2 on t2.id = t1.id where t2.age in (select age from t2) group by age",
                 "\\QInnerJoin");
+        // or operator
+        // TODO actually, it can work with cube, Due to the presence of data in the table, planFile will be generate data file,
+        // TODO but our tests do not have actual corresponding cube files. Therefore, the final determination is that rewriting
+        // TODO cannot be done. NOT supporting the OR operator now.
+        assertExplain(TEST_SESSION,
+                "EXPLAIN select min(id1) from t1 left join t2 on t2.id = t1.id where t2.age = 16 or t1.id2 = 28 group by age",
+                "\\QLeftJoin");
         dropTables();
     }
 
@@ -237,13 +271,13 @@ public class TestCube
         measuresAgg.add(aggregationHolder);
         table.updateCorrelatedColumnsSpec().addCorrelatedColumns(buildCorrColsForQ1_1()).commit();
         table.updateAggregationIndexSpec()
-                .addAggregationIndex("q1.1", Arrays.asList("d_year", "lo_discount", "lo_quantity", "lo_orderdate", "lo_revenue"), measuresAgg)
+                .addAggregationIndex("q1.1", Arrays.asList("d_year", "lo_discount", "lo_quantity", "lo_orderdate"), measuresAgg)
                 .commit();
-        assertExplain(TEST_SESSION, "EXPLAIN select sum(v_revenue) as revenue from p_lineorder left join dates on lo_orderdate = d_datekey where d_year + 5 = 1993 and lo_revenue=12",
+        assertExplain(TEST_SESSION, "EXPLAIN select sum(v_revenue) as revenue from p_lineorder left join dates on lo_orderdate = d_datekey where d_year + 5 = 1993 and lo_revenue=2",
                 "\\Qiceberg:tpch.p_lineorder$dataAggIndex{aggIndexId=1");
-        assertExplain(TEST_SESSION, "EXPLAIN select sum(v_revenue) as revenue from p_lineorder left join dates on lo_orderdate = d_datekey where 1993 = d_year and lo_revenue=12",
+        assertExplain(TEST_SESSION, "EXPLAIN select sum(v_revenue) as revenue from p_lineorder left join dates on lo_orderdate = d_datekey where 1993 = d_year and lo_revenue=2",
                 "\\Qiceberg:tpch.p_lineorder$dataAggIndex{aggIndexId=1");
-        assertExplain(TEST_SESSION, "EXPLAIN select sum(v_revenue) as revenue from p_lineorder left join dates on lo_orderdate = d_datekey where d_year = 1993 and lo_discount between 1 and 3 and lo_quantity < 25 and lo_revenue=12",
+        assertExplain(TEST_SESSION, "EXPLAIN select sum(v_revenue) as revenue from p_lineorder left join dates on lo_orderdate = d_datekey where d_year = 1993 and lo_discount between 1 and 3 and lo_quantity < 25 and lo_revenue=2",
                 "\\Qiceberg:tpch.p_lineorder$dataAggIndex{aggIndexId=1");
         // do not support right join now
         assertExplain(TEST_SESSION, "EXPLAIN select sum(v_revenue) as revenue from p_lineorder right join dates on lo_orderdate = d_datekey where d_year = 1993",

@@ -76,15 +76,10 @@ public class RewriteAggregationByAggIndex
         implements Rule<AggregationNode>
 {
     private static final Logger LOG = Logger.get(RewriteAggregationByAggIndex.class);
-
-    private static final Capture<JoinNode> JOIN = newCapture();
-
     private final Metadata metadata;
-
     private static final Pattern<AggregationNode> PATTERN = aggregation()
             .with(step().equalTo(AggregationNode.Step.SINGLE))
-            .matching(RewriteAggregationByAggIndex::preCheck)
-            .with(source().matching(join().capturedAs(JOIN)));
+            .matching(RewriteAggregationByAggIndex::preCheck);
 
     public RewriteAggregationByAggIndex(Metadata metadata)
     {
@@ -312,6 +307,15 @@ public class RewriteAggregationByAggIndex
         @Override
         public Void visitJoin(JoinNode node, RewriteUtil context)
         {
+            node.getLeft().accept(this, context);
+            if (!context.canRewrite()) {
+                return null;
+            }
+            node.getRight().accept(this, context);
+            if (!context.canRewrite()) {
+                return null;
+            }
+
             BiPredicate<JoinNode, Lookup> notStarSchema = (joinNode, lookUp) -> {
                 PlanNode left = joinNode.getLeft();
                 if (left instanceof GroupReference) {
@@ -363,15 +367,6 @@ public class RewriteAggregationByAggIndex
                         TableColumnIdentify.NONE,
                         TableColumnIdentify.NONE,
                         "Left join right input has a filter is not supported now.");
-                return null;
-            }
-
-            node.getLeft().accept(this, context);
-            if (!context.canRewrite()) {
-                return null;
-            }
-            node.getRight().accept(this, context);
-            if (!context.canRewrite()) {
                 return null;
             }
 
