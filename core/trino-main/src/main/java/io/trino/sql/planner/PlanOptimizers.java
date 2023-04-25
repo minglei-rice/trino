@@ -246,6 +246,7 @@ import io.trino.sql.planner.iterative.rule.UseNonPartitionedJoinLookupSource;
 import io.trino.sql.planner.iterative.rule.ZeroSafeDivision;
 import io.trino.sql.planner.iterative.rule.bigquery.ForbidCrossJoin;
 import io.trino.sql.planner.iterative.rule.bigquery.OrderByFullTable;
+import io.trino.sql.planner.iterative.rule.cube.RewriteAggregationByAggIndex;
 import io.trino.sql.planner.optimizations.AddExchanges;
 import io.trino.sql.planner.optimizations.AddLocalExchanges;
 import io.trino.sql.planner.optimizations.BeginTableWrite;
@@ -832,6 +833,15 @@ public class PlanOptimizers
                         // Must run after join reordering because join reordering creates
                         // new join nodes without JoinNode.maySkipOutputDuplicates flag set
                         new OptimizeDuplicateInsensitiveJoins(metadata))));
+
+        // eliminate join as much as possible
+        builder.add(
+                new IterativeOptimizer(
+                        plannerContext,
+                        ruleStats,
+                        statsCalculator,
+                        costCalculator,
+                        ImmutableSet.of(new RewriteAggregationByAggIndex(metadata))));
 
         // push down correlated column filters
         builder.add(

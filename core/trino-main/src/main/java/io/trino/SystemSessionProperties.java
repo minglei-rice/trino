@@ -180,6 +180,7 @@ public final class SystemSessionProperties
     public static final String PUSHDOWN_CORR_COL_FILTERS = "pushdown_corr_col_filters";
     public static final String ZERO_SAFE_DIVISION = "zero_safe_division";
     public static final String ANALYZE_ALIAS_IN_HAVING_CLAUSE_WITHOUT_RESTRICTION = "analyze_alias_in_having_clause_without_restriction";
+    public static final String ALLOW_READ_AGG_INDEX_FILES = "allow_read_agg_index_files";
     private final List<PropertyMetadata<?>> sessionProperties;
 
     public SystemSessionProperties()
@@ -889,6 +890,11 @@ public final class SystemSessionProperties
                         ANALYZE_ALIAS_IN_HAVING_CLAUSE_WITHOUT_RESTRICTION,
                         "If enabled, the alias in Having clause will be analyzed without the restriction of must being in GROUP BY.",
                         false,
+                        false),
+                booleanProperty(
+                        ALLOW_READ_AGG_INDEX_FILES,
+                        "Allow read aggindex files",
+                        true,
                         false));
     }
 
@@ -1581,5 +1587,10 @@ public final class SystemSessionProperties
     public static boolean analyzeAliasInHavingClauseWithoutRestriction(Session session)
     {
         return session.getSystemProperty(ANALYZE_ALIAS_IN_HAVING_CLAUSE_WITHOUT_RESTRICTION, Boolean.class);
+    }
+
+    public static boolean isAllowReadAggIndexFiles(Session session)
+    {
+        return session.getSystemProperty(ALLOW_READ_AGG_INDEX_FILES, Boolean.class);
     }
 }

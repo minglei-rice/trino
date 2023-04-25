@@ -20,6 +20,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import io.airlift.units.DataSize;
+import io.trino.spi.aggindex.AggIndex;
 import io.trino.spi.connector.ConnectorTableHandle;
 import io.trino.spi.connector.RetryMode;
 import io.trino.spi.connector.SchemaTableName;
@@ -35,6 +36,10 @@ import java.util.Set;
 import static java.util.Objects.requireNonNull;
 import static java.util.stream.Collectors.joining;
 
+/**
+ * Can work in two modes, If there is an available AggIndex to answer, use AggIndexFile to response.
+ * If there is no AggIndex to find, use on site computation to response.
+ */
 public class IcebergTableHandle
         implements ConnectorTableHandle
 {
@@ -67,6 +72,7 @@ public class IcebergTableHandle
     private final Optional<DataSize> maxScannedFileSize;
 
     private final TupleDomain<IcebergColumnHandle> corrColPredicate;
+    private final Optional<AggIndex> aggIndex;
 
     @JsonCreator
     public static IcebergTableHandle fromJsonForDeserializationOnly(
@@ -85,7 +91,8 @@ public class IcebergTableHandle
             @JsonProperty("storageProperties") Map<String, String> storageProperties,
             @JsonProperty("retryMode") RetryMode retryMode,
             @JsonProperty("updatedColumns") List<IcebergColumnHandle> updatedColumns,
-            @JsonProperty("corrColPredicate") TupleDomain<IcebergColumnHandle> corrColPredicate)
+            @JsonProperty("corrColPredicate") TupleDomain<IcebergColumnHandle> corrColPredicate,
+            @JsonProperty("aggIndex") Optional<AggIndex> aggIndex)
     {
         return new IcebergTableHandle(
                 schemaName,
@@ -105,7 +112,8 @@ public class IcebergTableHandle
                 updatedColumns,
                 false,
                 Optional.empty(),
-                corrColPredicate);
+                corrColPredicate,
+                aggIndex);
     }
 
     public IcebergTableHandle(
@@ -126,7 +134,8 @@ public class IcebergTableHandle
             List<IcebergColumnHandle> updatedColumns,
             boolean recordScannedFiles,
             Optional<DataSize> maxScannedFileSize,
-            TupleDomain<IcebergColumnHandle> corrColPredicate)
+            TupleDomain<IcebergColumnHandle> corrColPredicate,
+            Optional<AggIndex> aggIndex)
     {
         this.schemaName = requireNonNull(schemaName, "schemaName is null");
         this.tableName = requireNonNull(tableName, "tableName is null");
@@ -146,6 +155,7 @@ public class IcebergTableHandle
         this.recordScannedFiles = recordScannedFiles;
         this.maxScannedFileSize = requireNonNull(maxScannedFileSize, "maxScannedFileSize is null");
         this.corrColPredicate = requireNonNull(corrColPredicate, "corrColPredicate is null");
+        this.aggIndex = aggIndex;
     }
 
     @JsonProperty
@@ -266,6 +276,11 @@ public class IcebergTableHandle
         return new SchemaTableName(schemaName, tableName + "$" + tableType.name().toLowerCase(Locale.ROOT));
     }
 
+    public Optional<AggIndex> getAggIndex()
+    {
+        return aggIndex;
+    }
+
     public IcebergTableHandle withProjectedColumns(Set<IcebergColumnHandle> projectedColumns)
     {
         return new IcebergTableHandle(
@@ -286,7 +301,8 @@ public class IcebergTableHandle
                 updatedColumns,
                 recordScannedFiles,
                 maxScannedFileSize,
-                corrColPredicate);
+                corrColPredicate,
+                aggIndex);
     }
 
     public IcebergTableHandle withRetryMode(RetryMode retryMode)
@@ -309,7 +325,8 @@ public class IcebergTableHandle
                 updatedColumns,
                 recordScannedFiles,
                 maxScannedFileSize,
-                corrColPredicate);
+                corrColPredicate,
+                aggIndex);
     }
 
     public IcebergTableHandle withUpdatedColumns(List<IcebergColumnHandle> updatedColumns)
@@ -332,7 +349,8 @@ public class IcebergTableHandle
                 updatedColumns,
                 recordScannedFiles,
                 maxScannedFileSize,
-                corrColPredicate);
+                corrColPredicate,
+                aggIndex);
     }
 
     public IcebergTableHandle forOptimize(boolean recordScannedFiles, DataSize maxScannedFileSize)
@@ -355,7 +373,8 @@ public class IcebergTableHandle
                 updatedColumns,
                 recordScannedFiles,
                 Optional.of(maxScannedFileSize),
-                corrColPredicate);
+                corrColPredicate,
+                aggIndex);
     }
 
     @Override
@@ -386,19 +405,27 @@ public class IcebergTableHandle
                 Objects.equals(updatedColumns, that.updatedColumns) &&
                 Objects.equals(storageProperties, that.storageProperties) &&
                 Objects.equals(maxScannedFileSize, that.maxScannedFileSize) &&
-                Objects.equals(corrColPredicate, that.corrColPredicate);
+                Objects.equals(corrColPredicate, that.corrColPredicate) &&
+                Objects.equals(aggIndex, that.aggIndex);
     }
 
     @Override
     public int hashCode()
     {
         return Objects.hash(schemaName, tableName, tableType, snapshotId, tableSchemaJson, partitionSpecJson, formatVersion, unenforcedPredicate, enforcedPredicate,
-                projectedColumns, nameMappingJson, tableLocation, storageProperties, retryMode, updatedColumns, recordScannedFiles, maxScannedFileSize, corrColPredicate);
+                projectedColumns, nameMappingJson, tableLocation, storageProperties, retryMode, updatedColumns, recordScannedFiles, maxScannedFileSize, corrColPredicate, aggIndex);
     }
 
     @Override
     public String toString()
     {
+        if (getAggIndex().isPresent()) {
+            return getSchemaTableNameWithType()
+                    + getAggIndex().get().toString()
+                    + getUnenforcedPredicate().toString()
+                    + getEnforcedPredicate().toString()
+                    + snapshotId.map(v -> "@" + v).orElse("");
+        }
         StringBuilder builder = new StringBuilder(getSchemaTableNameWithType().toString());
         snapshotId.ifPresent(snapshotId -> builder.append("@").append(snapshotId));
         if (enforcedPredicate.isNone()) {

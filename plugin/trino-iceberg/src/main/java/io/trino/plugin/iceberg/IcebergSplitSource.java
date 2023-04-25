@@ -45,6 +45,8 @@ import io.trino.spi.predicate.ValueSet;
 import io.trino.spi.type.TypeManager;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.Path;
+import org.apache.iceberg.AggIndexFile;
+import org.apache.iceberg.DataFiles;
 import org.apache.iceberg.FileScanTask;
 import org.apache.iceberg.FilterMetrics;
 import org.apache.iceberg.PartitionSpecParser;
@@ -96,6 +98,7 @@ import static io.trino.plugin.iceberg.IcebergUtil.getColumnHandle;
 import static io.trino.plugin.iceberg.IcebergUtil.getPartitionKeys;
 import static io.trino.plugin.iceberg.IcebergUtil.primitiveFieldTypes;
 import static io.trino.plugin.iceberg.TypeConverter.toIcebergType;
+import static io.trino.spi.StandardErrorCode.AGG_INDEX_FILE_NOT_FOUND;
 import static io.trino.spi.type.DateTimeEncoding.packDateTimeWithZone;
 import static io.trino.spi.type.TimeZoneKey.UTC_KEY;
 import static java.util.Objects.requireNonNull;
@@ -224,9 +227,13 @@ public class IcebergSplitSource
             Expression filterExpression = toIcebergExpression(effectivePredicate);
             // If the Dynamic Filter will be evaluated against each file, stats are required. Otherwise, skip them.
             boolean requiresColumnStats = usedSimplifiedPredicate || !dynamicFilterIsComplete;
-            TableScan scan = tableScan.filter(filterExpression)
-                    .option(SystemProperties.SCAN_FILTER_METRICS_ENABLED, "true")
-                    .withThreadName(threadNamePrefix + "producer");
+            TableScan scan;
+            if (tableHandle.getAggIndex().isPresent()) {
+                scan = tableScan.filter(filterExpression).option(SystemProperties.SCAN_FILTER_METRICS_ENABLED, "true").includeAggIndexStats().withThreadName(threadNamePrefix + "producer");
+            }
+            else {
+                scan = tableScan.filter(filterExpression).option(SystemProperties.SCAN_FILTER_METRICS_ENABLED, "true").withThreadName(threadNamePrefix + "producer");
+            }
             if (requiresColumnStats) {
                 scan = scan.includeColumnStats();
             }
@@ -551,21 +558,45 @@ public class IcebergSplitSource
                 log.error(e, "Encode fileScanTask error %s", task.file().path());
             }
         }
-        return new IcebergSplit(
-                task.file().path().toString(),
-                task.start(),
-                task.length(),
-                task.file().fileSizeInBytes(),
-                task.file().recordCount(),
-                IcebergFileFormat.fromIceberg(task.file().format()),
-                ImmutableList.of(),
-                PartitionSpecParser.toJson(task.spec()),
-                PartitionData.toJson(task.file().partition()),
-                task.deletes().stream()
-                        .map(DeleteFile::fromIceberg)
-                        .collect(toImmutableList()),
-                SplitWeight.fromProportion(Math.min(Math.max((double) task.length() / tableScan.targetSplitSize(), minimumAssignedSplitWeight), 1.0)),
-                fileScanTaskEncode);
+
+        if (tableHandle.getAggIndex().isEmpty()) {
+            return new IcebergSplit(
+                    task.file().path().toString(),
+                    task.start(),
+                    task.length(),
+                    task.file().fileSizeInBytes(),
+                    task.file().recordCount(),
+                    IcebergFileFormat.fromIceberg(task.file().format()),
+                    ImmutableList.of(),
+                    PartitionSpecParser.toJson(task.spec()),
+                    PartitionData.toJson(task.file().partition()),
+                    task.deletes().stream()
+                            .map(DeleteFile::fromIceberg)
+                            .collect(toImmutableList()),
+                    SplitWeight.fromProportion(Math.min(Math.max((double) task.length() / tableScan.targetSplitSize(), minimumAssignedSplitWeight), 1.0)),
+                    fileScanTaskEncode);
+        }
+        else {
+            // split for AggIndex file
+            AggIndexFile aggIndexFile = DataFiles.getAggIndexFiles(task.file()).stream()
+                    .filter(x -> x.getAggIndexId() == tableHandle.getAggIndex().get().getAggIndexId()).findAny()
+                    .orElseThrow(() -> new TrinoException(AGG_INDEX_FILE_NOT_FOUND, "Can not find an agg index file for data file: " + task.file().toString()));
+            return new IcebergSplit(
+                    aggIndexFile.getAggIndexFilePath(),
+                    0,
+                    aggIndexFile.getAggIndexFileLength(),
+                    aggIndexFile.getAggIndexFileLength(),
+                    0,
+                    IcebergFileFormat.fromIceberg(task.file().format()),
+                    ImmutableList.of(),
+                    PartitionSpecParser.toJson(task.spec()),
+                    PartitionData.toJson(task.file().partition()),
+                    task.deletes().stream()
+                            .map(DeleteFile::fromIceberg)
+                            .collect(toImmutableList()),
+                    SplitWeight.fromProportion(Math.min(Math.max((double) task.length() / tableScan.targetSplitSize(), minimumAssignedSplitWeight), 1.0)),
+                    fileScanTaskEncode);
+        }
     }
 
     private static Domain getPathDomain(TupleDomain<IcebergColumnHandle> effectivePredicate)

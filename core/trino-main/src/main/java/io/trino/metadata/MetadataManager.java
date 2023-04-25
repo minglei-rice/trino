@@ -33,6 +33,9 @@ import io.trino.metadata.FunctionResolver.CatalogFunctionMetadata;
 import io.trino.metadata.ResolvedFunction.ResolvedFunctionDecoder;
 import io.trino.spi.QueryId;
 import io.trino.spi.TrinoException;
+import io.trino.spi.aggindex.AggIndex;
+import io.trino.spi.aggindex.TableColumnIdentify;
+import io.trino.spi.connector.AggIndexApplicationResult;
 import io.trino.spi.connector.AggregateFunction;
 import io.trino.spi.connector.AggregationApplicationResult;
 import io.trino.spi.connector.Assignment;
@@ -439,6 +442,14 @@ public final class MetadataManager
         ConnectorTableSchema tableSchema = metadata.getTableSchema(session.toConnectorSession(catalogHandle), tableHandle.getConnectorHandle());
 
         return new TableSchema(catalogMetadata.getCatalogName(), tableSchema);
+    }
+
+    @Override
+    public List<AggIndex> getAggregationIndices(Session session, TableHandle tableHandle)
+    {
+        CatalogHandle catalogHandle = tableHandle.getCatalogHandle();
+        ConnectorMetadata metadata = getMetadata(session, catalogHandle);
+        return metadata.getAggregationIndices(session.toConnectorSession(catalogHandle), tableHandle.getConnectorHandle());
     }
 
     @Override
@@ -1691,6 +1702,27 @@ public final class MetadataManager
                         new TableHandle(catalogHandle, result.getHandle(), table.getTransaction()),
                         result.isTopNGuaranteed(),
                         result.isPrecalculateStatistics()));
+    }
+
+    @Override
+    public Optional<AggIndexApplicationResult<TableHandle>> applyAggIndex(
+            Session session,
+            TableHandle table,
+            AggIndex aggIndex)
+    {
+        CatalogHandle catalogHandle = table.getCatalogHandle();
+        ConnectorMetadata metadata = getMetadata(session, catalogHandle);
+        ConnectorSession connectorSession = session.toConnectorSession(catalogHandle);
+
+        Optional<AggIndexApplicationResult<ConnectorTableHandle>> aggIndexResult = metadata.applyAggIndex(connectorSession, table.getConnectorHandle(), aggIndex);
+        if (aggIndexResult.isEmpty()) {
+            return Optional.empty();
+        }
+        Map<String, TableColumnIdentify> aggIndexColumnNameToIdentify = aggIndexResult.get().getAggIndexColumnNameToIdentify();
+        return aggIndexResult.map(result ->
+                new AggIndexApplicationResult<>(
+                        new TableHandle(catalogHandle, result.getHandle(), table.getTransaction()),
+                        aggIndexColumnNameToIdentify));
     }
 
     @Override

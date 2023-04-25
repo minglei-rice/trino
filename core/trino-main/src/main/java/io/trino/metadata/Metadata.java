@@ -18,6 +18,8 @@ import io.airlift.slice.Slice;
 import io.trino.Session;
 import io.trino.connector.CatalogHandle;
 import io.trino.spi.TrinoException;
+import io.trino.spi.aggindex.AggIndex;
+import io.trino.spi.connector.AggIndexApplicationResult;
 import io.trino.spi.connector.AggregateFunction;
 import io.trino.spi.connector.AggregationApplicationResult;
 import io.trino.spi.connector.BeginTableExecuteResult;
@@ -131,6 +133,14 @@ public interface Metadata
      * @see {@link #getTableMetadata(Session, TableHandle)}
      */
     TableSchema getTableSchema(Session session, TableHandle tableHandle);
+
+    /**
+     * Only support iceberg table now.
+     */
+    default List<AggIndex> getAggregationIndices(Session session, TableHandle tableHandle)
+    {
+        return List.of();
+    }
 
     /**
      * Return the metadata for the specified table handle.
@@ -516,6 +526,11 @@ public interface Metadata
             long topNCount,
             List<SortItem> sortItems,
             Map<String, ColumnHandle> assignments);
+
+    Optional<AggIndexApplicationResult<TableHandle>> applyAggIndex(
+            Session session,
+            TableHandle handle,
+            AggIndex aggIndex);
 
     Optional<TableFunctionApplicationResult<TableHandle>> applyTableFunction(Session session, TableFunctionHandle handle);
 

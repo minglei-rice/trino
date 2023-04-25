@@ -20,6 +20,8 @@ import com.google.common.util.concurrent.ListenableFuture;
 import io.airlift.slice.Slice;
 import io.trino.Session;
 import io.trino.connector.CatalogHandle;
+import io.trino.spi.aggindex.AggIndex;
+import io.trino.spi.connector.AggIndexApplicationResult;
 import io.trino.spi.connector.AggregateFunction;
 import io.trino.spi.connector.AggregationApplicationResult;
 import io.trino.spi.connector.BeginTableExecuteResult;
@@ -127,6 +129,18 @@ public class CountingAccessMetadata
     public Optional<TableHandle> getTableHandle(Session session, QualifiedObjectName tableName)
     {
         return delegate.getTableHandle(session, tableName);
+    }
+
+    @Override
+    public List<AggIndex> getAggregationIndices(Session session, TableHandle tableHandle)
+    {
+        return delegate.getAggregationIndices(session, tableHandle);
+    }
+
+    @Override
+    public Optional<AggIndexApplicationResult<TableHandle>> applyAggIndex(Session session, TableHandle handle, AggIndex aggIndex)
+    {
+        return delegate.applyAggIndex(session, handle, aggIndex);
     }
 
     @Override

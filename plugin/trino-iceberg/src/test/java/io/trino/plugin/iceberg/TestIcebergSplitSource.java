@@ -135,7 +135,8 @@ public class TestIcebergSplitSource
                 ImmutableList.of(),
                 false,
                 Optional.empty(),
-                TupleDomain.all());
+                TupleDomain.all(),
+                Optional.empty());
 
         try (IcebergSplitSource splitSource = new IcebergSplitSource(
                 SESSION,
@@ -409,7 +410,8 @@ public class TestIcebergSplitSource
                 ImmutableList.of(),
                 false,
                 Optional.empty(),
-                TupleDomain.all());
+                TupleDomain.all(),
+                Optional.empty());
 
         IcebergSplitSource splitSource = new IcebergSplitSource(
                 SESSION,

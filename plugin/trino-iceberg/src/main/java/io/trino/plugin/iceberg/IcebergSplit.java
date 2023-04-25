@@ -36,6 +36,10 @@ import static io.airlift.slice.SizeOf.estimatedSizeOf;
 import static java.lang.Math.toIntExact;
 import static java.util.Objects.requireNonNull;
 
+/**
+ * IcebergSplit can work on two level, one is for data files, other is for AggIndex files.
+ * Which kind of split is used depends on the optimizer rule RewriteAggregationByAggIndex.
+ */
 public class IcebergSplit
         implements ConnectorSplit
 {

@@ -357,7 +357,8 @@ public class IcebergPageSourceProvider
                 effectivePredicate,
                 table.getNameMappingJson().map(NameMappingParser::fromJson),
                 partitionKeys,
-                rowSet);
+                rowSet,
+                table);
         ReaderPageSource dataPageSource = readerPageSourceWithRowPositions.getReaderPageSource();
 
         Optional<ReaderProjectionsAdapter> projectionsAdapter = dataPageSource.getReaderColumns().map(readerColumns ->
@@ -378,7 +379,8 @@ public class IcebergPageSourceProvider
                     split.getPath(),
                     split.getDeletes(),
                     readerPageSourceWithRowPositions.getStartRowPosition(),
-                    readerPageSourceWithRowPositions.getEndRowPosition());
+                    readerPageSourceWithRowPositions.getEndRowPosition(),
+                    table);
             return deleteFilters.stream()
                     .map(filter -> filter.createPredicate(readColumns))
                     .reduce(RowPredicate::and);
@@ -453,7 +455,8 @@ public class IcebergPageSourceProvider
             String dataFilePath,
             List<DeleteFile> deleteFiles,
             Optional<Long> startRowPosition,
-            Optional<Long> endRowPosition)
+            Optional<Long> endRowPosition,
+            IcebergTableHandle icebergTableHandle)
     {
         verify(startRowPosition.isPresent() == endRowPosition.isPresent(), "startRowPosition and endRowPosition must be specified together");
 
@@ -488,7 +491,7 @@ public class IcebergPageSourceProvider
                     }
                 }
 
-                try (ConnectorPageSource pageSource = openDeletes(session, delete, deleteColumns, deleteDomain)) {
+                try (ConnectorPageSource pageSource = openDeletes(session, delete, deleteColumns, deleteDomain, icebergTableHandle)) {
                     readPositionDeletes(pageSource, targetPath, deletedRows);
                 }
                 catch (IOException e) {
@@ -502,7 +505,7 @@ public class IcebergPageSourceProvider
                         .map(id -> getColumnHandle(schema.findField(id), typeManager))
                         .collect(toImmutableList());
 
-                try (ConnectorPageSource pageSource = openDeletes(session, delete, columns, TupleDomain.all())) {
+                try (ConnectorPageSource pageSource = openDeletes(session, delete, columns, TupleDomain.all(), icebergTableHandle)) {
                     filters.add(readEqualityDeletes(pageSource, columns, schema));
                 }
                 catch (IOException e) {
@@ -525,7 +528,8 @@ public class IcebergPageSourceProvider
             ConnectorSession session,
             DeleteFile delete,
             List<IcebergColumnHandle> columns,
-            TupleDomain<IcebergColumnHandle> tupleDomain)
+            TupleDomain<IcebergColumnHandle> tupleDomain,
+            IcebergTableHandle tableHandle)
     {
         TrinoFileSystem fileSystem = fileSystemFactory.create(session);
         return createDataPageSource(
@@ -542,7 +546,8 @@ public class IcebergPageSourceProvider
                 columns,
                 tupleDomain,
                 Optional.empty(),
-                ImmutableMap.of())
+                ImmutableMap.of(),
+                tableHandle)
                 .getReaderPageSource()
                 .get();
     }
@@ -561,7 +566,8 @@ public class IcebergPageSourceProvider
             List<IcebergColumnHandle> dataColumns,
             TupleDomain<IcebergColumnHandle> predicate,
             Optional<NameMapping> nameMapping,
-            Map<Integer, Optional<String>> partitionKeys)
+            Map<Integer, Optional<String>> partitionKeys,
+            IcebergTableHandle icebergTableHandle)
     {
         return createDataPageSource(
                 session,
@@ -578,7 +584,8 @@ public class IcebergPageSourceProvider
                 predicate,
                 nameMapping,
                 partitionKeys,
-                Optional.empty());
+                Optional.empty(),
+                icebergTableHandle);
     }
 
     private ReaderPageSourceWithRowPositions createDataPageSource(
@@ -596,7 +603,8 @@ public class IcebergPageSourceProvider
             TupleDomain<IcebergColumnHandle> predicate,
             Optional<NameMapping> nameMapping,
             Map<Integer, Optional<String>> partitionKeys,
-            Optional<RowSet> rowSet)
+            Optional<RowSet> rowSet,
+            IcebergTableHandle icebergTableHandle)
     {
         switch (fileFormat) {
             case ORC:
@@ -638,7 +646,8 @@ public class IcebergPageSourceProvider
                         predicate,
                         fileFormatDataSourceStats,
                         nameMapping,
-                        partitionKeys);
+                        partitionKeys,
+                        icebergTableHandle);
             case AVRO:
                 return createAvroPageSource(
                         fileSystem,
@@ -1013,7 +1022,8 @@ public class IcebergPageSourceProvider
             TupleDomain<IcebergColumnHandle> effectivePredicate,
             FileFormatDataSourceStats fileFormatDataSourceStats,
             Optional<NameMapping> nameMapping,
-            Map<Integer, Optional<String>> partitionKeys)
+            Map<Integer, Optional<String>> partitionKeys,
+            IcebergTableHandle icebergTableHandle)
     {
         AggregatedMemoryContext memoryContext = newSimpleAggregatedMemoryContext();
 
@@ -1044,7 +1054,7 @@ public class IcebergPageSourceProvider
 
             MessageType requestedSchema = new MessageType(fileSchema.getName(), parquetFields.stream().filter(Objects::nonNull).collect(toImmutableList()));
             Map<List<String>, ColumnDescriptor> descriptorsByPath = getDescriptors(fileSchema, requestedSchema);
-            TupleDomain<ColumnDescriptor> parquetTupleDomain = getParquetTupleDomain(descriptorsByPath, effectivePredicate);
+            TupleDomain<ColumnDescriptor> parquetTupleDomain = getParquetTupleDomain(descriptorsByPath, effectivePredicate, icebergTableHandle);
             Predicate parquetPredicate = buildPredicate(requestedSchema, parquetTupleDomain, descriptorsByPath, UTC);
 
             long nextStart = 0;
@@ -1416,7 +1426,10 @@ public class IcebergPageSourceProvider
         return Optional.of(new ReaderColumns(projectedColumns.build(), outputColumnMapping.build()));
     }
 
-    private static TupleDomain<ColumnDescriptor> getParquetTupleDomain(Map<List<String>, ColumnDescriptor> descriptorsByPath, TupleDomain<IcebergColumnHandle> effectivePredicate)
+    private static TupleDomain<ColumnDescriptor> getParquetTupleDomain(
+            Map<List<String>, ColumnDescriptor> descriptorsByPath,
+            TupleDomain<IcebergColumnHandle> effectivePredicate,
+            IcebergTableHandle icebergTableHandle)
     {
         if (effectivePredicate.isNone()) {
             return TupleDomain.none();
@@ -1428,7 +1441,7 @@ public class IcebergPageSourceProvider
             // skip looking up predicates for complex types as Parquet only stores stats for primitives
             if (!baseType.equals(StandardTypes.MAP) && !baseType.equals(StandardTypes.ARRAY) && !baseType.equals(StandardTypes.ROW)) {
                 ColumnDescriptor descriptor = descriptorsByPath.get(ImmutableList.of(columnHandle.getName()));
-                if (descriptor != null) {
+                if (descriptor != null && !predicate.buildOrThrow().containsKey(descriptor)) {
                     predicate.put(descriptor, domain);
                 }
             }

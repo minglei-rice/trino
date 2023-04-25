@@ -46,7 +46,12 @@ import io.trino.plugin.iceberg.procedure.IcebergTableProcedureId;
 import io.trino.plugin.iceberg.util.DataFileWithDeleteFiles;
 import io.trino.spi.StandardErrorCode;
 import io.trino.spi.TrinoException;
+import io.trino.spi.aggindex.AggFunctionDesc;
+import io.trino.spi.aggindex.AggIndex;
+import io.trino.spi.aggindex.CorrColumns;
+import io.trino.spi.aggindex.TableColumnIdentify;
 import io.trino.spi.block.Block;
+import io.trino.spi.connector.AggIndexApplicationResult;
 import io.trino.spi.connector.Assignment;
 import io.trino.spi.connector.BeginTableExecuteResult;
 import io.trino.spi.connector.CatalogSchemaName;
@@ -100,6 +105,7 @@ import io.trino.spi.type.LongTimestampWithTimeZone;
 import io.trino.spi.type.TimestampWithTimeZoneType;
 import io.trino.spi.type.TypeManager;
 import org.apache.datasketches.theta.CompactSketch;
+import org.apache.iceberg.AggIndexFile;
 import org.apache.iceberg.AppendFiles;
 import org.apache.iceberg.BaseTable;
 import org.apache.iceberg.CorrelatedColumns;
@@ -132,7 +138,10 @@ import org.apache.iceberg.TableScan;
 import org.apache.iceberg.Transaction;
 import org.apache.iceberg.UpdatePartitionSpec;
 import org.apache.iceberg.UpdateProperties;
+import org.apache.iceberg.actions.WriteAggIndexUtils;
 import org.apache.iceberg.catalog.TableIdentifier;
+import org.apache.iceberg.cube.AggregationDesc;
+import org.apache.iceberg.cube.AggregationIndex;
 import org.apache.iceberg.exceptions.ValidationException;
 import org.apache.iceberg.expressions.Expressions;
 import org.apache.iceberg.expressions.Term;
@@ -157,11 +166,13 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -390,7 +401,226 @@ public class IcebergMetadata
                 ImmutableList.of(),
                 false,
                 Optional.empty(),
-                TupleDomain.all());
+                TupleDomain.all(),
+                Optional.empty());
+    }
+
+    @Override
+    public List<AggIndex> getAggregationIndices(ConnectorSession session, ConnectorTableHandle tableHandle)
+    {
+        IcebergTableHandle icebergTableHandle = (IcebergTableHandle) tableHandle;
+        Table table;
+        try {
+            table = catalog.loadTable(session, icebergTableHandle.getSchemaTableName());
+        }
+        catch (TableNotFoundException e) {
+            return List.of();
+        }
+        List<AggregationIndex> aggregationIndices = table.aggregationIndexSpec().aggIndex();
+        return aggregationIndices.stream()
+                .map(icebergAggIndex -> toTrinoAggIndex(icebergAggIndex, table, icebergTableHandle))
+                .collect(toImmutableList());
+    }
+
+    @Override
+    public Optional<AggIndexApplicationResult<ConnectorTableHandle>> applyAggIndex(
+            ConnectorSession session,
+            ConnectorTableHandle handle,
+            AggIndex aggIndex)
+    {
+        if (aggIndex == null) {
+            return Optional.empty();
+        }
+        IcebergTableHandle icebergTableHandle = (IcebergTableHandle) handle;
+        Table table;
+        try {
+            table = catalog.loadTable(session, icebergTableHandle.getSchemaTableName());
+        }
+        catch (TableNotFoundException e) {
+            return Optional.empty();
+        }
+        Schema schema = table.schema();
+
+        IcebergTableHandle newIcebergTableHandle = new IcebergTableHandle(
+                icebergTableHandle.getSchemaName(),
+                icebergTableHandle.getTableName(),
+                icebergTableHandle.getTableType(),
+                icebergTableHandle.getSnapshotId(),
+                icebergTableHandle.getTableSchemaJson(),
+                icebergTableHandle.getPartitionSpecJson(),
+                icebergTableHandle.getFormatVersion(),
+                TupleDomain.all(),
+                icebergTableHandle.getEnforcedPredicate(),
+                icebergTableHandle.getProjectedColumns(),
+                icebergTableHandle.getNameMappingJson(),
+                icebergTableHandle.getTableLocation(),
+                icebergTableHandle.getStorageProperties(),
+                icebergTableHandle.getRetryMode(),
+                icebergTableHandle.getUpdatedColumns(),
+                icebergTableHandle.isRecordScannedFiles(),
+                icebergTableHandle.getMaxScannedFileSize(),
+                icebergTableHandle.getCorrColPredicate(),
+                Optional.of(aggIndex));
+
+        Map<String, TableColumnIdentify> aggIndexFileColumnNameToColumnIdent = new HashMap<>();
+        AggregationIndex aggregationIndex =
+                table.aggregationIndexSpec().aggIndex()
+                        .stream()
+                        .filter(x -> x.getAggIndexId() == aggIndex.getAggIndexId())
+                        .findFirst()
+                        .orElse(null);
+        if (aggregationIndex == null) {
+            log.info("Can not find an AggIndex %s in connector, maybe it was dropped by some reasons.", aggIndex.getAggIndexId());
+            return Optional.empty();
+        }
+        for (Integer dimColumnId : aggregationIndex.getDims().getColumnIds()) {
+            Types.NestedField field = schema.findField(dimColumnId);
+            if (field != null) {
+                String tableName = icebergTableHandle.getTableName();
+                TableColumnIdentify identify = new TableColumnIdentify(tableName, schema.findColumnName(dimColumnId));
+                aggIndexFileColumnNameToColumnIdent.put(WriteAggIndexUtils.factDimCol(dimColumnId, schema), identify);
+            }
+            else {
+                Optional<CorrelatedColumns> correlatedColumns = table.correlatedColumnsSpec().getCorrelatedColumnsForId(dimColumnId);
+                if (correlatedColumns.isPresent()) {
+                    String tableName = correlatedColumns.get().getCorrelation().getCorrTable().getId().name();
+                    CorrelatedColumns corrColumns = correlatedColumns.get();
+                    CorrelatedColumn correlatedColumn = corrColumns.getColumnById(dimColumnId).get();
+                    String columnName = correlatedColumn.getName();
+                    aggIndexFileColumnNameToColumnIdent.put(WriteAggIndexUtils.corrDimCol(correlatedColumn),
+                            new TableColumnIdentify(tableName, columnName));
+                }
+            }
+        }
+
+        List<AggregationDesc> aggDesc = aggregationIndex.getAggDesc();
+        for (AggregationDesc aggregationDesc : aggDesc) {
+            Integer sourceColumnId = aggregationDesc.getSourceColumnId();
+            TableColumnIdentify identify;
+            if (sourceColumnId == null) {
+                identify = null;
+            }
+            else {
+                identify = new TableColumnIdentify(icebergTableHandle.getTableName(), schema.findColumnName(sourceColumnId));
+            }
+            aggIndexFileColumnNameToColumnIdent.put(WriteAggIndexUtils.aggExprAlias(aggregationDesc, schema).toLowerCase(Locale.ENGLISH), identify);
+        }
+
+        // verify data file whether it has cube file
+        try (CloseableIterable<FileScanTask> fileScanTasks =
+                     table.newScan()
+                             .filter(toIcebergExpression(icebergTableHandle.getEnforcedPredicate()))
+                             .includeAggIndexStats()
+                             .planFiles()) {
+            for (FileScanTask scanTask : fileScanTasks) {
+                if (!scanTask.deletes().isEmpty()) {
+                    return Optional.empty();
+                }
+                AggIndexFile aggIndexFile = DataFiles.getAggIndexFiles(scanTask.file())
+                        .stream()
+                        .filter(cubeFile -> cubeFile.getAggIndexId() == aggIndex.getAggIndexId())
+                        .findAny()
+                        .orElse(null);
+                if (aggIndexFile == null) {
+                    // data file does not have cube file
+                    return Optional.empty();
+                }
+            }
+        }
+        catch (Throwable t) {
+            throw new RuntimeException(t);
+        }
+        return Optional.of(new AggIndexApplicationResult<>(newIcebergTableHandle, aggIndexFileColumnNameToColumnIdent));
+    }
+
+    /**
+     * Transform iceberg aggregation index to trino aggregation index.
+     * @param icebergAggIndex an iceberg aggregation index
+     * @param table an iceberg table
+     * @param icebergTableHandle iceberg table handle
+     * @return Trino AggIndex
+     */
+    private AggIndex toTrinoAggIndex(AggregationIndex icebergAggIndex, Table table, IcebergTableHandle icebergTableHandle)
+    {
+        List<TableColumnIdentify> dimFields = new ArrayList<>();
+        for (Integer dimColumnId : icebergAggIndex.getDims().getColumnIds()) {
+            String name = table.schema().findColumnName(dimColumnId);
+            // fact column
+            if (name != null) {
+                dimFields.add(new TableColumnIdentify(icebergTableHandle.getTableName(), name));
+            }
+            // dim column
+            else {
+                Optional<CorrelatedColumns> correlatedColumns = table.correlatedColumnsSpec().getCorrelatedColumnsForId(dimColumnId);
+                CorrelatedColumns corrColumns = correlatedColumns.get();
+                String tableName = corrColumns.getCorrelation().getCorrTable().getId().name();
+                Optional<CorrelatedColumn> columnById = corrColumns.getColumnById(dimColumnId);
+                String columnName = columnById.orElseThrow().getName();
+                dimFields.add(new TableColumnIdentify(tableName, columnName));
+            }
+        }
+
+        // aggregation function
+        // TODO transform iceberg agg function to trino agg function
+        final Function<AggregationDesc, AggFunctionDesc> toTrinoAggFunc = (icebergAggFunc -> {
+            String funcName = icebergAggFunc.getFunction().functionId().toString();
+            Integer sourceColumnId = icebergAggFunc.getSourceColumnId();
+            // count(*)
+            if (sourceColumnId == null) {
+                return new AggFunctionDesc(funcName, null);
+            }
+            return new AggFunctionDesc(funcName, new TableColumnIdentify(icebergTableHandle.getTableName(), table.schema().findColumnName(sourceColumnId)));
+        });
+
+        List<AggFunctionDesc> trinoAggFuncDesc = icebergAggIndex.getAggDesc().stream()
+                .map(toTrinoAggFunc)
+                .collect(toImmutableList());
+
+        Function<CorrelatedColumns.Correlation, CorrColumns.Corr> toTrinoCorrelation = icebergCorrelation -> {
+            CorrelatedColumns.JoinType icebergJoinType = icebergCorrelation.getJoinType();
+            CorrelatedColumns.JoinConstraint icebergJoinConstraint = icebergCorrelation.getJoinConstraint();
+
+            List<TableColumnIdentify> leftKeysIdentify = icebergCorrelation.getLeftKeys().stream()
+                    .map(joinKeyId -> new TableColumnIdentify(icebergTableHandle.getTableName(), table.schema().findColumnName(joinKeyId)))
+                    .collect(toImmutableList());
+
+            List<TableColumnIdentify> rightKeysIdentify =
+                    icebergCorrelation.getRightKeys().stream()
+                            .map(rightKey -> new TableColumnIdentify(icebergCorrelation.getCorrTable().getId().name(), rightKey))
+                            .collect(toImmutableList());
+
+            JoinType trinoJoinType;
+            CorrColumns.Corr.JoinConstraint trinoJoinConstraint;
+            switch (icebergJoinType) {
+                case INNER:
+                    trinoJoinType = JoinType.INNER;
+                    break;
+                case LEFT:
+                    trinoJoinType = JoinType.LEFT_OUTER;
+                    break;
+                default:
+                    throw new RuntimeException(String.format("Unsupported join type %s", icebergJoinType));
+            }
+
+            switch (icebergJoinConstraint) {
+                case PK_FK:
+                    trinoJoinConstraint = CorrColumns.Corr.JoinConstraint.PK_FK;
+                    break;
+                case UNIQUE:
+                    trinoJoinConstraint = CorrColumns.Corr.JoinConstraint.UNIQUE;
+                    break;
+                case NONE:
+                    trinoJoinConstraint = CorrColumns.Corr.JoinConstraint.NONE;
+                    break;
+                default:
+                    throw new RuntimeException(String.format("Unsupported join constraint %s", icebergJoinConstraint));
+            }
+            return new CorrColumns.Corr(leftKeysIdentify, rightKeysIdentify, trinoJoinType, trinoJoinConstraint);
+        };
+        List<CorrColumns> corrColumns = table.correlatedColumnsSpec().getCorrelatedColumns().stream()
+                .map(correlation -> new CorrColumns(toTrinoCorrelation.apply(correlation.getCorrelation())))
+                .collect(toImmutableList());
+        return new AggIndex(icebergAggIndex.getAggIndexId(), dimFields, trinoAggFuncDesc, corrColumns);
     }
 
     private static long getSnapshotIdFromVersion(Table table, ConnectorTableVersion version)
@@ -570,6 +800,20 @@ public class IcebergMetadata
     public Map<String, ColumnHandle> getColumnHandles(ConnectorSession session, ConnectorTableHandle tableHandle)
     {
         IcebergTableHandle table = (IcebergTableHandle) tableHandle;
+        Table icebergTable = catalog.loadTable(session, table.getSchemaTableName());
+        if (table.getAggIndex().isPresent()) {
+            AggregationIndex aggregationIndex =
+                    icebergTable.aggregationIndexSpec().aggIndex()
+                            .stream()
+                            .filter(icebergAggIndex -> icebergAggIndex.getAggIndexId() == table.getAggIndex().get().getAggIndexId())
+                            .findFirst()
+                            .orElseThrow(() -> new RuntimeException("Can not find aggregation index."));
+            // cube schema
+            Schema schema = WriteAggIndexUtils.aggIndexSchema(
+                    aggregationIndex, icebergTable.schema(), icebergTable.correlatedColumnsSpec());
+            return getColumns(schema, typeManager).stream()
+                    .collect(toImmutableMap(IcebergColumnHandle::getName, identity()));
+        }
         ImmutableMap.Builder<String, ColumnHandle> columnHandles = ImmutableMap.builder();
         for (IcebergColumnHandle columnHandle : getColumns(SchemaParser.fromJson(table.getTableSchemaJson()), typeManager)) {
             columnHandles.put(columnHandle.getName(), columnHandle);
@@ -2023,7 +2267,8 @@ public class IcebergMetadata
                         table.getUpdatedColumns(),
                         table.isRecordScannedFiles(),
                         table.getMaxScannedFileSize(),
-                        table.getCorrColPredicate()),
+                        table.getCorrColPredicate(),
+                        table.getAggIndex()),
                 remainingConstraint.transformKeys(ColumnHandle.class::cast),
                 extractionResult.remainingExpression(),
                 false));
@@ -2119,7 +2364,8 @@ public class IcebergMetadata
                         icebergTableHandle.getUpdatedColumns(),
                         icebergTableHandle.isRecordScannedFiles(),
                         icebergTableHandle.getMaxScannedFileSize(),
-                        pushableDomain)));
+                        pushableDomain,
+                        icebergTableHandle.getAggIndex())));
     }
 
     // converts column handle in correlated table to correlated column in left table
@@ -2341,7 +2587,8 @@ public class IcebergMetadata
                         originalHandle.getUpdatedColumns(),
                         originalHandle.isRecordScannedFiles(),
                         originalHandle.getMaxScannedFileSize(),
-                        originalHandle.getCorrColPredicate()),
+                        originalHandle.getCorrColPredicate(),
+                        originalHandle.getAggIndex()),
                 handle -> {
                     Table icebergTable = catalog.loadTable(session, handle.getSchemaTableName());
                     return TableStatisticsMaker.getTableStatistics(typeManager, session, handle, icebergTable);
