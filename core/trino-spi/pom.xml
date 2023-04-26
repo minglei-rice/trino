@@ -191,6 +191,16 @@
                                     <code>java.method.removed</code>
                                     <old>method java.util.List&lt;java.util.Optional&lt;io.trino.spi.metrics.Distribution&lt;?&gt;&gt;&gt; io.trino.spi.eventlistener.QueryStatistics::getStageOutputBufferUtilizationDistribution()</old>
                                 </item>
+                                <item>
+                                    <ignore>true</ignore>
+                                    <code>java.method.removed</code>
+                                    <old>method long io.trino.spi.connector.ConnectorSplit::getIndexReadTime()</old>
+                                </item>
+                                <item>
+                                    <ignore>true</ignore>
+                                    <code>java.method.removed</code>
+                                    <old>method boolean io.trino.spi.connector.ConnectorSplit::isSkippedByIndex()</old>
+                                </item>
                             </differences>
                         </revapi.differences>
                     </analysisConfiguration>
