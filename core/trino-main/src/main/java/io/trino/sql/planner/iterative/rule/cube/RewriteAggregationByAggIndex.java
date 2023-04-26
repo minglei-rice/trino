@@ -15,7 +15,6 @@ package io.trino.sql.planner.iterative.rule.cube;
 
 import io.airlift.log.Logger;
 import io.trino.Session;
-import io.trino.matching.Capture;
 import io.trino.matching.Captures;
 import io.trino.matching.Pattern;
 import io.trino.metadata.Metadata;
@@ -58,12 +57,9 @@ import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 import static io.trino.SystemSessionProperties.isAllowReadAggIndexFiles;
-import static io.trino.matching.Capture.newCapture;
 import static io.trino.spi.type.BooleanType.BOOLEAN;
 import static io.trino.sql.planner.plan.Patterns.Aggregation.step;
 import static io.trino.sql.planner.plan.Patterns.aggregation;
-import static io.trino.sql.planner.plan.Patterns.join;
-import static io.trino.sql.planner.plan.Patterns.source;
 
 /**
  * Query can use cube data to query only when the query pattern matches the cube definition.

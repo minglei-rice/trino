@@ -216,12 +216,9 @@ public class TestCube
                 "EXPLAIN select min(id1) from t1 left join t2 on t2.id = t1.id where t2.age in (select age from t2) group by age",
                 "\\QInnerJoin");
         // or operator
-        // TODO actually, it can work with cube, Due to the presence of data in the table, planFile will be generate data file,
-        // TODO but our tests do not have actual corresponding cube files. Therefore, the final determination is that rewriting
-        // TODO cannot be done. NOT supporting the OR operator now.
         assertExplain(TEST_SESSION,
-                "EXPLAIN select min(id1) from t1 left join t2 on t2.id = t1.id where t2.age = 16 or t1.id2 = 28 group by age",
-                "\\QLeftJoin");
+                "EXPLAIN select min(id1) from t1 left join t2 on t2.id = t1.id where (t2.age = 16 or t1.id2 = 28) and t1.log_date='12' group by age",
+                "\\Qiceberg:tpch.t1$dataAggIndex{aggIndexId=1");
         dropTables();
     }
 
