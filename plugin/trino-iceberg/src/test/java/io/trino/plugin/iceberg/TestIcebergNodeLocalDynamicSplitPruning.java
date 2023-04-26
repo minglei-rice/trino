@@ -58,6 +58,7 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -187,7 +188,8 @@ public class TestIcebergNodeLocalDynamicSplitPruning
                         false,
                         Optional.empty(),
                         TupleDomain.all(),
-                        Optional.empty()),
+                        Optional.empty(),
+                        Collections.emptySet()),
                 transaction);
 
         FileFormatDataSourceStats stats = new FileFormatDataSourceStats();

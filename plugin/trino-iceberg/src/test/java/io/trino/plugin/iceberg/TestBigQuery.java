@@ -61,7 +61,7 @@ public class TestBigQuery
     {
         queryRunner.execute("create table t1(f1 bigint, f2 varchar) with (partitioning = ARRAY['f2'])");
         queryRunner.execute("create table t2(f1 bigint, f2 bigint)");
-        queryRunner.execute("insert into t1 values (1, '1')");
+        queryRunner.execute("insert into t1 values (1, '20220904')");
         queryRunner.execute("insert into t2 values (1, 2)");
     }
 
@@ -70,6 +70,13 @@ public class TestBigQuery
             throws IOException
     {
         deleteRecursively(metastoreDir.getParentFile().toPath(), ALLOW_INSECURE);
+    }
+
+    @Test
+    public void testPushDownExpressionOnPartitionKey()
+    {
+        assertQuerySucceeds(TEST_SESSION, "select * from t1 where cast(date(date_parse(\"f2\", '%Y%m%d')) as varchar) >= '2022-09-04'");
+        assertQuerySucceeds(TEST_SESSION, "select * from t1 where cast(date(date_parse(\"f2\", '%Y%m%d')) as varchar) >= '2022-09-04'");
     }
 
     @Test

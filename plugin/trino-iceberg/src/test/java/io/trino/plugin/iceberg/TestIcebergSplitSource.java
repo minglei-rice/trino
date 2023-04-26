@@ -49,6 +49,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
+import java.util.Collections;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Optional;
@@ -136,7 +137,8 @@ public class TestIcebergSplitSource
                 false,
                 Optional.empty(),
                 TupleDomain.all(),
-                Optional.empty());
+                Optional.empty(),
+                Collections.emptySet());
 
         try (IcebergSplitSource splitSource = new IcebergSplitSource(
                 SESSION,
@@ -411,7 +413,8 @@ public class TestIcebergSplitSource
                 false,
                 Optional.empty(),
                 TupleDomain.all(),
-                Optional.empty());
+                Optional.empty(),
+                Collections.emptySet());
 
         IcebergSplitSource splitSource = new IcebergSplitSource(
                 SESSION,

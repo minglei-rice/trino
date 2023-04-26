@@ -21,11 +21,13 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import io.airlift.units.DataSize;
 import io.trino.spi.aggindex.AggIndex;
+import io.trino.spi.connector.ColumnHandle;
 import io.trino.spi.connector.ConnectorTableHandle;
 import io.trino.spi.connector.RetryMode;
 import io.trino.spi.connector.SchemaTableName;
 import io.trino.spi.predicate.TupleDomain;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -73,6 +75,7 @@ public class IcebergTableHandle
 
     private final TupleDomain<IcebergColumnHandle> corrColPredicate;
     private final Optional<AggIndex> aggIndex;
+    private final Set<ColumnHandle> constraintColumns;
 
     @JsonCreator
     public static IcebergTableHandle fromJsonForDeserializationOnly(
@@ -113,7 +116,8 @@ public class IcebergTableHandle
                 false,
                 Optional.empty(),
                 corrColPredicate,
-                aggIndex);
+                aggIndex,
+                Collections.emptySet());
     }
 
     public IcebergTableHandle(
@@ -135,7 +139,8 @@ public class IcebergTableHandle
             boolean recordScannedFiles,
             Optional<DataSize> maxScannedFileSize,
             TupleDomain<IcebergColumnHandle> corrColPredicate,
-            Optional<AggIndex> aggIndex)
+            Optional<AggIndex> aggIndex,
+            Set<ColumnHandle> constraintColumns)
     {
         this.schemaName = requireNonNull(schemaName, "schemaName is null");
         this.tableName = requireNonNull(tableName, "tableName is null");
@@ -156,6 +161,7 @@ public class IcebergTableHandle
         this.maxScannedFileSize = requireNonNull(maxScannedFileSize, "maxScannedFileSize is null");
         this.corrColPredicate = requireNonNull(corrColPredicate, "corrColPredicate is null");
         this.aggIndex = aggIndex;
+        this.constraintColumns = constraintColumns;
     }
 
     @JsonProperty
@@ -216,6 +222,12 @@ public class IcebergTableHandle
     public Set<IcebergColumnHandle> getProjectedColumns()
     {
         return projectedColumns;
+    }
+
+    @JsonIgnore
+    public Set<ColumnHandle> getConstraintColumns()
+    {
+        return constraintColumns;
     }
 
     @JsonProperty
@@ -302,7 +314,8 @@ public class IcebergTableHandle
                 recordScannedFiles,
                 maxScannedFileSize,
                 corrColPredicate,
-                aggIndex);
+                aggIndex,
+                constraintColumns);
     }
 
     public IcebergTableHandle withRetryMode(RetryMode retryMode)
@@ -326,7 +339,8 @@ public class IcebergTableHandle
                 recordScannedFiles,
                 maxScannedFileSize,
                 corrColPredicate,
-                aggIndex);
+                aggIndex,
+                constraintColumns);
     }
 
     public IcebergTableHandle withUpdatedColumns(List<IcebergColumnHandle> updatedColumns)
@@ -350,7 +364,8 @@ public class IcebergTableHandle
                 recordScannedFiles,
                 maxScannedFileSize,
                 corrColPredicate,
-                aggIndex);
+                aggIndex,
+                constraintColumns);
     }
 
     public IcebergTableHandle forOptimize(boolean recordScannedFiles, DataSize maxScannedFileSize)
@@ -374,7 +389,8 @@ public class IcebergTableHandle
                 recordScannedFiles,
                 Optional.of(maxScannedFileSize),
                 corrColPredicate,
-                aggIndex);
+                aggIndex,
+                constraintColumns);
     }
 
     @Override
@@ -406,14 +422,15 @@ public class IcebergTableHandle
                 Objects.equals(storageProperties, that.storageProperties) &&
                 Objects.equals(maxScannedFileSize, that.maxScannedFileSize) &&
                 Objects.equals(corrColPredicate, that.corrColPredicate) &&
-                Objects.equals(aggIndex, that.aggIndex);
+                Objects.equals(aggIndex, that.aggIndex) &&
+                Objects.equals(constraintColumns, that.constraintColumns);
     }
 
     @Override
     public int hashCode()
     {
         return Objects.hash(schemaName, tableName, tableType, snapshotId, tableSchemaJson, partitionSpecJson, formatVersion, unenforcedPredicate, enforcedPredicate,
-                projectedColumns, nameMappingJson, tableLocation, storageProperties, retryMode, updatedColumns, recordScannedFiles, maxScannedFileSize, corrColPredicate, aggIndex);
+                projectedColumns, nameMappingJson, tableLocation, storageProperties, retryMode, updatedColumns, recordScannedFiles, maxScannedFileSize, corrColPredicate, aggIndex, constraintColumns);
     }
 
     @Override

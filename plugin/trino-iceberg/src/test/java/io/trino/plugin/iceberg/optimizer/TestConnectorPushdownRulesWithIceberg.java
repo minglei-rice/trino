@@ -62,6 +62,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
+import java.util.Collections;
 import java.util.Optional;
 
 import static com.google.common.io.MoreFiles.deleteRecursively;
@@ -185,7 +186,8 @@ public class TestConnectorPushdownRulesWithIceberg
                 false,
                 Optional.empty(),
                 TupleDomain.all(),
-                Optional.empty());
+                Optional.empty(),
+                Collections.emptySet());
         TableHandle table = new TableHandle(TEST_CATALOG_HANDLE, icebergTable, new HiveTransactionHandle(false));
 
         IcebergColumnHandle fullColumn = partialColumn.getBaseColumn();
@@ -269,7 +271,8 @@ public class TestConnectorPushdownRulesWithIceberg
                 false,
                 Optional.empty(),
                 TupleDomain.all(),
-                Optional.empty());
+                Optional.empty(),
+                Collections.emptySet());
         TableHandle table = new TableHandle(TEST_CATALOG_HANDLE, icebergTable, new HiveTransactionHandle(false));
 
         IcebergColumnHandle column = new IcebergColumnHandle(primitiveColumnIdentity(1, "a"), INTEGER, ImmutableList.of(), INTEGER, Optional.empty());
@@ -320,7 +323,8 @@ public class TestConnectorPushdownRulesWithIceberg
                 false,
                 Optional.empty(),
                 TupleDomain.all(),
-                Optional.empty());
+                Optional.empty(),
+                Collections.emptySet());
         TableHandle table = new TableHandle(TEST_CATALOG_HANDLE, icebergTable, new HiveTransactionHandle(false));
 
         IcebergColumnHandle columnA = new IcebergColumnHandle(primitiveColumnIdentity(0, "a"), INTEGER, ImmutableList.of(), INTEGER, Optional.empty());
@@ -382,7 +386,8 @@ public class TestConnectorPushdownRulesWithIceberg
                 false,
                 Optional.empty(),
                 TupleDomain.all(),
-                Optional.empty());
+                Optional.empty(),
+                Collections.emptySet());
         TableHandle table = new TableHandle(TEST_CATALOG_HANDLE, icebergTable, new HiveTransactionHandle(false));
 
         IcebergColumnHandle bigintColumn = new IcebergColumnHandle(primitiveColumnIdentity(1, "just_bigint"), BIGINT, ImmutableList.of(), BIGINT, Optional.empty());

@@ -159,6 +159,7 @@ import java.io.UncheckedIOException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.Deque;
 import java.util.HashMap;
@@ -402,7 +403,8 @@ public class IcebergMetadata
                 false,
                 Optional.empty(),
                 TupleDomain.all(),
-                Optional.empty());
+                Optional.empty(),
+                Collections.emptySet());
     }
 
     @Override
@@ -460,7 +462,8 @@ public class IcebergMetadata
                 icebergTableHandle.isRecordScannedFiles(),
                 icebergTableHandle.getMaxScannedFileSize(),
                 icebergTableHandle.getCorrColPredicate(),
-                Optional.of(aggIndex));
+                Optional.of(aggIndex),
+                icebergTableHandle.getConstraintColumns());
 
         Map<String, TableColumnIdentify> aggIndexFileColumnNameToColumnIdent = new HashMap<>();
         AggregationIndex aggregationIndex =
@@ -2187,7 +2190,7 @@ public class IcebergMetadata
         IcebergTableHandle table = (IcebergTableHandle) handle;
         ConstraintExtractor.ExtractionResult extractionResult = extractTupleDomain(constraint);
         TupleDomain<IcebergColumnHandle> predicate = extractionResult.tupleDomain();
-        if (predicate.isAll()) {
+        if (predicate.isAll() && constraint.getPredicateColumns().isEmpty()) {
             return Optional.empty();
         }
 
@@ -2244,7 +2247,8 @@ public class IcebergMetadata
         }
 
         if (newEnforcedConstraint.equals(table.getEnforcedPredicate())
-                && newUnenforcedConstraint.equals(table.getUnenforcedPredicate())) {
+                && newUnenforcedConstraint.equals(table.getUnenforcedPredicate())
+                && constraint.getPredicateColumns().isEmpty()) {
             return Optional.empty();
         }
 
@@ -2268,7 +2272,8 @@ public class IcebergMetadata
                         table.isRecordScannedFiles(),
                         table.getMaxScannedFileSize(),
                         table.getCorrColPredicate(),
-                        table.getAggIndex()),
+                        table.getAggIndex(),
+                        Sets.union(table.getConstraintColumns(), constraint.getPredicateColumns().orElseGet(ImmutableSet::of))),
                 remainingConstraint.transformKeys(ColumnHandle.class::cast),
                 extractionResult.remainingExpression(),
                 false));
@@ -2365,7 +2370,8 @@ public class IcebergMetadata
                         icebergTableHandle.isRecordScannedFiles(),
                         icebergTableHandle.getMaxScannedFileSize(),
                         pushableDomain,
-                        icebergTableHandle.getAggIndex())));
+                        icebergTableHandle.getAggIndex(),
+                        icebergTableHandle.getConstraintColumns())));
     }
 
     // converts column handle in correlated table to correlated column in left table
@@ -2518,16 +2524,22 @@ public class IcebergMetadata
             return;
         }
         if (IcebergSessionProperties.isFilterOnPartitionTable(session)
-                // which means the enforcedPredicate doesn't have any filtering effect
-                // The reason is that the meaning of TupleDomain.all() is alwaysTrue,
-                // and alwaysTrue means that it cannot provide any filtering effect.
                 && table.getEnforcedPredicate().equals(TupleDomain.all())) {
-            throw new TrinoException(
-                    StandardErrorCode.QUERY_REJECTED,
-                    format("Filter required on %s.%s for at least one partition column, if you actually want query run without partition filter, " +
-                                    "please set session iceberg.query_partition_filter_required to false.",
-                            table.getSchemaName(),
-                            table.getTableName()));
+            Set<IcebergColumnHandle> icebergConstraintColumns = table.getConstraintColumns().stream()
+                    .map(columnHandle -> (IcebergColumnHandle) columnHandle)
+                    .collect(Collectors.toSet());
+            List<String> par1 = icebergConstraintColumns.stream().map(IcebergColumnHandle::getName).toList();
+            List<String> par2 = icebergTable.spec().fields().stream().map(PartitionField::name).toList();
+            if (Collections.disjoint(par1, par2)) {
+                String partitionColumnNames = String.join(", ", par2);
+                throw new TrinoException(
+                        StandardErrorCode.QUERY_REJECTED,
+                        format("Filter required on %s.%s for at least one partition column %s, if you actually want query run without partition filter, " +
+                                        "please set session iceberg.query_partition_filter_required to false.",
+                                table.getSchemaName(),
+                                table.getTableName(),
+                                partitionColumnNames));
+            }
         }
     }
 
@@ -2588,7 +2600,8 @@ public class IcebergMetadata
                         originalHandle.isRecordScannedFiles(),
                         originalHandle.getMaxScannedFileSize(),
                         originalHandle.getCorrColPredicate(),
-                        originalHandle.getAggIndex()),
+                        originalHandle.getAggIndex(),
+                        originalHandle.getConstraintColumns()),
                 handle -> {
                     Table icebergTable = catalog.loadTable(session, handle.getSchemaTableName());
                     return TableStatisticsMaker.getTableStatistics(typeManager, session, handle, icebergTable);
