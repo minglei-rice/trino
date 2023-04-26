@@ -77,6 +77,7 @@ public class TestBigQuery
     {
         assertQuerySucceeds(TEST_SESSION, "select * from t1 where cast(date(date_parse(\"f2\", '%Y%m%d')) as varchar) >= '2022-09-04'");
         assertQuerySucceeds(TEST_SESSION, "select * from t1 where cast(date(date_parse(\"f2\", '%Y%m%d')) as varchar) >= '2022-09-04'");
+        assertQueryFails(TEST_SESSION, "select * from t1", "Filter required on tpch.t1 for at least one partition column f2, if you actually want query run without partition filter, please set session iceberg.query_partition_filter_required to false.");
     }
 
     @Test
