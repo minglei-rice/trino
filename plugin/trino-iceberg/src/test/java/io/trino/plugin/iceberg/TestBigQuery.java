@@ -84,11 +84,11 @@ public class TestBigQuery
     public void testFilterOnTable()
     {
         assertQuerySucceeds(TEST_SESSION, "select * from t2");
-        assertQueryFails(TEST_SESSION, "select * from t1", "Filter required on tpch.t1 for at least one partition column, if you actually want query run without partition filter, please set session iceberg.query_partition_filter_required to false.");
-        assertQueryFails(TEST_SESSION, "select * from t1 where t1.f1 = 12", "Filter required on tpch.t1 for at least one partition column, if you actually want query run without partition filter, please set session iceberg.query_partition_filter_required to false.");
+        assertQueryFails(TEST_SESSION, "select * from t1", "Filter required on tpch.t1 for at least one partition column f2, if you actually want query run without partition filter, please set session iceberg.query_partition_filter_required to false.");
+        assertQueryFails(TEST_SESSION, "select * from t1 where t1.f1 = 12", "Filter required on tpch.t1 for at least one partition column f2, if you actually want query run without partition filter, please set session iceberg.query_partition_filter_required to false.");
         assertQuerySucceeds(TEST_SESSION, "select * from t1 where t1.f2 = '202201'");
         assertQuerySucceeds(TEST_SESSION, "select * from t1 left join t2 on t1.f1 = t2.f1 where t1.f2 = '20220101'");
-        assertQueryFails(TEST_SESSION, "select * from t1 left join t2 on t1.f1 = t2.f1", "Filter required on tpch.t1 for at least one partition column, if you actually want query run without partition filter, please set session iceberg.query_partition_filter_required to false.");
+        assertQueryFails(TEST_SESSION, "select * from t1 left join t2 on t1.f1 = t2.f1", "Filter required on tpch.t1 for at least one partition column f2, if you actually want query run without partition filter, please set session iceberg.query_partition_filter_required to false.");
         assertQueryFails(TEST_SESSION, "with temp as (select * from t1 where f1 = 12 order by f1) select * from temp left join t2 on temp.f1 = t2.f2",
                 "OrderBy without limit is not allowed, if you actually want query run order by without limit, please set session order_by_full_table to false.");
     }
