@@ -445,11 +445,11 @@ public final class MetadataManager
     }
 
     @Override
-    public List<AggIndex> getAggregationIndices(Session session, TableHandle tableHandle)
+    public List<AggIndex> getAggregationIndex(Session session, TableHandle tableHandle)
     {
         CatalogHandle catalogHandle = tableHandle.getCatalogHandle();
         ConnectorMetadata metadata = getMetadata(session, catalogHandle);
-        return metadata.getAggregationIndices(session.toConnectorSession(catalogHandle), tableHandle.getConnectorHandle());
+        return metadata.getAggregationIndex(session.toConnectorSession(catalogHandle), tableHandle.getConnectorHandle());
     }
 
     @Override

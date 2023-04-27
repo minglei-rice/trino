@@ -408,7 +408,7 @@ public class IcebergMetadata
     }
 
     @Override
-    public List<AggIndex> getAggregationIndices(ConnectorSession session, ConnectorTableHandle tableHandle)
+    public List<AggIndex> getAggregationIndex(ConnectorSession session, ConnectorTableHandle tableHandle)
     {
         IcebergTableHandle icebergTableHandle = (IcebergTableHandle) tableHandle;
         Table table;
@@ -418,8 +418,8 @@ public class IcebergMetadata
         catch (TableNotFoundException e) {
             return List.of();
         }
-        List<AggregationIndex> aggregationIndices = table.aggregationIndexSpec().aggIndex();
-        return aggregationIndices.stream()
+        List<AggregationIndex> aggregationIndex = table.aggregationIndexSpec().aggIndex();
+        return aggregationIndex.stream()
                 .map(icebergAggIndex -> toTrinoAggIndex(icebergAggIndex, table, icebergTableHandle))
                 .collect(toImmutableList());
     }
@@ -430,13 +430,10 @@ public class IcebergMetadata
             ConnectorTableHandle handle,
             AggIndex aggIndex)
     {
-        if (aggIndex == null) {
-            return Optional.empty();
-        }
-        IcebergTableHandle icebergTableHandle = (IcebergTableHandle) handle;
+        IcebergTableHandle originalTableHandle = (IcebergTableHandle) handle;
         Table table;
         try {
-            table = catalog.loadTable(session, icebergTableHandle.getSchemaTableName());
+            table = catalog.loadTable(session, originalTableHandle.getSchemaTableName());
         }
         catch (TableNotFoundException e) {
             return Optional.empty();
@@ -444,42 +441,39 @@ public class IcebergMetadata
         Schema schema = table.schema();
 
         IcebergTableHandle newIcebergTableHandle = new IcebergTableHandle(
-                icebergTableHandle.getSchemaName(),
-                icebergTableHandle.getTableName(),
-                icebergTableHandle.getTableType(),
-                icebergTableHandle.getSnapshotId(),
-                icebergTableHandle.getTableSchemaJson(),
-                icebergTableHandle.getPartitionSpecJson(),
-                icebergTableHandle.getFormatVersion(),
-                TupleDomain.all(),
-                icebergTableHandle.getEnforcedPredicate(),
-                icebergTableHandle.getProjectedColumns(),
-                icebergTableHandle.getNameMappingJson(),
-                icebergTableHandle.getTableLocation(),
-                icebergTableHandle.getStorageProperties(),
-                icebergTableHandle.getRetryMode(),
-                icebergTableHandle.getUpdatedColumns(),
-                icebergTableHandle.isRecordScannedFiles(),
-                icebergTableHandle.getMaxScannedFileSize(),
-                icebergTableHandle.getCorrColPredicate(),
-                Optional.of(aggIndex),
-                icebergTableHandle.getConstraintColumns());
+                originalTableHandle.getSchemaName(),
+                originalTableHandle.getTableName(),
+                originalTableHandle.getTableType(),
+                originalTableHandle.getSnapshotId(),
+                originalTableHandle.getTableSchemaJson(),
+                originalTableHandle.getPartitionSpecJson(),
+                originalTableHandle.getFormatVersion(),
+                originalTableHandle.getUnenforcedPredicate(),
+                originalTableHandle.getEnforcedPredicate(),
+                originalTableHandle.getProjectedColumns(),
+                originalTableHandle.getNameMappingJson(),
+                originalTableHandle.getTableLocation(),
+                originalTableHandle.getStorageProperties(),
+                originalTableHandle.getRetryMode(),
+                originalTableHandle.getUpdatedColumns(),
+                originalTableHandle.isRecordScannedFiles(),
+                originalTableHandle.getMaxScannedFileSize(),
+                originalTableHandle.getCorrColPredicate(),
+                Optional.of(aggIndex), // pushed agg index
+                originalTableHandle.getConstraintColumns());
 
         Map<String, TableColumnIdentify> aggIndexFileColumnNameToColumnIdent = new HashMap<>();
+
         AggregationIndex aggregationIndex =
                 table.aggregationIndexSpec().aggIndex()
                         .stream()
                         .filter(x -> x.getAggIndexId() == aggIndex.getAggIndexId())
                         .findFirst()
-                        .orElse(null);
-        if (aggregationIndex == null) {
-            log.info("Can not find an AggIndex %s in connector, maybe it was dropped by some reasons.", aggIndex.getAggIndexId());
-            return Optional.empty();
-        }
+                        .orElseThrow();
         for (Integer dimColumnId : aggregationIndex.getDims().getColumnIds()) {
             Types.NestedField field = schema.findField(dimColumnId);
             if (field != null) {
-                String tableName = icebergTableHandle.getTableName();
+                String tableName = originalTableHandle.getTableName();
                 TableColumnIdentify identify = new TableColumnIdentify(tableName, schema.findColumnName(dimColumnId));
                 aggIndexFileColumnNameToColumnIdent.put(WriteAggIndexUtils.factDimCol(dimColumnId, schema), identify);
             }
@@ -504,15 +498,20 @@ public class IcebergMetadata
                 identify = null;
             }
             else {
-                identify = new TableColumnIdentify(icebergTableHandle.getTableName(), schema.findColumnName(sourceColumnId));
+                identify = new TableColumnIdentify(originalTableHandle.getTableName(), schema.findColumnName(sourceColumnId));
             }
             aggIndexFileColumnNameToColumnIdent.put(WriteAggIndexUtils.aggExprAlias(aggregationDesc, schema).toLowerCase(Locale.ENGLISH), identify);
         }
 
-        // verify data file whether it has cube file
+        TupleDomain<IcebergColumnHandle> effectivePredicate =
+                originalTableHandle.getUnenforcedPredicate().intersect(originalTableHandle.getEnforcedPredicate());
+        if (effectivePredicate.isNone()) {
+            return Optional.empty();
+        }
+        // whether the data file has its cube file
         try (CloseableIterable<FileScanTask> fileScanTasks =
                      table.newScan()
-                             .filter(toIcebergExpression(icebergTableHandle.getEnforcedPredicate()))
+                             .filter(toIcebergExpression(effectivePredicate))
                              .includeAggIndexStats()
                              .planFiles()) {
             for (FileScanTask scanTask : fileScanTasks) {

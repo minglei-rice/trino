@@ -27,6 +27,7 @@ import io.trino.spi.connector.AggIndexApplicationResult;
 import io.trino.spi.connector.ColumnHandle;
 import io.trino.spi.predicate.TupleDomain;
 import io.trino.sql.ExpressionUtils;
+import io.trino.sql.PlannerContext;
 import io.trino.sql.planner.SimplePlanVisitor;
 import io.trino.sql.planner.Symbol;
 import io.trino.sql.planner.iterative.GroupReference;
@@ -62,10 +63,11 @@ import static io.trino.sql.planner.plan.Patterns.Aggregation.step;
 import static io.trino.sql.planner.plan.Patterns.aggregation;
 
 /**
- * Query can use cube data to query only when the query pattern matches the cube definition.
- * The column of "Group By" and the column in the "Where" condition must be the column defined in the dimension,
- * and the measure in SQL should be consistent with the measure defined in cube.
- *
+ * Query can use cube data to answer only when the query pattern matches the cube definition.
+ * <p>
+ * The column in "group by" and "where" condition must be defined in the dimension,
+ * and the measure in query should be consistent with the measures defined in cube definition.
+ * <p>
  * The conditions for being able to query the cube are exactly the same as Apache/Kylin.
  */
 public class RewriteAggregationByAggIndex
@@ -77,9 +79,9 @@ public class RewriteAggregationByAggIndex
             .with(step().equalTo(AggregationNode.Step.SINGLE))
             .matching(RewriteAggregationByAggIndex::preCheck);
 
-    public RewriteAggregationByAggIndex(Metadata metadata)
+    public RewriteAggregationByAggIndex(PlannerContext context)
     {
-        this.metadata = metadata;
+        this.metadata = context.getMetadata();
     }
 
     @Override
@@ -107,21 +109,20 @@ public class RewriteAggregationByAggIndex
         if (tableScanNodes.isEmpty()) {
             return Result.empty();
         }
-        // Typically, a star schema will only have one table(fact table) with a cube definition. But the other tables (dimension tables) of
-        // this star schema are fact tables inside another star schema and also define the cube.
         for (TableScanNode tableScan : tableScanNodes) {
             TableHandle tableHandle = tableScan.getTable();
-            List<AggIndex> trinoAggIndex = metadata.getAggregationIndices(session, tableHandle);
-            // no agg index defined on this table
-            if (trinoAggIndex.isEmpty()) {
-                continue;
+            List<AggIndex> aggIndices = metadata.getAggregationIndex(session, tableHandle);
+            if (aggIndices.isEmpty()) {
+                continue; // continue table scan
             }
             AggIndex candidateAggIndex = null;
             RewriteUtil rewriteUtil = null;
-            for (AggIndex aggIndex : trinoAggIndex) {
-                rewriteUtil = new RewriteUtil(true).setAggIndex(aggIndex).setNameToSymbol(nameToSymbol);
-                List<CorrColumns.Corr> corrList = aggIndex.getCorrColumns().stream().map(CorrColumns::getCorrelation).collect(Collectors.toList());
+            for (AggIndex aggIndex : aggIndices) {
+                List<CorrColumns.Corr> corrList = aggIndex.getCorrColumns().stream().map(CorrColumns::getCorrelation).toList();
                 boolean skipCurrAggIndex = false;
+                // We need to ensure that all join constraints of the tables involved in the join are PK_FK
+                // Because this can support the query of free dimension tables and dimension fields.
+                // TODO Support for other join constraints
                 for (CorrColumns.Corr corr : corrList) {
                     if (corr.getJoinConstraint() != CorrColumns.Corr.JoinConstraint.PK_FK) {
                         skipCurrAggIndex = true;
@@ -131,18 +132,23 @@ public class RewriteAggregationByAggIndex
                 if (skipCurrAggIndex) {
                     continue;
                 }
+                rewriteUtil = new RewriteUtil(true)
+                        .setAggIndex(aggIndex)
+                        .setNameToSymbol(nameToSymbol);
                 node.accept(new AggIndexVisitor(context.getLookup(), session, metadata), rewriteUtil);
+
                 if (!rewriteUtil.canRewrite()) {
                     continue;
                 }
                 candidateAggIndex = aggIndex;
                 break;
             }
-            if (!rewriteUtil.canRewrite()) {
-                continue;
+
+            if (rewriteUtil == null || !rewriteUtil.canRewrite()) {
+                continue; // continue table scan
             }
 
-            LOG.info("Find an AggIndex %s answer the query.", candidateAggIndex);
+            LOG.info("Find an agg index %s answer the query %s.", candidateAggIndex, context.getSession().getQueryId().toString());
             Optional<AggIndexApplicationResult<TableHandle>> result = metadata.applyAggIndex(session, tableHandle, candidateAggIndex);
             if (result.isEmpty()) {
                 LOG.warn("Push Agg Index down failed, in most of time, this is not expected to happen.");

@@ -135,9 +135,9 @@ public interface Metadata
     TableSchema getTableSchema(Session session, TableHandle tableHandle);
 
     /**
-     * Only support iceberg table now.
+     * A fact table can define multiple cubes.
      */
-    default List<AggIndex> getAggregationIndices(Session session, TableHandle tableHandle)
+    default List<AggIndex> getAggregationIndex(Session session, TableHandle tableHandle)
     {
         return List.of();
     }

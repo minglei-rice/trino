@@ -102,9 +102,9 @@ public interface ConnectorMetadata
     /**
      * Return a group of AggregationIndex defined in the table. For a specific query, we only need to find one of the
      * AggregationIndex to respond. If more than one AggregationIndex can be found answer the query, then we can
-     * choose an optimal AggregationIndex(example: the smallest size to respond).
+     * choose an optimal AggregationIndex(example: the smallest size to respond). //TODO
      */
-    default List<AggIndex> getAggregationIndices(ConnectorSession session, ConnectorTableHandle tableHandle)
+    default List<AggIndex> getAggregationIndex(ConnectorSession session, ConnectorTableHandle tableHandle)
     {
         return emptyList();
     }
@@ -1377,7 +1377,7 @@ public interface ConnectorMetadata
     }
 
     /**
-     * Push AggIndex down to Connector.
+     * Attempt to push down the agg index down to the connector and apply agg index to new table handle.
      */
     default Optional<AggIndexApplicationResult<ConnectorTableHandle>> applyAggIndex(
             ConnectorSession session,

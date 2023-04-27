@@ -19,9 +19,6 @@ import java.util.Map;
 
 public class AggIndexApplicationResult<T>
 {
-    /**
-     * A new table handle with an agg index.
-     */
     private final T handle;
 
     /**

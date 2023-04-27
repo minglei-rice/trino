@@ -841,7 +841,7 @@ public class PlanOptimizers
                         ruleStats,
                         statsCalculator,
                         costCalculator,
-                        ImmutableSet.of(new RewriteAggregationByAggIndex(metadata))));
+                        ImmutableSet.of(new RewriteAggregationByAggIndex(plannerContext))));
 
         // push down correlated column filters
         builder.add(

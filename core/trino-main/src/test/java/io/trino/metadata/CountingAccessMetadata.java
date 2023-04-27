@@ -132,9 +132,9 @@ public class CountingAccessMetadata
     }
 
     @Override
-    public List<AggIndex> getAggregationIndices(Session session, TableHandle tableHandle)
+    public List<AggIndex> getAggregationIndex(Session session, TableHandle tableHandle)
     {
-        return delegate.getAggregationIndices(session, tableHandle);
+        return delegate.getAggregationIndex(session, tableHandle);
     }
 
     @Override

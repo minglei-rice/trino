@@ -195,10 +195,10 @@ public class ClassLoaderSafeConnectorMetadata
     }
 
     @Override
-    public List<AggIndex> getAggregationIndices(ConnectorSession session, ConnectorTableHandle tableHandle)
+    public List<AggIndex> getAggregationIndex(ConnectorSession session, ConnectorTableHandle tableHandle)
     {
         try (ThreadContextClassLoader ignored = new ThreadContextClassLoader(classLoader)) {
-            return delegate.getAggregationIndices(session, tableHandle);
+            return delegate.getAggregationIndex(session, tableHandle);
         }
     }
 
