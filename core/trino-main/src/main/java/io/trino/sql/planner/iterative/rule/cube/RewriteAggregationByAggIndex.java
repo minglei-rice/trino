@@ -25,7 +25,6 @@ import io.trino.spi.aggindex.CorrColumns;
 import io.trino.spi.aggindex.TableColumnIdentify;
 import io.trino.spi.connector.AggIndexApplicationResult;
 import io.trino.spi.connector.ColumnHandle;
-import io.trino.spi.predicate.TupleDomain;
 import io.trino.sql.ExpressionUtils;
 import io.trino.sql.PlannerContext;
 import io.trino.sql.planner.SimplePlanVisitor;
@@ -118,23 +117,13 @@ public class RewriteAggregationByAggIndex
             AggIndex candidateAggIndex = null;
             RewriteUtil rewriteUtil = null;
             for (AggIndex aggIndex : aggIndices) {
-                List<CorrColumns.Corr> corrList = aggIndex.getCorrColumns().stream().map(CorrColumns::getCorrelation).toList();
-                boolean skipCurrAggIndex = false;
-                // We need to ensure that all join constraints of the tables involved in the join are PK_FK
-                // Because this can support the query of free dimension tables and dimension fields.
-                // TODO Support for other join constraints
-                for (CorrColumns.Corr corr : corrList) {
-                    if (corr.getJoinConstraint() != CorrColumns.Corr.JoinConstraint.PK_FK) {
-                        skipCurrAggIndex = true;
-                        break;
-                    }
-                }
-                if (skipCurrAggIndex) {
+                if (!verifyJoinConstraint(aggIndex)) {
                     continue;
                 }
                 rewriteUtil = new RewriteUtil(true)
                         .setAggIndex(aggIndex)
                         .setNameToSymbol(nameToSymbol);
+
                 node.accept(new AggIndexVisitor(context.getLookup(), session, metadata), rewriteUtil);
 
                 if (!rewriteUtil.canRewrite()) {
@@ -144,51 +133,45 @@ public class RewriteAggregationByAggIndex
                 break;
             }
 
-            if (rewriteUtil == null || !rewriteUtil.canRewrite()) {
+            if (rewriteUtil == null || !rewriteUtil.canRewrite() || candidateAggIndex == null) {
                 continue; // continue table scan
             }
 
-            LOG.info("Find an agg index %s answer the query %s.", candidateAggIndex, context.getSession().getQueryId().toString());
+            LOG.info("Find an agg index %s answer the query %s.", candidateAggIndex.getAggIndexId(), context.getSession().getQueryId().toString());
             Optional<AggIndexApplicationResult<TableHandle>> result = metadata.applyAggIndex(session, tableHandle, candidateAggIndex);
             if (result.isEmpty()) {
-                LOG.warn("Push Agg Index down failed, in most of time, this is not expected to happen.");
                 continue;
             }
             TableHandle newTable = result.get().getHandle();
+            Map<String, ColumnHandle> cubeColumns = metadata.getColumnHandles(session, newTable);
+            Map<String, TableColumnIdentify> cubeFileColumnToIdentify = result.get().getAggIndexColumnNameToIdentify();
+            Map<TableColumnIdentify, Symbol> dimColumnToSymbol = rewriteUtil.getDimColumnAndSymbol();
 
-            // cube assignments
-            Map<String, ColumnHandle> assignments = metadata.getColumnHandles(session, newTable);
-            // cube schema column name to its original table column name
-            Map<String, TableColumnIdentify> aggIndexFileColumnNameToIdentify = result.get().getAggIndexColumnNameToIdentify();
-            // for original query
-            Map<TableColumnIdentify, Symbol> columnIdentToSymbol = rewriteUtil.getColumnIdentifyAndSymbol();
-            // for later table scan node usage.
-            Map<Symbol, ColumnHandle> newAssignments = new HashMap<>();
-            // for later table scan node usage.
-            List<Symbol> newOutputs = new ArrayList<>();
-            for (Map.Entry<String, ColumnHandle> entry : assignments.entrySet()) {
-                String columnNameInAggIndexFile = entry.getKey();
+            List<Symbol> outputs = new ArrayList<>();
+            Map<Symbol, ColumnHandle> assignments = new HashMap<>();
+            for (Map.Entry<String, ColumnHandle> entry : cubeColumns.entrySet()) {
+                String columnNameInCubeFile = entry.getKey();
                 ColumnHandle columnHandle = entry.getValue();
-                TableColumnIdentify identify = aggIndexFileColumnNameToIdentify.get(columnNameInAggIndexFile);
+                TableColumnIdentify identify = cubeFileColumnToIdentify.get(columnNameInCubeFile);
                 if (identify != null) {
-                    Symbol symbol = columnIdentToSymbol.get(identify);
+                    Symbol symbol = dimColumnToSymbol.get(identify);
                     if (symbol != null) {
-                        newAssignments.put(symbol, columnHandle);
-                        newOutputs.add(symbol);
+                        assignments.put(symbol, columnHandle);
+                        outputs.add(symbol);
                     }
                 }
                 else {
-                    Symbol joinIndicator = context.getSymbolAllocator().newSymbol(columnNameInAggIndexFile, BOOLEAN);
-                    newAssignments.put(joinIndicator, columnHandle);
-                    newOutputs.add(joinIndicator);
+                    Symbol joinIndicator = context.getSymbolAllocator().newSymbol(columnNameInCubeFile, BOOLEAN);
+                    assignments.put(joinIndicator, columnHandle);
+                    outputs.add(joinIndicator);
                 }
             }
             TableScanNode tableScanNode = new TableScanNode(
                     context.getIdAllocator().getNextId(),
                     newTable,
-                    newOutputs,
-                    newAssignments,
-                    TupleDomain.all(),
+                    outputs,
+                    assignments,
+                    tableScan.getEnforcedConstraint(), // TODO use original enforced constraint or TupleDomain.all() ?
                     tableScan.getStatistics(),
                     tableScan.isUpdateTarget(),
                     tableScan.getUseConnectorNodePartitioning());
@@ -196,7 +179,7 @@ public class RewriteAggregationByAggIndex
             List<Expression> expressions = ExpressionUtils.removeDuplicates(metadata, exprCollector);
             Expression expression = ExpressionUtils.combineConjuncts(metadata, expressions);
             FilterNode filterNode = new FilterNode(context.getIdAllocator().getNextId(), tableScanNode, expression);
-            LOG.info("Conjunctive filter is %s", filterNode.getPredicate().toString());
+            LOG.info("cube filter is %s", filterNode.getPredicate().toString());
             return Result.ofPlanNode(new AggregationNode(
                     context.getIdAllocator().getNextId(),
                     exprCollector.size() > 0 ? filterNode : tableScanNode,
@@ -208,6 +191,16 @@ public class RewriteAggregationByAggIndex
                     node.getGroupIdSymbol()));
         }
         return Result.empty();
+    }
+
+    private boolean verifyJoinConstraint(AggIndex aggIndex)
+    {
+        // We need to ensure that all join constraints of the tables involved in the join are PK_FK
+        // Because this can support the query of free dimension tables and dimension fields.
+        // TODO Support for other join constraints
+        return aggIndex.getCorrColumns().stream()
+                        .map(CorrColumns::getCorrelation)
+                        .allMatch(corr -> corr.getJoinConstraint() == CorrColumns.Corr.JoinConstraint.PK_FK);
     }
 
     private static class AggIndexVisitor
@@ -246,7 +239,7 @@ public class RewriteAggregationByAggIndex
             else {
                 // matched
                 for (int i = 0; i < dimFieldsFromPlan.size(); i++) {
-                    rewriteUtil.putColumnIdentifyAndSymbol(dimFieldsFromPlan.get(i), node.getGroupingSets().getGroupingKeys().get(i));
+                    rewriteUtil.putDimColumnAndSymbol(dimFieldsFromPlan.get(i), node.getGroupingSets().getGroupingKeys().get(i));
                 }
             }
 
@@ -298,7 +291,7 @@ public class RewriteAggregationByAggIndex
                     if (aggregation.getArguments().size() > 0) {
                         Expression expression = aggregation.getArguments().get(0);
                         Symbol measure = applyExprToSymbol.apply(expression);
-                        rewriteUtil.putColumnIdentifyAndSymbol(rewriteUtil.getSymbolToTableColumnName()
+                        rewriteUtil.putDimColumnAndSymbol(rewriteUtil.getSymbolToTableColumnName()
                                 .getOrDefault(measure, TableColumnIdentify.NONE), measure);
                     }
                 }
@@ -491,7 +484,7 @@ public class RewriteAggregationByAggIndex
                             context.getAggIndex().getDimFields());
                     return null;
                 }
-                context.putColumnIdentifyAndSymbol(filterExpColumnField, context.getNameToSymbol().get(symbolRef.getName()));
+                context.putDimColumnAndSymbol(filterExpColumnField, context.getNameToSymbol().get(symbolRef.getName()));
                 return null;
             }
         }
@@ -507,12 +500,12 @@ public class RewriteAggregationByAggIndex
          * For FilterNode, the key is the column in the original table of the symbol used by the filter expression.
          * For AggregationNode, key is the column in the original table of the aggregation node grouping key and the
          * arguments involved in the function.
-         *
+         * <p>
          * Because the optimized logical plan is basically a single stage which may only contains `Aggregation -> Filter -> TableScan`.
          * Note that AggregationNode and FilterNode input symbols are original from TableScan output symbols, only collect
          * symbols from AggregationNode and FilterNode.
          */
-        private final Map<TableColumnIdentify, Symbol> columnIdentifyToSymbol;
+        private final Map<TableColumnIdentify, Symbol> dimColumnToSymbol;
 
         /**
          * The key is the output symbols of all TableScanNodes.
@@ -528,7 +521,7 @@ public class RewriteAggregationByAggIndex
         {
             this.canRewrite = canRewrite;
             this.symbolToTableColumnIdent = new HashMap<>();
-            this.columnIdentifyToSymbol = new HashMap<>();
+            this.dimColumnToSymbol = new HashMap<>();
             this.filterCollector = new ArrayList<>();
             this.nameToSymbol = new HashMap<>();
         }
@@ -565,14 +558,14 @@ public class RewriteAggregationByAggIndex
             filterCollector.add(expr);
         }
 
-        public void putColumnIdentifyAndSymbol(TableColumnIdentify identify, Symbol symbol)
+        public void putDimColumnAndSymbol(TableColumnIdentify identify, Symbol symbol)
         {
-            columnIdentifyToSymbol.put(identify, symbol);
+            dimColumnToSymbol.put(identify, symbol);
         }
 
-        public Map<TableColumnIdentify, Symbol> getColumnIdentifyAndSymbol()
+        public Map<TableColumnIdentify, Symbol> getDimColumnAndSymbol()
         {
-            return columnIdentifyToSymbol;
+            return dimColumnToSymbol;
         }
 
         public boolean canRewrite()

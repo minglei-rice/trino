@@ -809,11 +809,12 @@ public class IcebergMetadata
                             .stream()
                             .filter(icebergAggIndex -> icebergAggIndex.getAggIndexId() == table.getAggIndex().get().getAggIndexId())
                             .findFirst()
-                            .orElseThrow(() -> new RuntimeException("Can not find aggregation index."));
+                            .orElseThrow();
             // cube schema
             Schema schema = WriteAggIndexUtils.aggIndexSchema(
                     aggregationIndex, icebergTable.schema(), icebergTable.correlatedColumnsSpec());
-            return getColumns(schema, typeManager).stream()
+            return getColumns(schema, typeManager)
+                    .stream()
                     .collect(toImmutableMap(IcebergColumnHandle::getName, identity()));
         }
         ImmutableMap.Builder<String, ColumnHandle> columnHandles = ImmutableMap.builder();
