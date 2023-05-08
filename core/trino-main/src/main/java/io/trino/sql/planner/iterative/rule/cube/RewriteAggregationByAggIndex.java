@@ -13,11 +13,14 @@
  */
 package io.trino.sql.planner.iterative.rule.cube;
 
+import com.google.common.collect.ImmutableList;
 import io.airlift.log.Logger;
 import io.trino.Session;
+import io.trino.connector.system.GlobalSystemConnector;
 import io.trino.matching.Captures;
 import io.trino.matching.Pattern;
 import io.trino.metadata.Metadata;
+import io.trino.metadata.ResolvedFunction;
 import io.trino.metadata.TableHandle;
 import io.trino.spi.aggindex.AggFunctionDesc;
 import io.trino.spi.aggindex.AggIndex;
@@ -25,6 +28,13 @@ import io.trino.spi.aggindex.CorrColumns;
 import io.trino.spi.aggindex.TableColumnIdentify;
 import io.trino.spi.connector.AggIndexApplicationResult;
 import io.trino.spi.connector.ColumnHandle;
+import io.trino.spi.function.BoundSignature;
+import io.trino.spi.function.FunctionId;
+import io.trino.spi.function.FunctionNullability;
+import io.trino.spi.type.BigintType;
+import io.trino.spi.type.DecimalType;
+import io.trino.spi.type.Type;
+import io.trino.spi.type.TypeSignature;
 import io.trino.sql.ExpressionUtils;
 import io.trino.sql.PlannerContext;
 import io.trino.sql.planner.SimplePlanVisitor;
@@ -46,23 +56,28 @@ import io.trino.sql.tree.SymbolReference;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.BiPredicate;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 import static io.trino.SystemSessionProperties.isAllowReadAggIndexFiles;
-import static io.trino.spi.type.BooleanType.BOOLEAN;
+import static io.trino.spi.type.VarbinaryType.VARBINARY;
 import static io.trino.sql.planner.plan.Patterns.Aggregation.step;
 import static io.trino.sql.planner.plan.Patterns.aggregation;
+import static java.lang.String.format;
 
 /**
- * Query can use cube data to answer only when the query pattern matches the cube definition.
+ * Query can use cube to answer when the query pattern matches the cube definition.
  * <p>
  * The column in "group by" and "where" condition must be defined in the dimension,
  * and the measure in query should be consistent with the measures defined in cube definition.
@@ -77,6 +92,8 @@ public class RewriteAggregationByAggIndex
     private static final Pattern<AggregationNode> PATTERN = aggregation()
             .with(step().equalTo(AggregationNode.Step.SINGLE))
             .matching(RewriteAggregationByAggIndex::preCheck);
+
+    private static final Set<String> SUPPORTED_AGG_FUNC = new HashSet<>(Arrays.asList("sum", "min", "max", "count", "avg"));
 
     public RewriteAggregationByAggIndex(PlannerContext context)
     {
@@ -147,23 +164,38 @@ public class RewriteAggregationByAggIndex
             Map<String, TableColumnIdentify> cubeFileColumnToIdentify = result.get().getAggIndexColumnNameToIdentify();
             Map<TableColumnIdentify, Symbol> dimColumnToSymbol = rewriteUtil.getDimColumnAndSymbol();
 
+            // join indicator is included in this set.
+            Set<String> effectColumnNames = cubeColumns.keySet().stream()
+                    .filter(name -> !cubeFileColumnToIdentify.containsKey(name)).collect(Collectors.toSet());
+
+            Map<Symbol, TableColumnIdentify> aggArgsSymbolToColumn = rewriteUtil.getAggArgsSymbolToColumn();
+            Collection<TableColumnIdentify> columnIdentifySet = dimColumnToSymbol.keySet();
+
+            // column names in filter & group by expressions included
+            List<String> dimFields = cubeFileColumnToIdentify.entrySet().stream()
+                    .filter(entry -> columnIdentifySet.contains(entry.getValue()))
+                    .map(Map.Entry::getKey).toList();
+            effectColumnNames.addAll(dimFields);
+
+            Map<AggFunctionDesc, String> aggFunctionDescToName = candidateAggIndex.getAggFunctionDescToName();
+            Set<String> aggregationNames = node.getAggregations().values().stream()
+                    .map(aggregation -> aggFunctionDescToName.get(aggregationToAggFunctionDesc(aggregation, aggArgsSymbolToColumn)))
+                    .collect(Collectors.toSet());
+            // agg column names included
+            effectColumnNames.addAll(aggregationNames);
+
             List<Symbol> outputs = new ArrayList<>();
             Map<Symbol, ColumnHandle> assignments = new HashMap<>();
             for (Map.Entry<String, ColumnHandle> entry : cubeColumns.entrySet()) {
-                String columnNameInCubeFile = entry.getKey();
-                ColumnHandle columnHandle = entry.getValue();
-                TableColumnIdentify identify = cubeFileColumnToIdentify.get(columnNameInCubeFile);
-                if (identify != null) {
-                    Symbol symbol = dimColumnToSymbol.get(identify);
-                    if (symbol != null) {
-                        assignments.put(symbol, columnHandle);
-                        outputs.add(symbol);
+                if (effectColumnNames.contains(entry.getKey())) {
+                    TableColumnIdentify tableColumnIdentify = cubeFileColumnToIdentify.get(entry.getKey());
+                    Symbol symbol = dimColumnToSymbol.get(tableColumnIdentify);
+                    ColumnHandle columnHandle = entry.getValue();
+                    if (symbol == null) {
+                        symbol = context.getSymbolAllocator().newSymbol(entry.getKey(), metadata.getColumnMetadata(session, tableHandle, columnHandle).getType());
                     }
-                }
-                else {
-                    Symbol joinIndicator = context.getSymbolAllocator().newSymbol(columnNameInCubeFile, BOOLEAN);
-                    assignments.put(joinIndicator, columnHandle);
-                    outputs.add(joinIndicator);
+                    assignments.put(symbol, columnHandle);
+                    outputs.add(symbol);
                 }
             }
             TableScanNode tableScanNode = new TableScanNode(
@@ -180,10 +212,12 @@ public class RewriteAggregationByAggIndex
             Expression expression = ExpressionUtils.combineConjuncts(metadata, expressions);
             FilterNode filterNode = new FilterNode(context.getIdAllocator().getNextId(), tableScanNode, expression);
             LOG.info("cube filter is %s", filterNode.getPredicate().toString());
+            Map<Symbol, AggregationNode.Aggregation> aggregationMap = rewriteAggregation(node.getAggregations(),
+                    aggArgsSymbolToColumn, candidateAggIndex.getAggFunctionDescToName());
             return Result.ofPlanNode(new AggregationNode(
                     context.getIdAllocator().getNextId(),
                     exprCollector.size() > 0 ? filterNode : tableScanNode,
-                    node.getAggregations(),
+                    aggregationMap,
                     node.getGroupingSets(),
                     node.getPreGroupedSymbols(),
                     node.getStep(),
@@ -233,7 +267,7 @@ public class RewriteAggregationByAggIndex
             List<TableColumnIdentify> dimFieldsFromAggIndex = rewriteUtil.getAggIndex().getDimFields();
             if (!dimFieldsFromAggIndex.containsAll(dimFieldsFromPlan)) {
                 rewriteUtil.setCanRewrite(false);
-                tuneAggregationNode(rewriteUtil.getAggIndex().getAggIndexId(), dimFieldsFromPlan, dimFieldsFromAggIndex, List.of(), List.of());
+                tuneAggregationNode(rewriteUtil.getAggIndex().getAggIndexId(), dimFieldsFromPlan, dimFieldsFromAggIndex, List.of(), Set.of());
                 return null;
             }
             else {
@@ -280,7 +314,7 @@ public class RewriteAggregationByAggIndex
                 }
                 aggFunctionFromPlan.add(aggFunctionDesc);
             }
-            List<AggFunctionDesc> aggFunctionFromAggIndex = rewriteUtil.getAggIndex().getAggFunctionDescs();
+            Set<AggFunctionDesc> aggFunctionFromAggIndex = rewriteUtil.getAggIndex().getAggFunctionDescToName().keySet();
             if (!aggFunctionFromAggIndex.containsAll(aggFunctionFromPlan)) {
                 rewriteUtil.setCanRewrite(false);
                 tuneAggregationNode(rewriteUtil.getAggIndex().getAggIndexId(), List.of(), List.of(), aggFunctionFromPlan, aggFunctionFromAggIndex);
@@ -291,8 +325,8 @@ public class RewriteAggregationByAggIndex
                     if (aggregation.getArguments().size() > 0) {
                         Expression expression = aggregation.getArguments().get(0);
                         Symbol measure = applyExprToSymbol.apply(expression);
-                        rewriteUtil.putDimColumnAndSymbol(rewriteUtil.getSymbolToTableColumnName()
-                                .getOrDefault(measure, TableColumnIdentify.NONE), measure);
+                        rewriteUtil.putAggArgsSymbolToColumn(measure, rewriteUtil.getSymbolToTableColumnName()
+                                .getOrDefault(measure, TableColumnIdentify.NONE));
                     }
                 }
             }
@@ -498,14 +532,18 @@ public class RewriteAggregationByAggIndex
 
         /**
          * For FilterNode, the key is the column in the original table of the symbol used by the filter expression.
-         * For AggregationNode, key is the column in the original table of the aggregation node grouping key and the
-         * arguments involved in the function.
+         * For AggregationNode, key is the column in the original table of the aggregation node grouping key.
          * <p>
          * Because the optimized logical plan is basically a single stage which may only contains `Aggregation -> Filter -> TableScan`.
          * Note that AggregationNode and FilterNode input symbols are original from TableScan output symbols, only collect
-         * symbols from AggregationNode and FilterNode.
+         * symbols from AggregationNode grouping key and FilterNode.
          */
         private final Map<TableColumnIdentify, Symbol> dimColumnToSymbol;
+
+        /**
+         * Symbols from AggregationNode function arguments
+         */
+        private final Map<Symbol, TableColumnIdentify> aggArgsSymbolToColumn;
 
         /**
          * The key is the output symbols of all TableScanNodes.
@@ -524,6 +562,7 @@ public class RewriteAggregationByAggIndex
             this.dimColumnToSymbol = new HashMap<>();
             this.filterCollector = new ArrayList<>();
             this.nameToSymbol = new HashMap<>();
+            this.aggArgsSymbolToColumn = new HashMap<>();
         }
 
         public Map<String, Symbol> getNameToSymbol()
@@ -568,6 +607,16 @@ public class RewriteAggregationByAggIndex
             return dimColumnToSymbol;
         }
 
+        public void putAggArgsSymbolToColumn(Symbol symbol, TableColumnIdentify identify)
+        {
+            aggArgsSymbolToColumn.put(symbol, identify);
+        }
+
+        public Map<Symbol, TableColumnIdentify> getAggArgsSymbolToColumn()
+        {
+            return aggArgsSymbolToColumn;
+        }
+
         public boolean canRewrite()
         {
             return canRewrite;
@@ -601,7 +650,7 @@ public class RewriteAggregationByAggIndex
         for (Map.Entry<Symbol, AggregationNode.Aggregation> entry : aggregations.entrySet()) {
             AggregationNode.Aggregation aggregation = entry.getValue();
             String name = aggregation.getResolvedFunction().getSignature().toSignature().getName();
-            boolean allowFunc = Objects.equals("sum", name) || Objects.equals("min", name) || Objects.equals("max", name);
+            boolean allowFunc = SUPPORTED_AGG_FUNC.contains(name);
             if (aggregation.isDistinct()
                     || aggregation.getFilter().isPresent()
                     || aggregation.getOrderingScheme().isPresent()
@@ -619,7 +668,7 @@ public class RewriteAggregationByAggIndex
             List<TableColumnIdentify> dimColumnFromPlan,
             List<TableColumnIdentify> dimColumnFromConnector,
             List<AggFunctionDesc> aggFunctionDescFromPlan,
-            List<AggFunctionDesc> aggFunctionDescFromConnector)
+            Set<AggFunctionDesc> aggFunctionDescFromConnector)
     {
         LOG.info("agg index id is %s, dim column from plan %s", aggIndexId, Arrays.toString(dimColumnFromPlan.toArray()));
         LOG.info("agg index id is %s, dim column from cube %s", aggIndexId, Arrays.toString(dimColumnFromConnector.toArray()));
@@ -647,5 +696,79 @@ public class RewriteAggregationByAggIndex
     {
         LOG.info("agg index id is %s, filter symbol reference is %s", aggIndexId, symbolReference.toString());
         LOG.info("agg index id is %s, dim fields is %s", aggIndexId, Arrays.toString(dimFields.toArray()));
+    }
+
+    private static Map<Symbol, AggregationNode.Aggregation> rewriteAggregation(Map<Symbol, AggregationNode.Aggregation> aggregationMap,
+                                                                               Map<Symbol, TableColumnIdentify> aggArgsSymbolToColumn,
+                                                                               Map<AggFunctionDesc, String> aggFunctionDescToName)
+    {
+        Map<Symbol, AggregationNode.Aggregation> result = new HashMap<>();
+        for (Map.Entry<Symbol, AggregationNode.Aggregation> entry : aggregationMap.entrySet()) {
+            ResolvedFunction prevResolvedFunction = entry.getValue().getResolvedFunction();
+            BoundSignature boundSignature = prevResolvedFunction.getSignature();
+            FunctionId functionId = prevResolvedFunction.getFunctionId();
+            FunctionNullability functionNullability = prevResolvedFunction.getFunctionNullability();
+            Map<TypeSignature, Type> typeDependencies = prevResolvedFunction.getTypeDependencies();
+            String newAggName = aggFunctionDescToName.get(aggregationToAggFunctionDesc(entry.getValue(), aggArgsSymbolToColumn));
+            String functionFormat = "%s<t>(t):%s";
+            switch (boundSignature.getName().toLowerCase(Locale.ROOT)) {
+                case "avg":
+                    String avgName = "cube_avg_double";
+                    String funcIdName = String.format(functionFormat, avgName, "double");
+                    if (boundSignature.getReturnType() instanceof DecimalType) {
+                        avgName = "cube_avg_decimal";
+                        funcIdName = String.format(functionFormat, avgName, "decimal");
+                    }
+                    boundSignature = new BoundSignature(avgName, boundSignature.getReturnType(), ImmutableList.of(VARBINARY));
+                    functionId = new FunctionId(funcIdName);
+                    typeDependencies = new HashMap<>();
+                    typeDependencies.put(new TypeSignature("varbinary"), prevResolvedFunction.getSignature().getArgumentTypes().get(0));
+                    break;
+                case "count":
+                    boundSignature = new BoundSignature("sum", prevResolvedFunction.getSignature().getReturnType(),
+                            ImmutableList.of(BigintType.BIGINT));
+                    functionId = FunctionId.toFunctionId(boundSignature.toSignature());
+                    functionNullability = new FunctionNullability(true, ImmutableList.of(false));
+                    break;
+                case "sum":
+                case "min":
+                case "max":
+                    break;
+                default:
+                    throw new IllegalArgumentException(format("Unsupported function name %s for cube aggregation rewrite!", entry.getKey().getName()));
+            }
+
+            ResolvedFunction resolvedFunction = new ResolvedFunction(
+                    boundSignature,
+                    GlobalSystemConnector.CATALOG_HANDLE,
+                    functionId,
+                    prevResolvedFunction.getFunctionKind(),
+                    prevResolvedFunction.isDeterministic(),
+                    functionNullability,
+                    typeDependencies,
+                    prevResolvedFunction.getFunctionDependencies());
+            result.put(entry.getKey(), aggregationMapping(entry.getValue(), resolvedFunction, ImmutableList.of(new SymbolReference(newAggName))));
+        }
+        return result;
+    }
+
+    private static AggregationNode.Aggregation aggregationMapping(AggregationNode.Aggregation aggregation, ResolvedFunction resolvedFunction, List<Expression> arguments)
+    {
+        return new AggregationNode.Aggregation(resolvedFunction,
+                arguments,
+                aggregation.isDistinct(),
+                aggregation.getFilter(),
+                aggregation.getOrderingScheme(),
+                aggregation.getMask());
+    }
+
+    private static AggFunctionDesc aggregationToAggFunctionDesc(AggregationNode.Aggregation aggregation, Map<Symbol, TableColumnIdentify> symbolToColumnIdentify)
+    {
+        TableColumnIdentify tableColumnIdentify = null;
+        // for count(*), the arguments will with size 0
+        if (aggregation.getArguments().size() > 0) {
+            tableColumnIdentify = symbolToColumnIdentify.get(Symbol.from(aggregation.getArguments().get(0)));
+        }
+        return new AggFunctionDesc(aggregation.getResolvedFunction().getSignature().getName(), tableColumnIdentify);
     }
 }

@@ -55,7 +55,6 @@ import static org.apache.iceberg.TableMetadataParser.getFileExtension;
 import static org.apache.iceberg.TableProperties.METADATA_COMPRESSION;
 import static org.apache.iceberg.TableProperties.METADATA_COMPRESSION_DEFAULT;
 import static org.apache.iceberg.TableProperties.WRITE_METADATA_LOCATION;
-import static org.apache.iceberg.util.LocationUtil.stripTrailingSlash;
 
 @NotThreadSafe
 public abstract class AbstractIcebergTableOperations
@@ -284,5 +283,14 @@ public abstract class AbstractIcebergTableOperations
                         toHiveType(HiveSchemaUtil.convert(column.type())),
                         Optional.empty()))
                 .collect(toImmutableList());
+    }
+
+    private static String stripTrailingSlash(String path)
+    {
+        String result = path;
+        while (result.endsWith("/")) {
+            result = result.substring(0, result.length() - 1);
+        }
+        return result;
     }
 }
