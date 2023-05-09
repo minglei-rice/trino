@@ -976,4 +976,21 @@ public final class StringFunctions
             throw new TrinoException(INVALID_FUNCTION_ARGUMENT, e);
         }
     }
+
+    @Description("Determine whether source has certain term inside")
+    @ScalarFunction
+    @LiteralParameters({"x", "y"})
+    @SqlType(StandardTypes.BOOLEAN)
+    public static boolean hasToken(@SqlType("varchar(x)") Slice source, @SqlType("varchar(y)") Slice token)
+    {
+        if (source.length() < token.length()) {
+            return false;
+        }
+        for (int i = 0; i <= source.length() - token.length(); i++) {
+            if (source.compareTo(i, token.length(), token, 0, token.length()) == 0) {
+                return true;
+            }
+        }
+        return false;
+    }
 }

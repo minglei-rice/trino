@@ -25,6 +25,7 @@ import io.trino.spi.connector.ColumnHandle;
 import io.trino.spi.connector.ConnectorTableHandle;
 import io.trino.spi.connector.RetryMode;
 import io.trino.spi.connector.SchemaTableName;
+import io.trino.spi.expression.ConnectorExpression;
 import io.trino.spi.predicate.TupleDomain;
 
 import java.util.Collections;
@@ -72,7 +73,8 @@ public class IcebergTableHandle
     // OPTIMIZE only. Coordinator-only
     private final boolean recordScannedFiles;
     private final Optional<DataSize> maxScannedFileSize;
-
+    private final ConnectorExpression connectorExpression;
+    private final Map<String, IcebergColumnHandle> conExprAssignments;
     private final TupleDomain<IcebergColumnHandle> corrColPredicate;
     private final Optional<AggIndex> aggIndex;
     private final Set<ColumnHandle> constraintColumns;
@@ -95,7 +97,9 @@ public class IcebergTableHandle
             @JsonProperty("retryMode") RetryMode retryMode,
             @JsonProperty("updatedColumns") List<IcebergColumnHandle> updatedColumns,
             @JsonProperty("corrColPredicate") TupleDomain<IcebergColumnHandle> corrColPredicate,
-            @JsonProperty("aggIndex") Optional<AggIndex> aggIndex)
+            @JsonProperty("aggIndex") Optional<AggIndex> aggIndex,
+            @JsonProperty("connectorExpressions") ConnectorExpression connectorExpression,
+            @JsonProperty("connectorAssignments") Map<String, IcebergColumnHandle> conExprAssignments)
     {
         return new IcebergTableHandle(
                 schemaName,
@@ -117,7 +121,9 @@ public class IcebergTableHandle
                 Optional.empty(),
                 corrColPredicate,
                 aggIndex,
-                Collections.emptySet());
+                Collections.emptySet(),
+                connectorExpression,
+                conExprAssignments);
     }
 
     public IcebergTableHandle(
@@ -142,6 +148,34 @@ public class IcebergTableHandle
             Optional<AggIndex> aggIndex,
             Set<ColumnHandle> constraintColumns)
     {
+        this(schemaName, tableName, tableType, snapshotId, tableSchemaJson, partitionSpecJson, formatVersion, unenforcedPredicate, enforcedPredicate, projectedColumns, nameMappingJson,
+                tableLocation, storageProperties, retryMode, updatedColumns, recordScannedFiles, maxScannedFileSize, corrColPredicate, aggIndex, constraintColumns, null, Collections.emptyMap());
+    }
+
+    public IcebergTableHandle(
+            String schemaName,
+            String tableName,
+            TableType tableType,
+            Optional<Long> snapshotId,
+            String tableSchemaJson,
+            Optional<String> partitionSpecJson,
+            int formatVersion,
+            TupleDomain<IcebergColumnHandle> unenforcedPredicate,
+            TupleDomain<IcebergColumnHandle> enforcedPredicate,
+            Set<IcebergColumnHandle> projectedColumns,
+            Optional<String> nameMappingJson,
+            String tableLocation,
+            Map<String, String> storageProperties,
+            RetryMode retryMode,
+            List<IcebergColumnHandle> updatedColumns,
+            boolean recordScannedFiles,
+            Optional<DataSize> maxScannedFileSize,
+            TupleDomain<IcebergColumnHandle> corrColPredicate,
+            Optional<AggIndex> aggIndex,
+            Set<ColumnHandle> constraintColumns,
+            ConnectorExpression connectorExpression,
+            Map<String, IcebergColumnHandle> conExprAssignments)
+    {
         this.schemaName = requireNonNull(schemaName, "schemaName is null");
         this.tableName = requireNonNull(tableName, "tableName is null");
         this.tableType = requireNonNull(tableType, "tableType is null");
@@ -162,6 +196,8 @@ public class IcebergTableHandle
         this.corrColPredicate = requireNonNull(corrColPredicate, "corrColPredicate is null");
         this.aggIndex = aggIndex;
         this.constraintColumns = constraintColumns;
+        this.connectorExpression = connectorExpression;
+        this.conExprAssignments = conExprAssignments;
     }
 
     @JsonProperty
@@ -278,6 +314,18 @@ public class IcebergTableHandle
         return corrColPredicate;
     }
 
+    @JsonIgnore
+    public ConnectorExpression getConnectorExpression()
+    {
+        return this.connectorExpression;
+    }
+
+    @JsonIgnore
+    public Map<String, IcebergColumnHandle> getConExprAssignments()
+    {
+        return this.conExprAssignments;
+    }
+
     public SchemaTableName getSchemaTableName()
     {
         return new SchemaTableName(schemaName, tableName);
@@ -315,7 +363,9 @@ public class IcebergTableHandle
                 maxScannedFileSize,
                 corrColPredicate,
                 aggIndex,
-                constraintColumns);
+                constraintColumns,
+                connectorExpression,
+                conExprAssignments);
     }
 
     public IcebergTableHandle withRetryMode(RetryMode retryMode)
@@ -340,7 +390,9 @@ public class IcebergTableHandle
                 maxScannedFileSize,
                 corrColPredicate,
                 aggIndex,
-                constraintColumns);
+                constraintColumns,
+                connectorExpression,
+                conExprAssignments);
     }
 
     public IcebergTableHandle withUpdatedColumns(List<IcebergColumnHandle> updatedColumns)
@@ -365,7 +417,9 @@ public class IcebergTableHandle
                 maxScannedFileSize,
                 corrColPredicate,
                 aggIndex,
-                constraintColumns);
+                constraintColumns,
+                connectorExpression,
+                conExprAssignments);
     }
 
     public IcebergTableHandle forOptimize(boolean recordScannedFiles, DataSize maxScannedFileSize)
@@ -390,7 +444,9 @@ public class IcebergTableHandle
                 Optional.of(maxScannedFileSize),
                 corrColPredicate,
                 aggIndex,
-                constraintColumns);
+                constraintColumns,
+                connectorExpression,
+                conExprAssignments);
     }
 
     @Override
@@ -423,14 +479,16 @@ public class IcebergTableHandle
                 Objects.equals(maxScannedFileSize, that.maxScannedFileSize) &&
                 Objects.equals(corrColPredicate, that.corrColPredicate) &&
                 Objects.equals(aggIndex, that.aggIndex) &&
-                Objects.equals(constraintColumns, that.constraintColumns);
+                Objects.equals(constraintColumns, that.constraintColumns) &&
+                Objects.equals(connectorExpression, that.connectorExpression) &&
+                Objects.equals(conExprAssignments, that.conExprAssignments);
     }
 
     @Override
     public int hashCode()
     {
         return Objects.hash(schemaName, tableName, tableType, snapshotId, tableSchemaJson, partitionSpecJson, formatVersion, unenforcedPredicate, enforcedPredicate,
-                projectedColumns, nameMappingJson, tableLocation, storageProperties, retryMode, updatedColumns, recordScannedFiles, maxScannedFileSize, corrColPredicate, aggIndex, constraintColumns);
+                projectedColumns, nameMappingJson, tableLocation, storageProperties, retryMode, updatedColumns, recordScannedFiles, maxScannedFileSize, corrColPredicate, aggIndex, constraintColumns, connectorExpression, conExprAssignments);
     }
 
     @Override

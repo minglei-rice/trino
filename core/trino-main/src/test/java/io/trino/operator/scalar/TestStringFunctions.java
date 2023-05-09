@@ -1007,4 +1007,23 @@ public class TestStringFunctions
         assertInvalidFunction("soundex('jąmes')", "The character is not mapped: Ą (index=195)");
         assertFunction("soundex('x123')", createVarcharType(4), "X000");
     }
+
+    @Test
+    public void testHasToken()
+    {
+        assertFunction("HAS_TOKEN('foo', 'foo')", BOOLEAN, true);
+        assertFunction("HAS_TOKEN('foo', 'bar')", BOOLEAN, false);
+        assertFunction("HAS_TOKEN('foo', '')", BOOLEAN, true);
+        assertFunction("HAS_TOKEN('', 'foo')", BOOLEAN, false);
+        assertFunction("HAS_TOKEN('', '')", BOOLEAN, true);
+        assertFunction("HAS_TOKEN('foo bar baz', 'foo')", BOOLEAN, true);
+        assertFunction("HAS_TOKEN('foo bar baz', 'baz')", BOOLEAN, true);
+        assertFunction("HAS_TOKEN('foo bar baz', 'ba')", BOOLEAN, true);
+        assertFunction("HAS_TOKEN('foo bar baz', 'bar baz')", BOOLEAN, true);
+        assertFunction("HAS_TOKEN('foo bar baz', 'bar  baz')", BOOLEAN, false);
+        assertFunction("HAS_TOKEN('foo bar baz', 'br')", BOOLEAN, false);
+        assertFunction("HAS_TOKEN('foo', 'foo bar baz')", BOOLEAN, false);
+        assertFunction("HAS_TOKEN('信念 爱 希望', '信念')", BOOLEAN, true);
+        assertFunction("HAS_TOKEN('信念 爱 希望', '爱')", BOOLEAN, true);
+    }
 }

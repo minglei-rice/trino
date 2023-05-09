@@ -405,7 +405,9 @@ public class IcebergMetadata
                 Optional.empty(),
                 TupleDomain.all(),
                 Optional.empty(),
-                Collections.emptySet());
+                Collections.emptySet(),
+                null,
+                Collections.emptyMap());
     }
 
     @Override
@@ -461,7 +463,9 @@ public class IcebergMetadata
                 originalTableHandle.getMaxScannedFileSize(),
                 originalTableHandle.getCorrColPredicate(),
                 Optional.of(aggIndex), // pushed agg index
-                originalTableHandle.getConstraintColumns());
+                originalTableHandle.getConstraintColumns(),
+                originalTableHandle.getConnectorExpression(),
+                originalTableHandle.getConExprAssignments());
 
         Map<String, TableColumnIdentify> aggIndexFileColumnNameToColumnIdent = new HashMap<>();
 
@@ -2252,6 +2256,8 @@ public class IcebergMetadata
             return Optional.empty();
         }
 
+        Map<String, IcebergColumnHandle> assignments = constraint.getAssignments().entrySet().stream()
+                .collect(Collectors.toMap(Map.Entry::getKey, e -> (IcebergColumnHandle) e.getValue()));
         return Optional.of(new ConstraintApplicationResult<>(
                 new IcebergTableHandle(
                         table.getSchemaName(),
@@ -2273,7 +2279,9 @@ public class IcebergMetadata
                         table.getMaxScannedFileSize(),
                         table.getCorrColPredicate(),
                         table.getAggIndex(),
-                        Sets.union(table.getConstraintColumns(), constraint.getPredicateColumns().orElseGet(ImmutableSet::of))),
+                        Sets.union(table.getConstraintColumns(), constraint.getPredicateColumns().orElseGet(ImmutableSet::of)),
+                        extractionResult.remainingExpression(),
+                        assignments),
                 remainingConstraint.transformKeys(ColumnHandle.class::cast),
                 extractionResult.remainingExpression(),
                 false));
@@ -2371,7 +2379,9 @@ public class IcebergMetadata
                         icebergTableHandle.getMaxScannedFileSize(),
                         pushableDomain,
                         icebergTableHandle.getAggIndex(),
-                        icebergTableHandle.getConstraintColumns())));
+                        icebergTableHandle.getConstraintColumns(),
+                        icebergTableHandle.getConnectorExpression(),
+                        icebergTableHandle.getConExprAssignments())));
     }
 
     // converts column handle in correlated table to correlated column in left table
@@ -2606,7 +2616,9 @@ public class IcebergMetadata
                 originalHandle.getMaxScannedFileSize(),
                 originalHandle.getCorrColPredicate(),
                 originalHandle.getAggIndex(),
-                originalHandle.getConstraintColumns());
+                originalHandle.getConstraintColumns(),
+                originalHandle.getConnectorExpression(),
+                originalHandle.getConExprAssignments());
         TableStatistics existing = tableStatisticsCache.get(newHandle);
         if (existing != null) {
             return existing;

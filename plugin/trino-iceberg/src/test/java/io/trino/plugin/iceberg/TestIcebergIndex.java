@@ -16,6 +16,7 @@ package io.trino.plugin.iceberg;
 
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 import io.trino.filesystem.TrinoFileSystemFactory;
 import io.trino.filesystem.hdfs.HdfsFileSystemFactory;
@@ -35,6 +36,7 @@ import io.trino.plugin.iceberg.catalog.file.FileMetastoreTableOperationsProvider
 import io.trino.plugin.iceberg.catalog.hms.TrinoHiveCatalog;
 import io.trino.spi.QueryId;
 import io.trino.spi.connector.SchemaTableName;
+import io.trino.spi.metrics.DataSkippingMetrics;
 import io.trino.spi.type.TestingTypeManager;
 import io.trino.sql.planner.optimizations.PlanNodeSearcher;
 import io.trino.sql.planner.plan.PlanNode;
@@ -54,6 +56,7 @@ import org.apache.iceberg.IndexType;
 import org.apache.iceberg.RewriteFiles;
 import org.apache.iceberg.Table;
 import org.apache.iceberg.catalog.TableIdentifier;
+import org.apache.iceberg.expressions.Expressions;
 import org.apache.iceberg.index.IndexFactory;
 import org.apache.iceberg.index.IndexWriter;
 import org.apache.iceberg.index.IndexWriterContext;
@@ -71,7 +74,9 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
@@ -81,6 +86,7 @@ import static io.trino.plugin.hive.HiveTestUtils.HDFS_ENVIRONMENT;
 import static io.trino.plugin.hive.metastore.file.FileHiveMetastore.createTestingFileHiveMetastore;
 import static io.trino.testing.TestingConnectorSession.SESSION;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 
 /**
@@ -210,6 +216,138 @@ public class TestIcebergIndex
             tableScan.ifPresent(ignore -> res.add(stats));
         }
         return res;
+    }
+
+    @Test
+    public void testTokenBF()
+            throws Exception
+    {
+        getQueryRunner().execute("create table test(x int,y varchar, z varchar)");
+        getQueryRunner().execute("insert into test values (1,'Spring is warm','春天来了'),(3,'Summer is hot','夏天来了'),(5,'Winter is cold','冬天来了')");
+        Table table = loadIcebergTable("test");
+        // define token bf on y
+        table.updateIndexSpec().addIndex("y_tokenbf", IndexType.TOKENBF, "y", Collections.emptyMap()).commit();
+        table.updateIndexSpec().addIndex("z_ngrambf", IndexType.NGRAMBF, "z", Collections.emptyMap()).commit();
+        // generate index files
+        List<FileScanTask> tasks = new ArrayList<>();
+        try (CloseableIterable<FileScanTask> taskIterable = table.newScan().caseSensitive(false).ignoreResiduals().includeIndexStats().planFiles()) {
+            taskIterable.iterator().forEachRemaining(tasks::add);
+        }
+        assertEquals(tasks.size(), 1, "Can only handle a single task");
+        generateIndexFiles(
+                table,
+                tasks.get(0),
+                new Object[][] {
+                        new Object[] {1, "Spring is warm", "春天来了"},
+                        new Object[] {3, "Summer is hot", "夏天来了"},
+                        new Object[] {5, "Winter is cold", "冬天来了"}
+                });
+
+        // test ngrambf data skipping
+        MaterializedResultWithQueryId resultWithId = getDistributedQueryRunner().executeWithQueryId(
+                getSession(), "select y from test where z LIKE '%秋天来了%'");
+        assertEquals(resultWithId.getResult().getMaterializedRows().size(), 0);
+        QueryId queryId = resultWithId.getQueryId();
+        List<OperatorStats> operatorStats = getTableScanStats(queryId, "test");
+        assertEquals(operatorStats.size(), 1);
+        DataSkippingMetrics dataSkippingMetrics = (DataSkippingMetrics) operatorStats.get(0).getConnectorMetrics().getMetrics().get("iceberg_data_skipping_metrics");
+        assertEquals(dataSkippingMetrics.getMetricMap().get(DataSkippingMetrics.MetricType.SKIPPED_BY_INDEX_IN_WORKER).getSplitCount(), 1L);
+
+        // test tokenbf data skipping
+        resultWithId = getDistributedQueryRunner().executeWithQueryId(
+                getSession(), "select y from test where starts_with(y, 'Autumn is cool')");
+        assertEquals(resultWithId.getResult().getMaterializedRows().size(), 0);
+        queryId = resultWithId.getQueryId();
+        operatorStats = getTableScanStats(queryId, "test");
+        assertEquals(operatorStats.size(), 1);
+        dataSkippingMetrics = (DataSkippingMetrics) operatorStats.get(0).getConnectorMetrics().getMetrics().get("iceberg_data_skipping_metrics");
+        assertEquals(dataSkippingMetrics.getMetricMap().get(DataSkippingMetrics.MetricType.SKIPPED_BY_INDEX_IN_WORKER).getSplitCount(), 1L);
+
+        // test tokenbf data skipping by has_token
+        resultWithId = getDistributedQueryRunner().executeWithQueryId(
+                getSession(), "select y from test where has_token(y, 'Autumn')");
+        assertEquals(resultWithId.getResult().getMaterializedRows().size(), 0);
+        queryId = resultWithId.getQueryId();
+        operatorStats = getTableScanStats(queryId, "test");
+        assertEquals(operatorStats.size(), 1);
+        dataSkippingMetrics = (DataSkippingMetrics) operatorStats.get(0).getConnectorMetrics().getMetrics().get("iceberg_data_skipping_metrics");
+        assertEquals(dataSkippingMetrics.getMetricMap().get(DataSkippingMetrics.MetricType.SKIPPED_BY_INDEX_IN_WORKER).getSplitCount(), 1L);
+
+        // test no data skipping
+        resultWithId = getDistributedQueryRunner().executeWithQueryId(
+                getSession(), "select y from test where starts_with(y, 'Spring is warm') and z LIKE '%春天来了%'");
+        assertEquals(resultWithId.getResult().getMaterializedRows().size(), 1);
+        queryId = resultWithId.getQueryId();
+        operatorStats = getTableScanStats(queryId, "test");
+        assertEquals(operatorStats.size(), 1);
+        dataSkippingMetrics = (DataSkippingMetrics) operatorStats.get(0).getConnectorMetrics().getMetrics().get("iceberg_data_skipping_metrics");
+        assertFalse(dataSkippingMetrics.getMetricMap().containsKey(DataSkippingMetrics.MetricType.SKIPPED_BY_INDEX_IN_WORKER));
+
+        getQueryRunner().execute("drop table test");
+    }
+
+    @Test
+    public void testIndexOnTransform() throws Exception
+    {
+        String json1 = "{\"employee\":[{\"name\":\"amy\", \"age\": 20}," +
+                " {\"name\":\"bob\", \"age\":18}]}";
+        String json2 = "{\"employee\":[{\"name\":\"dan\", \"age\": 40}," +
+                " {\"name\":\"hen\", \"age\":38}]}";
+        getQueryRunner().execute("create table test(a int,b varchar, c array(int), d map(varchar, int), e varchar)");
+        getQueryRunner().execute(String.format("insert into test values (1,'a',array[1,2],map(array['a','b'],array[1,2]), '%s')", json1));
+        Table table = loadIcebergTable("test");
+        // define token bf on y
+        table.updateIndexSpec().addIndex("c_bf", IndexType.BLOOMFILTER, "c", Collections.emptyMap()).commit();
+        table.updateIndexSpec().addIndex("d_values_bf", IndexType.BLOOMFILTER, Expressions.mapValues("d"), Collections.emptyMap()).commit();
+        table.updateIndexSpec().addIndex("e_json_bf", IndexType.BLOOMFILTER, Expressions.jsonExtractScalar("e", "$.employee[0].age"), Collections.emptyMap()).commit();
+        // generate index files
+        List<FileScanTask> tasks = new ArrayList<>();
+        try (CloseableIterable<FileScanTask> taskIterable = table.newScan().caseSensitive(false).ignoreResiduals().includeIndexStats().planFiles()) {
+            taskIterable.iterator().forEachRemaining(tasks::add);
+        }
+        assertEquals(tasks.size(), 1);
+        Map<String, Integer> map1 = new HashMap<>();
+        map1.put("a", 1);
+        map1.put("b", 2);
+        generateIndexFiles(
+                table,
+                tasks.get(0),
+                new Object[][]{
+                        new Object[]{1, "a", Lists.newArrayList(1, 2), map1, json1}
+                });
+        getQueryRunner().execute(String.format("insert into test values (2,'b',array[3,4],map(array['c','d'],array[3,4]), '%s')", json2));
+
+        // test array contains
+        MaterializedResultWithQueryId resultWithId = getDistributedQueryRunner().executeWithQueryId(
+                getSession(), "select a from test where contains(c, 3)");
+        assertEquals(resultWithId.getResult().getMaterializedRows().size(), 1);
+        QueryId queryId = resultWithId.getQueryId();
+        List<OperatorStats> operatorStats = getTableScanStats(queryId, "test");
+        assertEquals(operatorStats.size(), 1);
+        DataSkippingMetrics dataSkippingMetrics = (DataSkippingMetrics) operatorStats.get(0).getConnectorMetrics().getMetrics().get("iceberg_data_skipping_metrics");
+        assertEquals(dataSkippingMetrics.getMetricMap().get(DataSkippingMetrics.MetricType.SKIPPED_BY_INDEX_IN_WORKER).getSplitCount(), 1L);
+
+        //test map element_at
+        resultWithId = getDistributedQueryRunner().executeWithQueryId(
+                getSession(), "select a from test where element_at(d, 'c') = 3");
+        assertEquals(resultWithId.getResult().getMaterializedRows().size(), 1);
+        queryId = resultWithId.getQueryId();
+        operatorStats = getTableScanStats(queryId, "test");
+        assertEquals(operatorStats.size(), 1);
+        dataSkippingMetrics = (DataSkippingMetrics) operatorStats.get(0).getConnectorMetrics().getMetrics().get("iceberg_data_skipping_metrics");
+        assertEquals(dataSkippingMetrics.getMetricMap().get(DataSkippingMetrics.MetricType.SKIPPED_BY_INDEX_IN_WORKER).getSplitCount(), 1L);
+
+        // test json_extract_scalar
+        resultWithId = getDistributedQueryRunner().executeWithQueryId(
+                getSession(), "select a from test where json_extract_scalar(e, '$.employee[0].age') = '40'");
+        assertEquals(resultWithId.getResult().getMaterializedRows().size(), 1);
+        queryId = resultWithId.getQueryId();
+        operatorStats = getTableScanStats(queryId, "test");
+        assertEquals(operatorStats.size(), 1);
+        dataSkippingMetrics = (DataSkippingMetrics) operatorStats.get(0).getConnectorMetrics().getMetrics().get("iceberg_data_skipping_metrics");
+        assertEquals(dataSkippingMetrics.getMetricMap().get(DataSkippingMetrics.MetricType.SKIPPED_BY_INDEX_IN_WORKER).getSplitCount(), 1L);
+
+        getQueryRunner().execute("drop table test");
     }
 
     private Table loadIcebergTable(String tableName)

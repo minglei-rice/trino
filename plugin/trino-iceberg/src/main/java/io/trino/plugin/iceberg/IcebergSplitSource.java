@@ -54,6 +54,7 @@ import org.apache.iceberg.Schema;
 import org.apache.iceberg.SystemProperties;
 import org.apache.iceberg.TableScan;
 import org.apache.iceberg.expressions.Expression;
+import org.apache.iceberg.expressions.Expressions;
 import org.apache.iceberg.io.CloseableIterable;
 import org.apache.iceberg.io.CloseableIterator;
 import org.apache.iceberg.types.Type;
@@ -225,14 +226,16 @@ public class IcebergSplitSource
             }
 
             Expression filterExpression = toIcebergExpression(effectivePredicate);
+            Expression extendedFilterExpression = toIcebergExpression(tableHandle.getConnectorExpression(), tableHandle.getConExprAssignments());
+            Expression finalExpression = Expressions.and(filterExpression, extendedFilterExpression);
             // If the Dynamic Filter will be evaluated against each file, stats are required. Otherwise, skip them.
             boolean requiresColumnStats = usedSimplifiedPredicate || !dynamicFilterIsComplete;
             TableScan scan;
             if (tableHandle.getAggIndex().isPresent()) {
-                scan = tableScan.filter(filterExpression).option(SystemProperties.SCAN_FILTER_METRICS_ENABLED, "true").includeAggIndexStats().withThreadName(threadNamePrefix + "producer");
+                scan = tableScan.filter(finalExpression).option(SystemProperties.SCAN_FILTER_METRICS_ENABLED, "true").includeAggIndexStats().withThreadName(threadNamePrefix + "producer");
             }
             else {
-                scan = tableScan.filter(filterExpression).option(SystemProperties.SCAN_FILTER_METRICS_ENABLED, "true").withThreadName(threadNamePrefix + "producer");
+                scan = tableScan.filter(finalExpression).option(SystemProperties.SCAN_FILTER_METRICS_ENABLED, "true").withThreadName(threadNamePrefix + "producer");
             }
             if (requiresColumnStats) {
                 scan = scan.includeColumnStats();
