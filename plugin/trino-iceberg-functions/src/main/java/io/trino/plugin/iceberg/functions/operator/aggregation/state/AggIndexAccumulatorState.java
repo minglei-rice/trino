@@ -32,6 +32,8 @@ public interface AggIndexAccumulatorState
 
     Object getResult(Type type, AggIndex.AggFunctionType functionType);
 
+    byte[] getIntermediateResult(Type type, AggIndex.AggFunctionType functionType);
+
     void addMemoryUsage(long value);
 
     boolean resultIsNull();

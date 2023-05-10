@@ -15,14 +15,21 @@ package io.trino.plugin.iceberg.functions;
 
 import com.google.common.collect.ImmutableSet;
 import io.trino.plugin.iceberg.functions.operator.aggregation.AggIndexApproxDistinctAggregations;
+import io.trino.plugin.iceberg.functions.operator.aggregation.AggIndexApproxDistinctPreAggregations;
+import io.trino.plugin.iceberg.functions.operator.aggregation.AggIndexApproximateArrayPercentilePreAggregations;
 import io.trino.plugin.iceberg.functions.operator.aggregation.AggIndexApproximateDoublePercentileAggregations;
 import io.trino.plugin.iceberg.functions.operator.aggregation.AggIndexApproximateDoublePercentileArrayAggregations;
 import io.trino.plugin.iceberg.functions.operator.aggregation.AggIndexApproximateLongPercentileAggregations;
 import io.trino.plugin.iceberg.functions.operator.aggregation.AggIndexApproximateLongPercentileArrayAggregations;
+import io.trino.plugin.iceberg.functions.operator.aggregation.AggIndexApproximatePercentilePreAggregations;
+import io.trino.plugin.iceberg.functions.operator.aggregation.AggIndexApproximateRealArrayPercentilePreAggregations;
 import io.trino.plugin.iceberg.functions.operator.aggregation.AggIndexApproximateRealPercentileAggregations;
 import io.trino.plugin.iceberg.functions.operator.aggregation.AggIndexApproximateRealPercentileArrayAggregations;
+import io.trino.plugin.iceberg.functions.operator.aggregation.AggIndexApproximateRealPercentilePreAggregations;
+import io.trino.plugin.iceberg.functions.operator.aggregation.AggIndexAveragePreAggregations;
 import io.trino.plugin.iceberg.functions.operator.aggregation.AggIndexCountDistinctAggregations;
 import io.trino.plugin.iceberg.functions.operator.aggregation.AggIndexDecimalAverageAggregations;
+import io.trino.plugin.iceberg.functions.operator.aggregation.AggIndexDecimalAveragePreAggregations;
 import io.trino.plugin.iceberg.functions.operator.aggregation.AggIndexDoubleAverageAggregations;
 import io.trino.spi.Plugin;
 
@@ -45,6 +52,13 @@ public class IcebergFunctionsPlugin
                 .add(AggIndexApproximateLongPercentileArrayAggregations.class)
                 .add(AggIndexApproximateRealPercentileAggregations.class)
                 .add(AggIndexApproximateRealPercentileArrayAggregations.class)
+                .add(AggIndexApproxDistinctPreAggregations.class)
+                .add(AggIndexApproximateArrayPercentilePreAggregations.class)
+                .add(AggIndexApproximatePercentilePreAggregations.class)
+                .add(AggIndexApproximateRealArrayPercentilePreAggregations.class)
+                .add(AggIndexApproximateRealPercentilePreAggregations.class)
+                .add(AggIndexAveragePreAggregations.class)
+                .add(AggIndexDecimalAveragePreAggregations.class)
                 .build();
     }
 }

@@ -189,7 +189,9 @@ public class TestIcebergNodeLocalDynamicSplitPruning
                         Optional.empty(),
                         TupleDomain.all(),
                         Optional.empty(),
-                        Collections.emptySet()),
+                        Collections.emptySet(),
+                        false,
+                        -1),
                 transaction);
 
         FileFormatDataSourceStats stats = new FileFormatDataSourceStats();

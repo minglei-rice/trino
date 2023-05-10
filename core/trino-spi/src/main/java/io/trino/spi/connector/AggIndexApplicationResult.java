@@ -27,12 +27,16 @@ public class AggIndexApplicationResult<T>
      */
     private final Map<String, TableColumnIdentify> aggIndexColumnNameToIdentify;
 
+    private final boolean partialResult;
+
     public AggIndexApplicationResult(
             T handle,
-            Map<String, TableColumnIdentify> aggIndexColumnNameToIdentify)
+            Map<String, TableColumnIdentify> aggIndexColumnNameToIdentify,
+            boolean partialResult)
     {
         this.handle = handle;
         this.aggIndexColumnNameToIdentify = aggIndexColumnNameToIdentify;
+        this.partialResult = partialResult;
     }
 
     public T getHandle()
@@ -45,10 +49,15 @@ public class AggIndexApplicationResult<T>
         return aggIndexColumnNameToIdentify;
     }
 
+    public boolean isPartialResult()
+    {
+        return partialResult;
+    }
+
     @Override
     public String toString()
     {
         return "Table Handle is " + handle.toString()
-                + ", AggIndex file column name " + aggIndexColumnNameToIdentify;
+                + ", AggIndex file column name " + aggIndexColumnNameToIdentify + ", partialResult is" + partialResult;
     }
 }

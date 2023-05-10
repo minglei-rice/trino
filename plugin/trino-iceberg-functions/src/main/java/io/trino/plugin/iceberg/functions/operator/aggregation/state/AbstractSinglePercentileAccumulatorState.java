@@ -64,6 +64,12 @@ public abstract class AbstractSinglePercentileAccumulatorState
     }
 
     @Override
+    public byte[] getIntermediateResult()
+    {
+        return getPercentileAccumulator().toBinary();
+    }
+
+    @Override
     public void addMemoryUsage(long value)
     {
         // noop

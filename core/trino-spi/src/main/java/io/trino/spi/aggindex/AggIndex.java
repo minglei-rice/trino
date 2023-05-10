@@ -28,6 +28,8 @@ public class AggIndex
 
     private final List<CorrColumns> corrColumns;
 
+    private boolean allowPartialAggIndex = true;
+
     public AggIndex(
             int aggIndexId,
             List<TableColumnIdentify> dimFields,
@@ -58,6 +60,16 @@ public class AggIndex
     public Map<AggFunctionDesc, String> getAggFunctionDescToName()
     {
         return aggFunctionDescToName;
+    }
+
+    public boolean isAllowPartialAggIndex()
+    {
+        return allowPartialAggIndex;
+    }
+
+    public void setAllowPartialAggIndex(boolean allowed)
+    {
+        this.allowPartialAggIndex = allowed;
     }
 
     @Override
@@ -97,8 +109,8 @@ public class AggIndex
         COUNT_DISTINCT("count_distinct"),
         APPROX_COUNT_DISTINCT("approx_count_distinct"),
         PERCENTILE("percentile");
-
         String name;
+
         AggFunctionType(String name)
         {
             this.name = name;

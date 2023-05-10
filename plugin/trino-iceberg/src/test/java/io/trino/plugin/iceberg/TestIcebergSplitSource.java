@@ -138,7 +138,9 @@ public class TestIcebergSplitSource
                 Optional.empty(),
                 TupleDomain.all(),
                 Optional.empty(),
-                Collections.emptySet());
+                Collections.emptySet(),
+                false,
+                -1);
 
         try (IcebergSplitSource splitSource = new IcebergSplitSource(
                 SESSION,
@@ -414,7 +416,9 @@ public class TestIcebergSplitSource
                 Optional.empty(),
                 TupleDomain.all(),
                 Optional.empty(),
-                Collections.emptySet());
+                Collections.emptySet(),
+                false,
+                -1);
 
         IcebergSplitSource splitSource = new IcebergSplitSource(
                 SESSION,

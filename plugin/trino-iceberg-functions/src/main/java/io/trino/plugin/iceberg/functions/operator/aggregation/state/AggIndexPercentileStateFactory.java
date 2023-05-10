@@ -35,7 +35,7 @@ public class AggIndexPercentileStateFactory
             extends AbstractGroupedPercentileAccumulatorState
             implements AggIndexPercentileAccumulatorState
     {
-        private static final int INSTANCE_SIZE = ClassLayout.parseClass(GroupedAggIndexPercentileState.class).instanceSize();
+        private static final long INSTANCE_SIZE = ClassLayout.parseClass(GroupedAggIndexPercentileState.class).instanceSize();
         private double percentile;
 
         @Override
@@ -73,7 +73,7 @@ public class AggIndexPercentileStateFactory
             extends AbstractSinglePercentileAccumulatorState
             implements AggIndexPercentileAccumulatorState
     {
-        public static final int INSTANCE_SIZE = ClassLayout.parseClass(SingleAggIndexPercentileState.class).instanceSize();
+        public static final long INSTANCE_SIZE = ClassLayout.parseClass(SingleAggIndexPercentileState.class).instanceSize();
         private double percentile;
 
         public SingleAggIndexPercentileState()

@@ -14,7 +14,9 @@
 package io.trino.sql.planner.iterative.rule.cube;
 
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableListMultimap;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.Iterables;
 import io.airlift.log.Logger;
 import io.trino.Session;
 import io.trino.connector.system.GlobalSystemConnector;
@@ -35,6 +37,7 @@ import io.trino.spi.function.FunctionNullability;
 import io.trino.spi.type.BigintType;
 import io.trino.spi.type.DecimalType;
 import io.trino.spi.type.DoubleType;
+import io.trino.spi.type.IntegerType;
 import io.trino.spi.type.RealType;
 import io.trino.spi.type.StandardTypes;
 import io.trino.spi.type.Type;
@@ -55,6 +58,7 @@ import io.trino.sql.planner.plan.MarkDistinctNode;
 import io.trino.sql.planner.plan.PlanNode;
 import io.trino.sql.planner.plan.ProjectNode;
 import io.trino.sql.planner.plan.TableScanNode;
+import io.trino.sql.planner.plan.UnionNode;
 import io.trino.sql.tree.AstVisitor;
 import io.trino.sql.tree.DefaultExpressionTraversalVisitor;
 import io.trino.sql.tree.DoubleLiteral;
@@ -162,6 +166,13 @@ public class RewriteAggregationByAggIndex
                 continue; // continue table scan
             }
 
+            RewriteUtil tmpRewriteUtil = rewriteUtil;
+            boolean allowPartialAggIndex = node.getAggregations().values().stream()
+                    .noneMatch(aggregation -> isCountDistinct(aggregation,
+                            aggregation.getResolvedFunction().getSignature().getName(),
+                            tmpRewriteUtil.getDistinctColumns()));
+            candidateAggIndex.setAllowPartialAggIndex(allowPartialAggIndex);
+
             LOG.info("Find an agg index %s answer the query %s.", candidateAggIndex.getAggIndexId(), context.getSession().getQueryId().toString());
             Optional<AggIndexApplicationResult<TableHandle>> result = metadata.applyAggIndex(session, tableHandle, candidateAggIndex);
             if (result.isEmpty()) {
@@ -233,9 +244,28 @@ public class RewriteAggregationByAggIndex
                         .build();
                 planNode = new ProjectNode(context.getIdAllocator().getNextId(), planNode, projectAssignments);
             }
-
             Map<Symbol, AggregationNode.Aggregation> aggregationMap = rewriteAggregation(node.getAggregations(),
                     aggArgsSymbolToColumn, candidateAggIndex.getAggFunctionDescToName(), distinctColumns, projectionMap);
+            if (result.get().isPartialResult()) {
+                Map<Symbol, Symbol> aggToPreAggSymbol = new HashMap<>();
+                PlanNode dataFilePreAggregationNode = new AggregationNode(context.getIdAllocator().getNextId(),
+                        node.getSource(),
+                        writePreAggregation(node.getAggregations(), context, aggToPreAggSymbol),
+                        node.getGroupingSets(),
+                        node.getPreGroupedSymbols(),
+                        node.getStep(),
+                        node.getHashSymbol(),
+                        node.getGroupIdSymbol());
+                if (projectionMap.size() > 0) {
+                    Assignments projectAssignments = Assignments.builder()
+                            .putAll(projectionMap)
+                            .putAll(dataFilePreAggregationNode.getOutputSymbols().stream().collect(Collectors.toMap(Function.identity(), Symbol::toSymbolReference)))
+                            .build();
+                    dataFilePreAggregationNode = new ProjectNode(context.getIdAllocator().getNextId(), dataFilePreAggregationNode, projectAssignments);
+                }
+                planNode = buildUnionAllNode(dataFilePreAggregationNode, planNode, aggregationMap, context, aggToPreAggSymbol);
+            }
+
             return Result.ofPlanNode(new AggregationNode(
                     context.getIdAllocator().getNextId(),
                     planNode,
@@ -255,8 +285,8 @@ public class RewriteAggregationByAggIndex
         // Because this can support the query of free dimension tables and dimension fields.
         // TODO Support for other join constraints
         return aggIndex.getCorrColumns().stream()
-                        .map(CorrColumns::getCorrelation)
-                        .allMatch(corr -> corr.getJoinConstraint() == CorrColumns.Corr.JoinConstraint.PK_FK);
+                .map(CorrColumns::getCorrelation)
+                .allMatch(corr -> corr.getJoinConstraint() == CorrColumns.Corr.JoinConstraint.PK_FK);
     }
 
     private static class AggIndexVisitor
@@ -354,10 +384,10 @@ public class RewriteAggregationByAggIndex
                         // count(*) -> count_distinct
                         if (rewriteUtil.getDistinctColumns().size() != 1) {
                             rewriteUtil.setCanRewrite(false);
-                            LOG.warn("This may be misjudged, however to be safety, skip rewriting agg index");
+                            LOG.warn("This may be misjudged for query %s, however to be safety, skip rewriting agg index", session.getQueryId());
                             return null;
                         }
-                        Symbol symbol = rewriteUtil.getDistinctColumns().iterator().next();
+                        Symbol symbol = Iterables.getOnlyElement(rewriteUtil.getDistinctColumns());
                         tableColumnIdent = applyExpr.apply(symbol.toSymbolReference());
                         rewriteUtil.putAggArgsSymbolToColumn(symbol, tableColumnIdent);
                     }
@@ -812,7 +842,7 @@ public class RewriteAggregationByAggIndex
         if (isApproxPercentile(funcName)) {
             if (aggregation.getArguments().size() > 3) {
                 // LegacyApproximateLongPercentileAggregations function with accuracy is not supported
-                LOG.warn("approx_percentile with param: accuracy is not supported for agg index!");
+                LOG.warn("Query %s, approx_percentile with param: accuracy is not supported for agg index!");
                 return attributes;
             }
             double weight = 1.0D;
@@ -928,7 +958,7 @@ public class RewriteAggregationByAggIndex
                     break;
                 case "approx_percentile":
                     String approxPercentileName = getAggIndexApproxPercentileName(boundSignature.getArgumentTypes().get(0));
-                    List<Type> paramTypes = new ImmutableList.Builder<Type>()
+                    List<Type> paramTypes = ImmutableList.<Type>builder()
                             .add(VARBINARY)
                             .addAll(boundSignature.getArgumentTypes().subList(1, boundSignature.getArgumentTypes().size()))
                             .build();
@@ -958,6 +988,69 @@ public class RewriteAggregationByAggIndex
         return result;
     }
 
+    private static Map<Symbol, AggregationNode.Aggregation> writePreAggregation(Map<Symbol, AggregationNode.Aggregation> aggregationMap, Context context, Map<Symbol, Symbol> aggSymbolMapping)
+    {
+        Map<Symbol, AggregationNode.Aggregation> result = new HashMap<>();
+        for (Map.Entry<Symbol, AggregationNode.Aggregation> entry : aggregationMap.entrySet()) {
+            ResolvedFunction prevResolvedFunction = entry.getValue().getResolvedFunction();
+            BoundSignature boundSignature = prevResolvedFunction.getSignature();
+            FunctionId functionId = prevResolvedFunction.getFunctionId();
+            FunctionNullability functionNullability = prevResolvedFunction.getFunctionNullability();
+            Map<TypeSignature, Type> typeDependencies = prevResolvedFunction.getTypeDependencies();
+            Symbol key = entry.getKey();
+            String functionFormat = "%s<t>(t):varbinary";
+            switch (boundSignature.getName().toLowerCase(Locale.ROOT)) {
+                case "avg":
+                    String avgName = "cube_avg_double_pre";
+                    String funcIdName = String.format("%s(%s):varbinary", avgName, boundSignature.getArgumentType(0));
+                    typeDependencies = ImmutableMap.of(boundSignature.getReturnType().getTypeSignature(), prevResolvedFunction.getSignature().getArgumentTypes().get(0));
+                    if (boundSignature.getReturnType() instanceof DecimalType) {
+                        avgName = "cube_avg_decimal_pre";
+                        funcIdName = String.format(functionFormat, avgName);
+                    }
+                    boundSignature = new BoundSignature(avgName, VARBINARY, boundSignature.getArgumentTypes());
+                    functionId = new FunctionId(funcIdName);
+                    key = context.getSymbolAllocator().newSymbol(avgName + "_" + Symbol.from(entry.getValue().getArguments().get(0)).getName(), VARBINARY);
+                    break;
+                case "approx_distinct":
+                    String approxDistinctName = "cube_approx_distinct_pre";
+                    funcIdName = String.format(functionFormat, approxDistinctName);
+                    Type type = prevResolvedFunction.getSignature().getArgumentTypes().get(0);
+                    typeDependencies = ImmutableMap.of(type.getTypeSignature(), type);
+                    boundSignature = new BoundSignature(approxDistinctName, VARBINARY, boundSignature.getArgumentTypes());
+                    functionId = new FunctionId(funcIdName);
+                    key = context.getSymbolAllocator().newSymbol(approxDistinctName + "_" + Symbol.from(entry.getValue().getArguments().get(0)).getName(), VARBINARY);
+                    break;
+                case "approx_percentile":
+                    String approxPercentileName = getAggIndexPreApproxPercentileName(boundSignature.getArgumentTypes().get(0));
+                    boundSignature = new BoundSignature(approxPercentileName, VARBINARY, boundSignature.getArgumentTypes());
+                    functionId = FunctionId.toFunctionId(boundSignature.toSignature());
+                    key = context.getSymbolAllocator().newSymbol(approxPercentileName + "_" + Symbol.from(entry.getValue().getArguments().get(0)).getName(), VARBINARY);
+                    break;
+                case "count":
+                case "sum":
+                case "min":
+                case "max":
+                    break;
+                default:
+                    throw new IllegalArgumentException(format("Unsupported function name %s to write cube pre aggregation!", entry.getKey().getName()));
+            }
+
+            aggSymbolMapping.put(entry.getKey(), key);
+            ResolvedFunction resolvedFunction = new ResolvedFunction(
+                    boundSignature,
+                    GlobalSystemConnector.CATALOG_HANDLE,
+                    functionId,
+                    prevResolvedFunction.getFunctionKind(),
+                    prevResolvedFunction.isDeterministic(),
+                    functionNullability,
+                    typeDependencies,
+                    prevResolvedFunction.getFunctionDependencies());
+            result.put(key, aggregationMapping(entry.getValue(), resolvedFunction, entry.getValue().getArguments()));
+        }
+        return result;
+    }
+
     private static String getAggIndexApproxPercentileName(Type type)
     {
         if (type instanceof DoubleType) {
@@ -973,6 +1066,19 @@ public class RewriteAggregationByAggIndex
         }
 
         throw new IllegalArgumentException(format("Invalid type %s for agg index: approx_percentile!", type));
+    }
+
+    private static String getAggIndexPreApproxPercentileName(Type type)
+    {
+        if (type instanceof DoubleType || type instanceof BigintType || type instanceof IntegerType) {
+            return "cube_approx_percentile_pre";
+        }
+
+        if (type instanceof RealType) {
+            return "cube_approx_float_percentile_pre";
+        }
+
+        throw new IllegalArgumentException(format("Invalid type %s for pre agg index: approx_percentile!", type));
     }
 
     private static AggregationNode.Aggregation aggregationMapping(AggregationNode.Aggregation aggregation, ResolvedFunction resolvedFunction, List<Expression> arguments)
@@ -1000,5 +1106,30 @@ public class RewriteAggregationByAggIndex
             tableColumnIdentify = symbolToColumnIdentify.get(Symbol.from(aggregation.getArguments().get(0)));
         }
         return new AggFunctionDesc(aggFunctionName, tableColumnIdentify, getAggFuncAttributes(aggregation, projectionMap));
+    }
+
+    private static PlanNode buildUnionAllNode(PlanNode dataFileSource, PlanNode aggIndexSource,
+                                              Map<Symbol, AggregationNode.Aggregation> aggregationMap,
+                                              Context context, Map<Symbol, Symbol> aggSymbolMapping)
+    {
+        ImmutableListMultimap.Builder<Symbol, Symbol> builder = new ImmutableListMultimap.Builder<>();
+        dataFileSource.getOutputSymbols().stream().filter(aggIndexSource.getOutputSymbols()::contains)
+                .forEach(symbol -> builder.putAll(symbol, Arrays.asList(symbol, symbol)));
+        List<Symbol> outputs = ImmutableList.copyOf(aggIndexSource.getOutputSymbols());
+        aggregationMap.entrySet().forEach(entry -> builder.putAll(getAggregationSymbol(entry.getKey(), entry.getValue()), Arrays.asList(getAggregationSymbol(entry.getKey(), entry.getValue()),
+                aggSymbolMapping.get(entry.getKey()))));
+        return new UnionNode(
+                context.getIdAllocator().getNextId(),
+                ImmutableList.of(aggIndexSource, dataFileSource),
+                builder.build(),
+                outputs);
+    }
+
+    private static Symbol getAggregationSymbol(Symbol defaultSymbol, AggregationNode.Aggregation aggregation)
+    {
+        if (aggregation.getArguments().size() > 0) {
+            return Symbol.from(aggregation.getArguments().get(0));
+        }
+        return defaultSymbol;
     }
 }

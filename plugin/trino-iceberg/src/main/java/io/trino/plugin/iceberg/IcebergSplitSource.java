@@ -233,9 +233,15 @@ public class IcebergSplitSource
             TableScan scan;
             if (tableHandle.getAggIndex().isPresent()) {
                 scan = tableScan.filter(finalExpression).option(SystemProperties.SCAN_FILTER_METRICS_ENABLED, "true").includeAggIndexStats().withThreadName(threadNamePrefix + "producer");
+                if (tableHandle.isReadPartialFiles()) {
+                    scan = scan.filesWithAggIndex(tableHandle.getAggIndex().get().getAggIndexId());
+                }
             }
             else {
                 scan = tableScan.filter(finalExpression).option(SystemProperties.SCAN_FILTER_METRICS_ENABLED, "true").withThreadName(threadNamePrefix + "producer");
+                if (tableHandle.isReadPartialFiles()) {
+                    scan = scan.includeAggIndexStats().filesWithoutAggIndex(tableHandle.getAggIndexId());
+                }
             }
             if (requiresColumnStats) {
                 scan = scan.includeColumnStats();

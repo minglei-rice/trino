@@ -29,6 +29,8 @@ public interface AggIndexCommonPercentileAccumulatorState
 
     TDigest getResult();
 
+    byte[] getIntermediateResult();
+
     void addMemoryUsage(long value);
 
     Double getWeight();

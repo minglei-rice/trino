@@ -81,7 +81,7 @@ public final class AggIndexApproximateDoublePercentileArrayAggregations
         }
     }
 
-    private static void initializePercentilesArray(@AggregationState AggIndexPercentileArrayAccumulatorState state, Block percentilesArrayBlock)
+    public static void initializePercentilesArray(@AggregationState AggIndexPercentileArrayAccumulatorState state, Block percentilesArrayBlock)
     {
         if (state.getPercentiles() == null) {
             ImmutableList.Builder<Double> percentilesListBuilder = ImmutableList.builder();

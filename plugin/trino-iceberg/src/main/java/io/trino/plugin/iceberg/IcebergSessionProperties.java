@@ -82,7 +82,9 @@ public final class IcebergSessionProperties
     private static final String READ_INDICES_SWITCH_ON = "read_indices_switch_on";
     private static final String GENERATE_SPLITS_ASYNC = "generate_splits_async";
     private static final String QUERY_PARTITION_FILTER_REQUIRED = "query_partition_filter_required";
-
+    private static final String COMPLEX_EXPRESSIONS_ON_PARTITION_KEYS_PUSHDOWN_ENABLED = "expressions_on_partition_keys_pushdown_enabled";
+    private static final String MAX_DATAFILES_WITHOUT_AGG_INDEX = "max_datafiles_without_agg_index";
+    private static final String MAX_PERCENTAGE_OF_DATAFILES_WITHOUT_AGG_INDEX = "max_percentage_of_datafiles_without_agg_index";
     private final List<PropertyMetadata<?>> sessionProperties;
 
     @Inject
@@ -276,6 +278,23 @@ public final class IcebergSessionProperties
                         "Whether there is a filter on partition table",
                         icebergConfig.isQueryPartitionFilterRequired(),
                         false))
+                .add(booleanProperty(
+                        COMPLEX_EXPRESSIONS_ON_PARTITION_KEYS_PUSHDOWN_ENABLED,
+                        "Push down the complex expressions on partition keys to table scan. " +
+                                "Notice that this feature may cause performance issue if the cost of " +
+                                "expressions interpretation is too expensive",
+                        icebergConfig.isComplexExpressionsOnPartitionKeysPushdownEnabled(),
+                        false))
+                .add(integerProperty(
+                        MAX_DATAFILES_WITHOUT_AGG_INDEX,
+                        "Allow to read partial agg index, data files without agg index must no greater than the max value",
+                        icebergConfig.getMaxDataFilesWithoutAggIndex(),
+                        false))
+                .add(doubleProperty(
+                        MAX_PERCENTAGE_OF_DATAFILES_WITHOUT_AGG_INDEX,
+                        "Allow to read partial agg index, percentile of data files without agg index must no greater than the max value",
+                        icebergConfig.getMaxPercentageOfDataFilesWithoutAggIndex(),
+                        false))
                 .build();
     }
 
@@ -460,5 +479,20 @@ public final class IcebergSessionProperties
     public static boolean isFilterOnPartitionTable(ConnectorSession session)
     {
         return session.getProperty(QUERY_PARTITION_FILTER_REQUIRED, Boolean.class);
+    }
+
+    public static boolean isComplexExpressionsOnPartitionKeysPushdownEnabled(ConnectorSession session)
+    {
+        return session.getProperty(COMPLEX_EXPRESSIONS_ON_PARTITION_KEYS_PUSHDOWN_ENABLED, Boolean.class);
+    }
+
+    public static int getMaxDataFilesWithoutAggIndex(ConnectorSession session)
+    {
+        return session.getProperty(MAX_DATAFILES_WITHOUT_AGG_INDEX, Integer.class);
+    }
+
+    public static double getMaxPercentageOfDataFilesWithoutAggIndex(ConnectorSession session)
+    {
+        return session.getProperty(MAX_PERCENTAGE_OF_DATAFILES_WITHOUT_AGG_INDEX, Double.class);
     }
 }

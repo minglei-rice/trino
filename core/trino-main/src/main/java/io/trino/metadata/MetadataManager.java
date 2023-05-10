@@ -1722,7 +1722,7 @@ public final class MetadataManager
         return aggIndexResult.map(result ->
                 new AggIndexApplicationResult<>(
                         new TableHandle(catalogHandle, result.getHandle(), table.getTransaction()),
-                        aggIndexColumnNameToIdentify));
+                        aggIndexColumnNameToIdentify, result.isPartialResult()));
     }
 
     @Override

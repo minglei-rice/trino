@@ -61,7 +61,10 @@ public class TestIcebergConfig
                 .setMaterializedViewsStorageSchema(null)
                 .setReadIndicesSwitchOn(false)
                 .setGenerateSplitsAsync(true)
-                .setQueryPartitionFilterRequired(false));
+                .setQueryPartitionFilterRequired(false)
+                .setComplexExpressionsOnPartitionKeysPushdownEnabled(true)
+                .setMaxDataFilesWithoutAggIndex(10_000)
+                .setMaxPercentageOfDataFilesWithoutAggIndex(0.5));
     }
 
     @Test
@@ -89,6 +92,9 @@ public class TestIcebergConfig
                 .put("iceberg.read-indices-switch-on", "true")
                 .put("iceberg.generate-splits-async", "false")
                 .put("iceberg.query-partition-filter-required", "true")
+                .put("iceberg.complex-expressions-on-partition-keys-pushdown-enabled", "false")
+                .put("iceberg.max-datafiles-without-agg-index", "100")
+                .put("iceberg.max-percentile-of-datafiles-without-agg-index", "0.6")
                 .buildOrThrow();
 
         IcebergConfig expected = new IcebergConfig()
@@ -112,7 +118,11 @@ public class TestIcebergConfig
                 .setMaterializedViewsStorageSchema("mv_storage_schema")
                 .setReadIndicesSwitchOn(true)
                 .setGenerateSplitsAsync(false)
-                .setQueryPartitionFilterRequired(true);
+                .setQueryPartitionFilterRequired(true)
+                .setComplexExpressionsOnPartitionKeysPushdownEnabled(false)
+                .setMaxDataFilesWithoutAggIndex(100)
+                .setMaxPercentageOfDataFilesWithoutAggIndex(0.6);
+
         assertFullMapping(properties, expected);
     }
 }
