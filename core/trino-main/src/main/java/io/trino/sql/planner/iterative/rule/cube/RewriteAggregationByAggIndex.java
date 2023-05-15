@@ -167,10 +167,8 @@ public class RewriteAggregationByAggIndex
             }
 
             RewriteUtil tmpRewriteUtil = rewriteUtil;
-            boolean allowPartialAggIndex = node.getAggregations().values().stream()
-                    .noneMatch(aggregation -> isCountDistinct(aggregation,
-                            aggregation.getResolvedFunction().getSignature().getName(),
-                            tmpRewriteUtil.getDistinctColumns()));
+            boolean allowPartialAggIndex = node.getAggregations().values()
+                    .stream().noneMatch(aggregation -> isCountDistinct(aggregation, aggregation.getResolvedFunction().getSignature().getName(), tmpRewriteUtil.getDistinctColumns()));
             candidateAggIndex.setAllowPartialAggIndex(allowPartialAggIndex);
 
             LOG.info("Find an agg index %s answer the query %s.", candidateAggIndex.getAggIndexId(), context.getSession().getQueryId().toString());

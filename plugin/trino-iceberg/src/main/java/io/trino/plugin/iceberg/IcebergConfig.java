@@ -68,7 +68,7 @@ public class IcebergConfig
     private boolean deleteSchemaLocationsFallback;
     private double minimumAssignedSplitWeight = 0.05;
     private Optional<String> materializedViewsStorageSchema = Optional.empty();
-    private boolean readIndicesSwitchOn;
+    private boolean readIndicesSwitchOn = true;
     private boolean generateSplitsAsync = true;
 
     private boolean queryPartitionFilterRequired;
