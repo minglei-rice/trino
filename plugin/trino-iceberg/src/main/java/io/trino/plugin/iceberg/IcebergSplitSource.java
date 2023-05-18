@@ -17,6 +17,7 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Stopwatch;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Iterables;
 import com.google.common.collect.Iterators;
 import com.google.common.io.Closer;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
@@ -46,11 +47,15 @@ import io.trino.spi.type.TypeManager;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.Path;
 import org.apache.iceberg.AggIndexFile;
+import org.apache.iceberg.CorrColsSpecParser;
 import org.apache.iceberg.DataFiles;
 import org.apache.iceberg.FileScanTask;
 import org.apache.iceberg.FilterMetrics;
+import org.apache.iceberg.IndexFile;
+import org.apache.iceberg.IndexSpecParser;
 import org.apache.iceberg.PartitionSpecParser;
 import org.apache.iceberg.Schema;
+import org.apache.iceberg.SchemaParser;
 import org.apache.iceberg.SystemProperties;
 import org.apache.iceberg.TableScan;
 import org.apache.iceberg.expressions.Expression;
@@ -58,6 +63,7 @@ import org.apache.iceberg.expressions.Expressions;
 import org.apache.iceberg.io.CloseableIterable;
 import org.apache.iceberg.io.CloseableIterator;
 import org.apache.iceberg.types.Type;
+import org.apache.iceberg.util.Pair;
 import org.apache.iceberg.util.TableScanUtil;
 
 import javax.annotation.Nullable;
@@ -65,6 +71,8 @@ import javax.annotation.Nullable;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.ObjectOutputStream;
+import java.io.Serial;
+import java.io.Serializable;
 import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
 import java.util.Base64;
@@ -79,6 +87,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.base.Suppliers.memoize;
@@ -126,6 +135,10 @@ public class IcebergSplitSource
     private final Stopwatch dynamicFilterWaitStopwatch;
     private final Constraint constraint;
     private final boolean indicesEnable;
+    private final String schemaStr;
+    private final String corrSpecStr;
+    private final String indexSpecStr;
+    private final boolean planTransformedTask;
     private final TypeManager typeManager;
     private final Closer closer = Closer.create();
     private final double minimumAssignedSplitWeight;
@@ -136,8 +149,8 @@ public class IcebergSplitSource
     private final String threadNamePrefix;
     private final ReentrantReadWriteLock scanLock = new ReentrantReadWriteLock();
 
-    private CloseableIterable<FileScanTask> fileScanTaskIterable;
-    private CloseableIterator<FileScanTask> fileScanTaskIterator;
+    private CloseableIterable<Pair<FileScanTask, Optional<IcebergSplit>>> fileScanTaskIterable;
+    private CloseableIterator<Pair<FileScanTask, Optional<IcebergSplit>>> fileScanTaskIterator;
     private TupleDomain<IcebergColumnHandle> pushedDownDynamicFilterPredicate;
     private volatile boolean closed;
 
@@ -183,6 +196,10 @@ public class IcebergSplitSource
         this.pathDomain = getPathDomain(tableHandle.getEnforcedPredicate());
         this.fileModifiedTimeDomain = getFileModifiedTimePathDomain(tableHandle.getEnforcedPredicate());
         this.indicesEnable = indicesEnabled;
+        this.schemaStr = SchemaParser.toJson(tableScan.schema());
+        this.corrSpecStr = CorrColsSpecParser.toJson(tableScan.table().correlatedColumnsSpec());
+        this.indexSpecStr = IndexSpecParser.toJson(tableScan.table().indexSpec());
+        this.planTransformedTask = IcebergSessionProperties.planTransformedTask(session);
         threadNamePrefix = String.format("Query-%s-%s-", session.getQueryId(), IcebergSplitSource.class.getSimpleName());
         // use a single thread pool so that file scan iterator won't be accessed concurrently
         this.splitEnumeratorPool = !generateSplitsAsync ? null : Executors.newSingleThreadExecutor(
@@ -249,10 +266,10 @@ public class IcebergSplitSource
             scanLock.writeLock().lock();
             try {
                 if (tableHandle.getAggIndex().isPresent()) {
-                    this.fileScanTaskIterable = scan.planFiles();
+                    this.fileScanTaskIterable = planTasks(scan, false);
                 }
                 else {
-                    this.fileScanTaskIterable = TableScanUtil.splitFiles(scan.planFiles(), tableScan.targetSplitSize());
+                    this.fileScanTaskIterable = planTasks(scan, true);
                 }
                 closer.register(fileScanTaskIterable);
                 this.fileScanTaskIterator = fileScanTaskIterable.iterator();
@@ -276,9 +293,24 @@ public class IcebergSplitSource
                 completedFuture(doGetNextBatch(maxSize, dynamicFilterPredicate));
     }
 
+    private CloseableIterable<Pair<FileScanTask, Optional<IcebergSplit>>> planTasks(TableScan scan, boolean split)
+    {
+        if (planTransformedTask) {
+            return CloseableIterable.transform(scan.planTransformedTasks(this::toIcebergSplit, split, false),
+                    task -> Pair.of(Iterables.getOnlyElement(task.files()), Optional.of(Iterables.getOnlyElement(task.transformedFiles()))));
+        }
+        else {
+            CloseableIterable<FileScanTask> scanTasks = scan.planFiles();
+            if (split) {
+                scanTasks = TableScanUtil.splitFiles(scanTasks, tableScan.targetSplitSize());
+            }
+            return CloseableIterable.transform(scanTasks, t -> Pair.of(t, Optional.empty()));
+        }
+    }
+
     private ConnectorSplitBatch doGetNextBatch(int maxSize, TupleDomain<IcebergColumnHandle> dynamicFilterPredicate)
     {
-        Iterator<FileScanTask> fileScanTasks = Iterators.limit(fileScanTaskIterator, maxSize);
+        Iterator<Pair<FileScanTask, Optional<IcebergSplit>>> fileScanTasks = Iterators.limit(fileScanTaskIterator, maxSize);
         ImmutableList.Builder<ConnectorSplit> splits = ImmutableList.builder();
         while (fileScanTasks.hasNext()) {
             if (closed) {
@@ -287,7 +319,8 @@ public class IcebergSplitSource
                 finish();
                 return NO_MORE_SPLITS_BATCH;
             }
-            FileScanTask scanTask = fileScanTasks.next();
+            Pair<FileScanTask, Optional<IcebergSplit>> pair = fileScanTasks.next();
+            FileScanTask scanTask = pair.first();
             if (scanTask.deletes().isEmpty() &&
                     maxScannedFileSizeInBytes.isPresent() &&
                     scanTask.file().fileSizeInBytes() > maxScannedFileSizeInBytes.get()) {
@@ -303,7 +336,7 @@ public class IcebergSplitSource
                     continue;
                 }
             }
-            IcebergSplit icebergSplit = toIcebergSplit(scanTask, indicesEnable);
+            IcebergSplit icebergSplit = planTransformedTask ? pair.second().get() : toIcebergSplit(scanTask);
 
             Schema fileSchema = scanTask.spec().schema();
             Map<Integer, Optional<String>> partitionKeys = getPartitionKeys(scanTask);
@@ -560,16 +593,18 @@ public class IcebergSplitSource
         return true;
     }
 
-    private IcebergSplit toIcebergSplit(FileScanTask task, boolean enabled)
+    private IcebergSplit toIcebergSplit(FileScanTask task)
     {
-        String fileScanTaskEncode = null;
-        if (enabled && task.file().indices() != null && !task.file().indices().isEmpty()) {
+        String indexEvalContextEncode = null;
+        if (indicesEnable && task.file().indices() != null && !task.file().indices().isEmpty()) {
             try (ByteArrayOutputStream ba = new ByteArrayOutputStream(); ObjectOutputStream ob = new ObjectOutputStream(ba)) {
-                ob.writeObject(task);
-                fileScanTaskEncode = Base64.getEncoder().encodeToString(ba.toByteArray());
+                List<IndexFile> indexFiles = task.file().indices().stream().map(IndexFile::new).collect(Collectors.toList());
+                IndexEvalContext indexEvalContext = new IndexEvalContext(schemaStr, corrSpecStr, indexSpecStr, indexFiles, task.residual());
+                ob.writeObject(indexEvalContext);
+                indexEvalContextEncode = Base64.getEncoder().encodeToString(ba.toByteArray());
             }
             catch (Exception e) {
-                log.error(e, "Encode fileScanTask error %s", task.file().path());
+                log.error(e, "Encode IndexEvalContext error %s", task.file().path());
             }
         }
 
@@ -588,7 +623,7 @@ public class IcebergSplitSource
                             .map(DeleteFile::fromIceberg)
                             .collect(toImmutableList()),
                     SplitWeight.fromProportion(Math.min(Math.max((double) task.length() / tableScan.targetSplitSize(), minimumAssignedSplitWeight), 1.0)),
-                    fileScanTaskEncode);
+                    indexEvalContextEncode);
         }
         else {
             // split for AggIndex file
@@ -609,7 +644,7 @@ public class IcebergSplitSource
                             .map(DeleteFile::fromIceberg)
                             .collect(toImmutableList()),
                     SplitWeight.fromProportion(Math.min(Math.max((double) task.length() / tableScan.targetSplitSize(), minimumAssignedSplitWeight), 1.0)),
-                    fileScanTaskEncode);
+                    indexEvalContextEncode);
         }
     }
 
@@ -633,5 +668,12 @@ public class IcebergSplitSource
             return Domain.all(fileModifiedTimeColumn.getType());
         }
         return domain;
+    }
+
+    public record IndexEvalContext(String schemaStr, String corrSpecStr, String indexSpecStr, List<IndexFile> indexFiles, Expression residual)
+            implements Serializable
+    {
+        @Serial
+        private static final long serialVersionUID = 1L;
     }
 }

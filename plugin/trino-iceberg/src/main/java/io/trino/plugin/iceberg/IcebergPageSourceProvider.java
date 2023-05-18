@@ -62,6 +62,7 @@ import io.trino.plugin.hive.parquet.ParquetPageSource;
 import io.trino.plugin.hive.parquet.ParquetReaderConfig;
 import io.trino.plugin.hive.parquet.TrinoParquetDataSource;
 import io.trino.plugin.iceberg.IcebergParquetColumnIOConverter.FieldContext;
+import io.trino.plugin.iceberg.IcebergSplitSource.IndexEvalContext;
 import io.trino.plugin.iceberg.delete.DeleteFile;
 import io.trino.plugin.iceberg.delete.DeleteFilter;
 import io.trino.plugin.iceberg.delete.IcebergPositionDeletePageSink;
@@ -92,7 +93,9 @@ import io.trino.spi.type.TypeManager;
 import org.apache.avro.file.DataFileStream;
 import org.apache.avro.generic.GenericDatumReader;
 import org.apache.hadoop.hdfs.BlockMissingException;
-import org.apache.iceberg.FileScanTask;
+import org.apache.iceberg.CorrColsSpecParser;
+import org.apache.iceberg.CorrelatedColumnsSpec;
+import org.apache.iceberg.IndexSpecParser;
 import org.apache.iceberg.MatchResult;
 import org.apache.iceberg.MetadataColumns;
 import org.apache.iceberg.PartitionSpec;
@@ -101,6 +104,7 @@ import org.apache.iceberg.RowSet;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.SchemaParser;
 import org.apache.iceberg.avro.AvroSchemaUtil;
+import org.apache.iceberg.index.IndexEvaluator;
 import org.apache.iceberg.index.rowset.RowBitmapSet;
 import org.apache.iceberg.index.rowset.RowValueSet;
 import org.apache.iceberg.io.InputFile;
@@ -111,6 +115,7 @@ import org.apache.iceberg.mapping.NameMapping;
 import org.apache.iceberg.mapping.NameMappingParser;
 import org.apache.iceberg.parquet.ParquetSchemaUtil;
 import org.apache.iceberg.types.Conversions;
+import org.apache.iceberg.util.CorrelationUtils;
 import org.apache.parquet.column.ColumnDescriptor;
 import org.apache.parquet.hadoop.metadata.BlockMetaData;
 import org.apache.parquet.hadoop.metadata.FileMetaData;
@@ -263,18 +268,17 @@ public class IcebergPageSourceProvider
         Optional<RowSet> rowSet = Optional.empty();
         if (fileSystemFactory instanceof HdfsFileSystemFactory fs) {
             HdfsContext hdfsContext = new HdfsContext(session);
-            FileScanTask fileScanTask = split.decodeFileScanTask();
-            if (fileScanTask != null) {
+            IndexEvalContext indexEvalContext = split.decodeIndexEvalContext();
+            if (indexEvalContext != null) {
                 long start = System.currentTimeMillis();
-                HdfsFileSystem hdfsFileSystem = new HdfsFileSystem(fs.getEnvironment(), hdfsContext);
-                MatchResult indexMatchResult = fileScanTask.isRequired(hdfsFileSystem.toFileIo(), false);
+                MatchResult indexMatchResult = evalIndex(fs, hdfsContext, indexEvalContext);
                 split.setIndexReadTimeMillis(System.currentTimeMillis() - start);
                 rowSet = indexMatchResult.getRowSet();
                 if (!indexMatchResult.result()) {
-                    log.info("Indices hit for file : %s, split skipped, time spent : %s ms", fileScanTask.file().path(), split.getIndexReadTimeMillis());
+                    log.info("Indices hit for file : %s, split skipped, time spent : %s ms", split.getPath(), split.getIndexReadTimeMillis());
                     return new EmptyPageSource(makeMetrics(SKIPPED_BY_INDEX_IN_WORKER, 1, split.getLength()));
                 }
-                log.info("Indices missed for file : %s, time spent : %s ms", fileScanTask.file().path(), System.currentTimeMillis() - start);
+                log.info("Indices missed for file : %s, time spent : %s ms", split.getPath(), System.currentTimeMillis() - start);
             }
         }
 
@@ -430,6 +434,16 @@ public class IcebergPageSourceProvider
                         updatedRowPageSinkSupplier,
                         table.getUpdatedColumns()),
                 getClass().getClassLoader());
+    }
+
+    private MatchResult evalIndex(HdfsFileSystemFactory fs, HdfsContext hdfsContext, IndexEvalContext indexEvalContext)
+    {
+        HdfsFileSystem hdfsFileSystem = new HdfsFileSystem(fs.getEnvironment(), hdfsContext);
+        final Schema schema = SchemaParser.fromJson(indexEvalContext.schemaStr());
+        final CorrelatedColumnsSpec corrColsSpec = CorrColsSpecParser.fromJson(schema, indexEvalContext.corrSpecStr());
+        IndexEvaluator evaluator = new IndexEvaluator(CorrelationUtils.schemaWithCorrCols(schema, corrColsSpec),
+                indexEvalContext.residual(), hdfsFileSystem.toFileIo(), false, IndexSpecParser.fromJson(schema, corrColsSpec, indexEvalContext.indexSpecStr()));
+        return evaluator.eval(indexEvalContext.indexFiles(), false);
     }
 
     private Set<IcebergColumnHandle> requiredColumnsForDeletes(Schema schema, List<DeleteFile> deletes)

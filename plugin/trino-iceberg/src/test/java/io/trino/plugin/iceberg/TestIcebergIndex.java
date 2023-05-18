@@ -84,6 +84,7 @@ import static com.google.common.io.MoreFiles.deleteRecursively;
 import static com.google.common.io.RecursiveDeleteOption.ALLOW_INSECURE;
 import static io.trino.plugin.hive.HiveTestUtils.HDFS_ENVIRONMENT;
 import static io.trino.plugin.hive.metastore.file.FileHiveMetastore.createTestingFileHiveMetastore;
+import static io.trino.plugin.iceberg.util.MetricsUtils.DATA_SKIPPING_METRICS_NAME;
 import static io.trino.testing.TestingConnectorSession.SESSION;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
@@ -150,6 +151,14 @@ public class TestIcebergIndex
 
         // only select y from the table, to make sure we're using the correct index to filter the data
         assertEquals(getQueryRunner().execute("select y from foo where y=2").getMaterializedRows().size(), 1);
+
+        MaterializedResultWithQueryId resultWithId = getDistributedQueryRunner().executeWithQueryId(getSession(), "select y from foo where y=3");
+        QueryId queryId = resultWithId.getQueryId();
+        List<OperatorStats> operatorStats = getTableScanStats(queryId, "foo");
+        assertEquals(operatorStats.size(), 1);
+        DataSkippingMetrics dataSkippingMetrics = (DataSkippingMetrics) operatorStats.get(0).getConnectorMetrics().getMetrics().get(DATA_SKIPPING_METRICS_NAME);
+        // make sure split is skipped on worker
+        assertEquals(dataSkippingMetrics.getMetricMap().get(DataSkippingMetrics.MetricType.SKIPPED_BY_INDEX_IN_WORKER).getSplitCount(), 1L);
     }
 
     @Test

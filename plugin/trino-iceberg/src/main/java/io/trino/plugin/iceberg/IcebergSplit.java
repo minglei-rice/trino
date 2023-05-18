@@ -19,11 +19,11 @@ import com.google.common.base.MoreObjects.ToStringHelper;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import io.airlift.log.Logger;
+import io.trino.plugin.iceberg.IcebergSplitSource.IndexEvalContext;
 import io.trino.plugin.iceberg.delete.DeleteFile;
 import io.trino.spi.HostAddress;
 import io.trino.spi.SplitWeight;
 import io.trino.spi.connector.ConnectorSplit;
-import org.apache.iceberg.FileScanTask;
 import org.openjdk.jol.info.ClassLayout;
 
 import java.io.ByteArrayInputStream;
@@ -57,8 +57,8 @@ public class IcebergSplit
     private final String partitionDataJson;
     private final List<DeleteFile> deletes;
     private final SplitWeight splitWeight;
-    private final String fileScanTaskEncode;
-    private FileScanTask fileScanTask;
+    private final String indexEvalContextEncode;
+    private IndexEvalContext indexEvalContext;
     private long indexReadTimeMillis;
 
     @JsonCreator
@@ -74,7 +74,7 @@ public class IcebergSplit
             @JsonProperty("partitionDataJson") String partitionDataJson,
             @JsonProperty("deletes") List<DeleteFile> deletes,
             @JsonProperty("splitWeight") SplitWeight splitWeight,
-            @JsonProperty("fileScanTaskEncode") String fileScanTaskEncode)
+            @JsonProperty("indexEvalContextEncode") String indexEvalContextEncode)
     {
         this.path = requireNonNull(path, "path is null");
         this.start = start;
@@ -87,7 +87,7 @@ public class IcebergSplit
         this.partitionDataJson = requireNonNull(partitionDataJson, "partitionDataJson is null");
         this.deletes = ImmutableList.copyOf(requireNonNull(deletes, "deletes is null"));
         this.splitWeight = requireNonNull(splitWeight, "splitWeight is null");
-        this.fileScanTaskEncode = fileScanTaskEncode;
+        this.indexEvalContextEncode = indexEvalContextEncode;
     }
 
     @Override
@@ -203,27 +203,24 @@ public class IcebergSplit
     }
 
     @JsonProperty
-    public String getFileScanTaskEncode()
+    public String getIndexEvalContextEncode()
     {
-        return fileScanTaskEncode;
+        return indexEvalContextEncode;
     }
 
-    public FileScanTask decodeFileScanTask()
+    public IndexEvalContext decodeIndexEvalContext()
     {
-        if (fileScanTask != null) {
-            return fileScanTask;
+        if (indexEvalContext != null || getIndexEvalContextEncode() == null || getIndexEvalContextEncode().isBlank()) {
+            return indexEvalContext;
         }
-
-        if (getFileScanTaskEncode() != null && !getFileScanTaskEncode().isBlank()) {
-            byte[] decode = Base64.getDecoder().decode(getFileScanTaskEncode());
-            try (ObjectInputStream ob = new ObjectInputStream(new ByteArrayInputStream(decode))) {
-                fileScanTask = (FileScanTask) ob.readObject();
-            }
-            catch (Exception e) {
-                log.error(e, "Decode fileScanTask error");
-            }
+        byte[] decode = Base64.getDecoder().decode(getIndexEvalContextEncode());
+        try (ObjectInputStream ob = new ObjectInputStream(new ByteArrayInputStream(decode))) {
+            indexEvalContext = (IndexEvalContext) ob.readObject();
         }
-        return fileScanTask;
+        catch (Exception e) {
+            log.error(e, "Decode IndexEvalContext error");
+        }
+        return indexEvalContext;
     }
 
     public void setIndexReadTimeMillis(long indexReadTimeMillis)

@@ -86,6 +86,8 @@ public final class IcebergSessionProperties
     private static final String MAX_DATAFILES_WITHOUT_AGG_INDEX = "max_datafiles_without_agg_index";
     private static final String MAX_PERCENTAGE_OF_DATAFILES_WITHOUT_AGG_INDEX = "max_percentage_of_datafiles_without_agg_index";
     private static final String VALIDATE_CORR_TABLE_DATA_CHANGE = "validate_corr_table_data_change";
+    private static final String PLAN_TRANSFORMED_TASK = "plan_transformed_task";
+    private static final boolean PLAN_TRANSFORMED_TASK_DEFAULT = true;
     private final List<PropertyMetadata<?>> sessionProperties;
 
     @Inject
@@ -301,6 +303,11 @@ public final class IcebergSessionProperties
                         "Allow to read partial agg index, percentile of data files without agg index must no greater than the max value",
                         icebergConfig.getMaxPercentageOfDataFilesWithoutAggIndex(),
                         false))
+                .add(booleanProperty(
+                        PLAN_TRANSFORMED_TASK,
+                        "When planning tasks, whether to push down transformation into iceberg",
+                        PLAN_TRANSFORMED_TASK_DEFAULT,
+                        false))
                 .build();
     }
 
@@ -505,5 +512,18 @@ public final class IcebergSessionProperties
     public static double getMaxPercentageOfDataFilesWithoutAggIndex(ConnectorSession session)
     {
         return session.getProperty(MAX_PERCENTAGE_OF_DATAFILES_WITHOUT_AGG_INDEX, Double.class);
+    }
+
+    public static boolean planTransformedTask(ConnectorSession session)
+    {
+        try {
+            return session.getProperty(PLAN_TRANSFORMED_TASK, Boolean.class);
+        }
+        catch (TrinoException e) {
+            if (INVALID_SESSION_PROPERTY.toErrorCode().equals(e.getErrorCode())) {
+                return PLAN_TRANSFORMED_TASK_DEFAULT;
+            }
+            throw e;
+        }
     }
 }
