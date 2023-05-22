@@ -711,7 +711,7 @@
             <dependency>
                 <groupId>io.trino.hadoop</groupId>
                 <artifactId>hadoop-apache</artifactId>
-                <version>3.3.2-1-olap</version>
+                <version>3.3.2-2-olap</version>
             </dependency>
 
             <dependency>
