@@ -1,0 +1,16 @@
+coordinator=false
+node.environment={TRINO_ENVIRONMENT}
+http-server.http.port={TRINO_SERVER_PORT}
+
+discovery.uri=http://{TRINO_COORDINATOR_HOSTNAME}:{TRINO_COORDINATOR_PORT}
+
+exchange.http-client.max-content-length={EXCHANGE_MAX_CONTENT_LENGTH}
+exchange.max-response-size={EXCHANGE_MAX_CONTENT_LENGTH}
+exchange.max-buffer-size={EXCHANGE_MAX_CONTENT_LENGTH}
+
+task.http-timeout-threads=10
+task.concurrency={TASK_CONCURRENCY}
+task.writer-count=32
+
+# expire compiled expression after 20min
+compiler.expression-cache-ttl=1200

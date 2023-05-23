@@ -1,0 +1,18 @@
+-server
+-Xms{JVM_XMS}
+-Xmx{JVM_XMX}
+-XX:ReservedCodeCacheSize={JVM_RESERVED_CODE_CACHE_SIZE}
+-Xss{JVM_XSS}
+-XX:+UseZGC
+-XX:-UseCompressedOops
+-XX:-UseCompressedClassPointers
+-XX:MaxGCPauseMillis=200
+-XX:+ExplicitGCInvokesConcurrent
+-XX:OnOutOfMemoryError=kill -9 %p
+-XX:+HeapDumpOnOutOfMemoryError
+-XX:HeapDumpPath={TRINO_DATA_DIR}
+# logging gc details into this file with time
+-Xlog:gc*:{TRINO_LOG_DIR}/garbage-collection.log:time,level,tags,tid:filecount=5,filesize=100M
+-javaagent:{TRINO_JMX_EXPORTER}=9099:{TRINO_ETC_DIR}/jmx_exporter_config.yaml
+-Dsun.security.krb5.debug=true
+-Dlog.enable-console=true

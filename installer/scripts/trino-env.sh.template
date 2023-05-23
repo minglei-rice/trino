@@ -1,0 +1,14 @@
+#!/bin/bash
+
+export TRINO_ENVIRONMENT={TRINO_ENVIRONMENT}
+export TRINO_HOME_BASE={TRINO_HOME_BASE}
+# To support fast version switch/rollback, TRINO_HOME should be a soft link
+export TRINO_HOME=$TRINO_HOME_BASE/trino
+export TRINO_VERSION={TRINO_VERSION}
+export TRINO_ETC_DIR={TRINO_ETC_DIR}
+export TRINO_DATA_DIR={TRINO_DATA_DIR}
+export TRINO_LOG_DIR={TRINO_LOG_DIR}
+export TRINO_SERVER_PORT={TRINO_SERVER_PORT}
+export HADOOP_USER_NAME=trino
+export JAVA_HOME={TRINO_JAVA_HOME}
+export PATH=$TRINO_HOME/bin:$JAVA_HOME/bin:$PATH

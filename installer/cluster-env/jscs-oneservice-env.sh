@@ -1,0 +1,15 @@
+#!/bin/bash
+
+export TRINO_CLUSTER_NAME=jscs-oneservice
+export TRINO_COORDINATOR_HOSTNAME=jscs-olap-presto-01
+export TRINO_ENVIRONMENT=prod
+
+export ALLUXIO_CACHE=true
+export ALLUXIO_MASTER_HOSTNAME=jscs-olap-presto-01
+
+export JVM_XMS=320G
+export JVM_XMX=320G
+
+export QUERY_MAX_MEMORY=4440GB
+export QUERY_MAX_MEMORY_PER_NODE=120GB
+export EXCHANGE_MAX_CONTENT_LENGTH=256MB
