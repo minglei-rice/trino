@@ -39,6 +39,9 @@ sed -i "s#{JVM_XMS}#$JVM_XMS#g" jvm.config
 sed -i "s#{JVM_XMX}#$JVM_XMX#g" jvm.config
 sed -i "s#{JVM_XSS}#$JVM_XSS#g" jvm.config
 sed -i "s#{JVM_RESERVED_CODE_CACHE_SIZE}#$JVM_RESERVED_CODE_CACHE_SIZE#g" jvm.config
+sed -i "s#{JVM_META_SPACE_SIZE}#$JVM_META_SPACE_SIZE#g" jvm.config
+sed -i "s#{JVM_MAX_META_SPACE_SIZE}#$JVM_MAX_META_SPACE_SIZE#g" jvm.config
+
 sed -i "s#{TRINO_ETC_DIR}#$TRINO_ETC_DIR#g" jvm.config
 sed -i "s#{TRINO_DATA_DIR}#$TRINO_DATA_DIR#g" jvm.config
 sed -i "s#{TRINO_LOG_DIR}#$TRINO_LOG_DIR#g" jvm.config

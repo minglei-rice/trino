@@ -4,6 +4,10 @@
 -XX:ReservedCodeCacheSize={JVM_RESERVED_CODE_CACHE_SIZE}
 -Xss{JVM_XSS}
 -XX:+UseZGC
+-XX:MetaspaceSize={JVM_META_SPACE_SIZE}
+-XX:MaxMetaspaceSize={JVM_MAX_META_SPACE_SIZE}
+-XX:MinMetaspaceFreeRatio=2
+-XX:MaxMetaspaceFreeRatio=5
 -XX:-UseCompressedOops
 -XX:-UseCompressedClassPointers
 -XX:MaxGCPauseMillis=200
