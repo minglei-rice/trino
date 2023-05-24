@@ -55,9 +55,8 @@ source trino-env.sh
 ./launcher.sh start
 
 # keep current process alive to pass caster health check
+sleep 90
 while true; do
-  sleep 90 &
-  wait $!
   trino_pid=$(jps | grep -m 1 "TrinoServer" | awk '{print $1}')
   cur_time=$(date '+%Y-%m-%dT%H:%M:%S')
   if [ -z "$trino_pid" ]; then
@@ -65,4 +64,6 @@ while true; do
     exit 1
   fi
   echo "$cur_time Server is running with pid $trino_pid"
+  sleep 30 &
+  wait $!
 done
