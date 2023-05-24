@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e
+
 _term() {
   echo "Caught SIGTERM signal. Shutdown trino server gracefully"
 
@@ -23,16 +25,39 @@ _term() {
 
 trap _term SIGTERM
 
+# check env
 cd $(dirname "$0")
-source trino-env.sh
-if [[ $TRINO_ENVIRONMENT != *docker ]]; then
-  echo "Server is not installed in docker. Please run launcher.sh directly"
+if [[ "$TRINO_HOME_BASE" != $(pwd) ]]; then
+  echo "Current directory $(pwd) should be the same as TRINO_HOME_BASE=$TRINO_HOME_BASE"
   exit 1
 fi
+if [ -z "$DEPLOY_ENV" ]; then
+  echo "DEPLOY_ENV is missing"
+  exit 1
+fi
+if [ ! -r version ]; then
+  echo "version file does not exist or is not readable"
+  exit 1
+fi
+
+# prepare env
+export TRINO_USER=root
+TRINO_VERSION=$(cat version)
+export TRINO_VERSION
+export TRINO_ENVIRONMENT="$DEPLOY_ENV"_docker
+
+# install trino
+installer/install.sh
+./switch_version.sh
+
+# start server in background
+source trino-env.sh
 ./launcher.sh start
 
-sleep 15
+# keep current process alive to pass caster health check
 while true; do
+  sleep 30 &
+  wait $!
   trino_pid=$(jps | grep -m 1 "TrinoServer" | awk '{print $1}')
   cur_time=$(date '+%Y-%m-%dT%H:%M:%S')
   if [ -z "$trino_pid" ]; then
@@ -40,6 +65,4 @@ while true; do
     exit 1
   fi
   echo "$cur_time Server is running with pid $trino_pid"
-  sleep 60 &
-  wait $!
 done

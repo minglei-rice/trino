@@ -5,7 +5,6 @@ echo "Preparing environment variables and scripts to launch Trino..."
 cp scripts/trino-env.sh.template "$TRINO_HOME_BASE"/trino-env.sh
 cp scripts/launcher.sh "$TRINO_HOME_BASE"
 cp scripts/switch_version.sh "$TRINO_HOME_BASE"
-cp scripts/docker_start.sh "$TRINO_HOME_BASE"
 
 cd "$TRINO_HOME_BASE"
 chmod +x ./*.sh

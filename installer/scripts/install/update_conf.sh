@@ -18,8 +18,8 @@ templates=$(ls ./*.$role.template)
 for template in $templates; do
   mv "$template" "${template%".$role.template"}"
 done
-rm ./*.coordinator.template
-rm ./*.worker.template
+rm -f ./*.coordinator.template
+rm -f ./*.worker.template
 templates=$(ls ./*.template)
 for template in $templates; do
   mv "$template" "${template%".template"}"
