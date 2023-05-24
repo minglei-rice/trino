@@ -56,7 +56,7 @@ source trino-env.sh
 
 # keep current process alive to pass caster health check
 while true; do
-  sleep 30 &
+  sleep 90 &
   wait $!
   trino_pid=$(jps | grep -m 1 "TrinoServer" | awk '{print $1}')
   cur_time=$(date '+%Y-%m-%dT%H:%M:%S')
