@@ -1708,13 +1708,15 @@ public final class MetadataManager
     public Optional<AggIndexApplicationResult<TableHandle>> applyAggIndex(
             Session session,
             TableHandle table,
-            AggIndex aggIndex)
+            AggIndex aggIndex,
+            List<TableHandle> corrTables)
     {
         CatalogHandle catalogHandle = table.getCatalogHandle();
         ConnectorMetadata metadata = getMetadata(session, catalogHandle);
         ConnectorSession connectorSession = session.toConnectorSession(catalogHandle);
+        List<ConnectorTableHandle> connectorTableHandles = corrTables.stream().map(TableHandle::getConnectorHandle).collect(Collectors.toList());
 
-        Optional<AggIndexApplicationResult<ConnectorTableHandle>> aggIndexResult = metadata.applyAggIndex(connectorSession, table.getConnectorHandle(), aggIndex);
+        Optional<AggIndexApplicationResult<ConnectorTableHandle>> aggIndexResult = metadata.applyAggIndex(connectorSession, table.getConnectorHandle(), aggIndex, connectorTableHandles);
         if (aggIndexResult.isEmpty()) {
             return Optional.empty();
         }

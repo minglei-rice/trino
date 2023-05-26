@@ -848,7 +848,7 @@ public abstract class AbstractMockMetadata
     }
 
     @Override
-    public Optional<AggIndexApplicationResult<TableHandle>> applyAggIndex(Session session, TableHandle handle, AggIndex aggIndex)
+    public Optional<AggIndexApplicationResult<TableHandle>> applyAggIndex(Session session, TableHandle handle, AggIndex aggIndex, List<TableHandle> corrTables)
     {
         return Optional.empty();
     }

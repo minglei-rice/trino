@@ -530,7 +530,8 @@ public interface Metadata
     Optional<AggIndexApplicationResult<TableHandle>> applyAggIndex(
             Session session,
             TableHandle handle,
-            AggIndex aggIndex);
+            AggIndex aggIndex,
+            List<TableHandle> corrTables);
 
     Optional<TableFunctionApplicationResult<TableHandle>> applyTableFunction(Session session, TableFunctionHandle handle);
 

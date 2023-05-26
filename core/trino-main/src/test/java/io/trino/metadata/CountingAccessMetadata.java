@@ -138,9 +138,9 @@ public class CountingAccessMetadata
     }
 
     @Override
-    public Optional<AggIndexApplicationResult<TableHandle>> applyAggIndex(Session session, TableHandle handle, AggIndex aggIndex)
+    public Optional<AggIndexApplicationResult<TableHandle>> applyAggIndex(Session session, TableHandle handle, AggIndex aggIndex, List<TableHandle> corrTables)
     {
-        return delegate.applyAggIndex(session, handle, aggIndex);
+        return delegate.applyAggIndex(session, handle, aggIndex, corrTables);
     }
 
     @Override

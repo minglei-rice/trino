@@ -85,6 +85,7 @@ public final class IcebergSessionProperties
     private static final String COMPLEX_EXPRESSIONS_ON_PARTITION_KEYS_PUSHDOWN_ENABLED = "expressions_on_partition_keys_pushdown_enabled";
     private static final String MAX_DATAFILES_WITHOUT_AGG_INDEX = "max_datafiles_without_agg_index";
     private static final String MAX_PERCENTAGE_OF_DATAFILES_WITHOUT_AGG_INDEX = "max_percentage_of_datafiles_without_agg_index";
+    private static final String VALIDATE_CORR_TABLE_DATA_CHANGE = "validate_corr_table_data_change";
     private final List<PropertyMetadata<?>> sessionProperties;
 
     @Inject
@@ -267,6 +268,11 @@ public final class IcebergSessionProperties
                         READ_INDICES_SWITCH_ON,
                         "Switch to read iceberg indices, default false",
                         icebergConfig.isReadIndicesSwitchOn(),
+                        false))
+                .add(booleanProperty(
+                        VALIDATE_CORR_TABLE_DATA_CHANGE,
+                        "Switch to validate correlation table data change for indices on corr column, default true",
+                        icebergConfig.isValidateCorrTableDataChange(),
                         false))
                 .add(booleanProperty(
                         GENERATE_SPLITS_ASYNC,
@@ -469,6 +475,11 @@ public final class IcebergSessionProperties
     public static boolean isReadIndicesSwitchOn(ConnectorSession session)
     {
         return session.getProperty(READ_INDICES_SWITCH_ON, Boolean.class);
+    }
+
+    public static boolean isValidateCorrTableDataChange(ConnectorSession session)
+    {
+        return session.getProperty(VALIDATE_CORR_TABLE_DATA_CHANGE, Boolean.class);
     }
 
     public static boolean isGenerateSplitsAsync(ConnectorSession session)

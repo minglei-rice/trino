@@ -1390,7 +1390,8 @@ public interface ConnectorMetadata
     default Optional<AggIndexApplicationResult<ConnectorTableHandle>> applyAggIndex(
             ConnectorSession session,
             ConnectorTableHandle handle,
-            AggIndex aggIndex)
+            AggIndex aggIndex,
+            List<ConnectorTableHandle> corrTables)
     {
         return Optional.empty();
     }

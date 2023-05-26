@@ -64,7 +64,8 @@ public class TestIcebergConfig
                 .setQueryPartitionFilterRequired(false)
                 .setComplexExpressionsOnPartitionKeysPushdownEnabled(true)
                 .setMaxDataFilesWithoutAggIndex(10_000)
-                .setMaxPercentageOfDataFilesWithoutAggIndex(0.5));
+                .setMaxPercentageOfDataFilesWithoutAggIndex(0.5)
+                .setValidateCorrTableDataChange(true));
     }
 
     @Test
@@ -95,6 +96,7 @@ public class TestIcebergConfig
                 .put("iceberg.complex-expressions-on-partition-keys-pushdown-enabled", "false")
                 .put("iceberg.max-datafiles-without-agg-index", "100")
                 .put("iceberg.max-percentile-of-datafiles-without-agg-index", "0.6")
+                .put("iceberg.validate-corr-table-data-change", "false")
                 .buildOrThrow();
 
         IcebergConfig expected = new IcebergConfig()
@@ -121,7 +123,8 @@ public class TestIcebergConfig
                 .setQueryPartitionFilterRequired(true)
                 .setComplexExpressionsOnPartitionKeysPushdownEnabled(false)
                 .setMaxDataFilesWithoutAggIndex(100)
-                .setMaxPercentageOfDataFilesWithoutAggIndex(0.6);
+                .setMaxPercentageOfDataFilesWithoutAggIndex(0.6)
+                .setValidateCorrTableDataChange(false);
 
         assertFullMapping(properties, expected);
     }

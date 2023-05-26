@@ -137,6 +137,7 @@ public class RewriteAggregationByAggIndex
         if (tableScanNodes.isEmpty()) {
             return Result.empty();
         }
+        List<TableHandle> allTableHandles = tableScanNodes.stream().map(TableScanNode::getTable).collect(Collectors.toList());
         for (TableScanNode tableScan : tableScanNodes) {
             TableHandle tableHandle = tableScan.getTable();
             List<AggIndex> aggIndices = metadata.getAggregationIndex(session, tableHandle);
@@ -172,7 +173,8 @@ public class RewriteAggregationByAggIndex
             candidateAggIndex.setAllowPartialAggIndex(allowPartialAggIndex);
 
             LOG.info("Find an agg index %s answer the query %s.", candidateAggIndex.getAggIndexId(), context.getSession().getQueryId().toString());
-            Optional<AggIndexApplicationResult<TableHandle>> result = metadata.applyAggIndex(session, tableHandle, candidateAggIndex);
+            List<TableHandle> dimTableHandles = allTableHandles.stream().filter(t -> !t.equals(tableHandle)).collect(Collectors.toList());
+            Optional<AggIndexApplicationResult<TableHandle>> result = metadata.applyAggIndex(session, tableHandle, candidateAggIndex, dimTableHandles);
             if (result.isEmpty()) {
                 continue;
             }

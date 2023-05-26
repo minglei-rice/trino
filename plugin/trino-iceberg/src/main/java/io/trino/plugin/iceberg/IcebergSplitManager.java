@@ -27,19 +27,27 @@ import io.trino.spi.connector.ConnectorTransactionHandle;
 import io.trino.spi.connector.Constraint;
 import io.trino.spi.connector.DynamicFilter;
 import io.trino.spi.connector.FixedSplitSource;
+import io.trino.spi.connector.SchemaTableName;
 import io.trino.spi.type.TypeManager;
+import org.apache.iceberg.DataChangeValidator;
 import org.apache.iceberg.IndexSpec;
 import org.apache.iceberg.Table;
 import org.apache.iceberg.TableProperties;
 import org.apache.iceberg.TableScan;
+import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.util.PropertyUtil;
 
 import javax.inject.Inject;
+
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import static io.trino.plugin.iceberg.IcebergSessionProperties.getDynamicFilteringWaitTimeout;
 import static io.trino.plugin.iceberg.IcebergSessionProperties.getMinimumAssignedSplitWeight;
 import static io.trino.plugin.iceberg.IcebergSessionProperties.isGenerateSplitsAsync;
 import static io.trino.plugin.iceberg.IcebergSessionProperties.isReadIndicesSwitchOn;
+import static io.trino.plugin.iceberg.IcebergSessionProperties.isValidateCorrTableDataChange;
 import static java.util.Objects.requireNonNull;
 
 public class IcebergSplitManager
@@ -86,6 +94,11 @@ public class IcebergSplitManager
         if (indicesEnabled) {
             log.info("Index enabled, including index stats");
             tableScan = tableScan.includeIndexStats();
+            if (isValidateCorrTableDataChange(session) && !table.getCorrTables().isEmpty()) {
+                Function<SchemaTableName, Table> tableResolver = t -> transactionManager.get(transaction, session.getIdentity()).getIcebergTable(session, t);
+                Map<TableIdentifier, Long> corrSnapshots = table.getCorrTables().stream().collect(Collectors.toMap(entry -> TableIdentifier.of(entry.getSchemaName(), entry.getTableName()), entry -> entry.getSnapshotId().get()));
+                tableScan = tableScan.withDataChangeValidator(new DataChangeValidator(t -> tableResolver.apply(new SchemaTableName(t.namespace().level(0), t.name())), corrSnapshots));
+            }
         }
         else {
             tableScan = tableScan.disableInPlaceIndex(true);

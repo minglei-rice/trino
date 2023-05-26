@@ -969,10 +969,11 @@ public class ClassLoaderSafeConnectorMetadata
     public Optional<AggIndexApplicationResult<ConnectorTableHandle>> applyAggIndex(
             ConnectorSession session,
             ConnectorTableHandle handle,
-            AggIndex aggIndex)
+            AggIndex aggIndex,
+            List<ConnectorTableHandle> corrTables)
     {
         try (ThreadContextClassLoader ignored = new ThreadContextClassLoader(classLoader)) {
-            return delegate.applyAggIndex(session, handle, aggIndex);
+            return delegate.applyAggIndex(session, handle, aggIndex, corrTables);
         }
     }
 

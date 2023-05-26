@@ -69,6 +69,7 @@ public class IcebergConfig
     private double minimumAssignedSplitWeight = 0.05;
     private Optional<String> materializedViewsStorageSchema = Optional.empty();
     private boolean readIndicesSwitchOn = true;
+    private boolean validateCorrTableDataChange = true;
     private boolean generateSplitsAsync = true;
 
     private boolean queryPartitionFilterRequired;
@@ -340,6 +341,18 @@ public class IcebergConfig
     public IcebergConfig setReadIndicesSwitchOn(boolean readIndicesSwitchOn)
     {
         this.readIndicesSwitchOn = readIndicesSwitchOn;
+        return this;
+    }
+
+    public boolean isValidateCorrTableDataChange()
+    {
+        return validateCorrTableDataChange;
+    }
+
+    @Config("iceberg.validate-corr-table-data-change")
+    public IcebergConfig setValidateCorrTableDataChange(boolean validateCorrTableDataChange)
+    {
+        this.validateCorrTableDataChange = validateCorrTableDataChange;
         return this;
     }
 

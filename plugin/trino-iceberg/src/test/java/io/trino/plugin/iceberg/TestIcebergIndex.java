@@ -161,6 +161,7 @@ public class TestIcebergIndex
         getQueryRunner().execute("insert into fact values (1,1),(1,2),(3,3)");
         getQueryRunner().execute("insert into dim values (1,1.0),(2,2.0),(3,3.0),(4,4.0)");
         Table fact = loadIcebergTable("fact");
+        Table dim = loadIcebergTable("dim");
         // alter table fact add correlated column (v as dim_v) from inner join dim on f_k=d_k with pk_fk
         CorrelatedColumns.Builder corrColBuilder = new CorrelatedColumns.Builder(fact.schema(), false)
                 .corrTableId(TableIdentifier.of("tpch", "dim"))
@@ -183,7 +184,8 @@ public class TestIcebergIndex
                         new Object[] {1, 1, 1.0},
                         new Object[] {1, 2, 1.0},
                         new Object[] {3, 3, 3.0}
-                });
+                },
+                dim);
         fact.refresh();
 
         MaterializedResultWithQueryId resultWithId = getDistributedQueryRunner().executeWithQueryId(
@@ -193,6 +195,16 @@ public class TestIcebergIndex
         List<OperatorStats> operatorStats = getTableScanStats(queryId, "fact");
         assertEquals(operatorStats.size(), 1);
         assertEquals(operatorStats.get(0).getOutputPositions(), 0L);
+
+        getQueryRunner().execute("insert into dim values (1,1.0)");
+        resultWithId = getDistributedQueryRunner().executeWithQueryId(
+                getSession(), "select sum(fact.v) from fact join dim on f_k=d_k where dim.v=5.0 group by f_k");
+        assertEquals(resultWithId.getResult().getMaterializedRows().size(), 0);
+        queryId = resultWithId.getQueryId();
+        operatorStats = getTableScanStats(queryId, "fact");
+        assertEquals(operatorStats.size(), 1);
+        DataSkippingMetrics dataSkippingMetrics = (DataSkippingMetrics) operatorStats.get(0).getConnectorMetrics().getMetrics().get("iceberg_data_skipping_metrics");
+        assertEquals(dataSkippingMetrics.getMetricMap().get(DataSkippingMetrics.MetricType.READ).getSplitCount(), 1L);
     }
 
     private List<OperatorStats> getTableScanStats(QueryId queryId, String tableName)
@@ -371,15 +383,21 @@ public class TestIcebergIndex
     private void generateIndexFiles(Table table, FileScanTask task, Object[][] rows)
             throws Exception
     {
+        generateIndexFiles(table, task, rows, null);
+    }
+
+    private void generateIndexFiles(Table table, FileScanTask task, Object[][] rows, Table corrTable)
+            throws Exception
+    {
         Path indexRootPath = new Path(table.location(), "index");
-        DataFile newDataFile = generateIndexFiles(table, task, indexRootPath, rows);
+        DataFile newDataFile = generateIndexFiles(table, task, indexRootPath, rows, corrTable);
         RewriteFiles rewriteFiles = table.newRewrite();
         rewriteFiles.rewriteFiles(Sets.newHashSet(task.file()), Sets.newHashSet(newDataFile));
         rewriteFiles.commit();
     }
 
     // generate all required index files for a source file, and return the updated DataFile
-    private DataFile generateIndexFiles(Table table, FileScanTask task, Path indexRootPath, Object[][] rows)
+    private DataFile generateIndexFiles(Table table, FileScanTask task, Path indexRootPath, Object[][] rows, Table corrTable)
             throws Exception
     {
         DataFile sourceFile = task.file();
@@ -396,7 +414,7 @@ public class TestIcebergIndex
                 indexWriter.addData(row[ordinal]);
             }
             IndexWriterResult writerResult = indexWriter.finish();
-            IndexFile indexFile = new IndexFile(indexField.indexId(), writerResult.isInPlace(), writerResult.getIndexData());
+            IndexFile indexFile = corrTable == null ? new IndexFile(indexField.indexId(), writerResult.isInPlace(), writerResult.getIndexData()) : new IndexFile(indexField.indexId(), writerResult.isInPlace(), writerResult.getIndexData(), corrTable.currentSnapshot().snapshotId());
             indexFiles.add(indexFile);
         }
         return DataFiles.builder(table.spec()).copy(sourceFile).withIndexFile(indexFiles).build();

@@ -111,6 +111,7 @@ import org.apache.iceberg.CorrelatedColumns;
 import org.apache.iceberg.CorrelatedColumns.CorrelatedColumn;
 import org.apache.iceberg.CorrelatedColumns.Correlation;
 import org.apache.iceberg.CorrelatedColumnsSpec;
+import org.apache.iceberg.DataChangeValidator;
 import org.apache.iceberg.DataFile;
 import org.apache.iceberg.DataFiles;
 import org.apache.iceberg.DeleteFile;
@@ -169,6 +170,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.Set;
@@ -221,6 +223,7 @@ import static io.trino.plugin.iceberg.IcebergSessionProperties.getRemoveOrphanFi
 import static io.trino.plugin.iceberg.IcebergSessionProperties.isExtendedStatisticsEnabled;
 import static io.trino.plugin.iceberg.IcebergSessionProperties.isProjectionPushdownEnabled;
 import static io.trino.plugin.iceberg.IcebergSessionProperties.isStatisticsEnabled;
+import static io.trino.plugin.iceberg.IcebergSessionProperties.isValidateCorrTableDataChange;
 import static io.trino.plugin.iceberg.IcebergTableProperties.FILE_FORMAT_PROPERTY;
 import static io.trino.plugin.iceberg.IcebergTableProperties.FORMAT_VERSION_PROPERTY;
 import static io.trino.plugin.iceberg.IcebergTableProperties.PARTITIONING_PROPERTY;
@@ -404,6 +407,7 @@ public class IcebergMetadata
                 false,
                 Optional.empty(),
                 TupleDomain.all(),
+                Collections.emptyList(),
                 Optional.empty(),
                 Collections.emptySet(),
                 null,
@@ -433,7 +437,8 @@ public class IcebergMetadata
     public Optional<AggIndexApplicationResult<ConnectorTableHandle>> applyAggIndex(
             ConnectorSession session,
             ConnectorTableHandle handle,
-            AggIndex aggIndex)
+            AggIndex aggIndex,
+            List<ConnectorTableHandle> corrTables)
     {
         IcebergTableHandle originalTableHandle = (IcebergTableHandle) handle;
         if (aggIndex == null ||
@@ -493,11 +498,24 @@ public class IcebergMetadata
         if (effectivePredicate.isNone()) {
             return Optional.empty();
         }
+
+        Set<String> corrTableNames = aggIndexFileColumnNameToColumnIdent.values().stream().filter(Objects::nonNull).map(TableColumnIdentify::getTableName).collect(Collectors.toSet());
+        corrTableNames.remove(originalTableHandle.getTableName());
+        List<IcebergTableHandle> icebergCorrTables = corrTables.stream()
+                .filter(IcebergTableHandle.class::isInstance)
+                .map(IcebergTableHandle.class::cast)
+                .collect(Collectors.toList());
+        boolean allCorrTableIsIceberg = icebergCorrTables.size() == corrTables.size();
         // verify data file whether it has cube file
         int totalFiles = 0;
         int dataFiles = 0;
+        TableScan tableScan = table.newScan();
+        if (isValidateCorrTableDataChange(session) && !corrTableNames.isEmpty() && allCorrTableIsIceberg) {
+            Map<TableIdentifier, Long> corrSnapshotIds = icebergCorrTables.stream().collect(Collectors.toMap(e -> TableIdentifier.of(e.getSchemaName(), e.getTableName()), e -> e.getSnapshotId().get()));
+            tableScan = tableScan.withDataChangeValidator(new DataChangeValidator(t -> getIcebergTable(session, new SchemaTableName(t.namespace().level(0), t.name())), corrSnapshotIds));
+        }
         try (CloseableIterable<FileScanTask> fileScanTasks =
-                     table.newScan()
+                     tableScan
                              .filter(toIcebergExpression(effectivePredicate))
                              .includeAggIndexStats()
                              .planFiles()) {
@@ -555,6 +573,7 @@ public class IcebergMetadata
                 originalTableHandle.isRecordScannedFiles(),
                 originalTableHandle.getMaxScannedFileSize(),
                 originalTableHandle.getCorrColPredicate(),
+                originalTableHandle.getCorrTables(),
                 Optional.of(aggIndex), // pushed agg index
                 originalTableHandle.getConstraintColumns(),
                 originalTableHandle.getConnectorExpression(),
@@ -2316,6 +2335,7 @@ public class IcebergMetadata
                         table.isRecordScannedFiles(),
                         table.getMaxScannedFileSize(),
                         table.getCorrColPredicate(),
+                        table.getCorrTables(),
                         table.getAggIndex(),
                         Sets.union(table.getConstraintColumns(), constraint.getPredicateColumns().orElseGet(ImmutableSet::of)),
                         extractionResult.remainingExpression(),
@@ -2398,6 +2418,9 @@ public class IcebergMetadata
             return Optional.empty();
         }
         log.info("Pushed corr col filter %s into table scan", corrColConstraint.getSummary());
+        List<IcebergTableHandle> corrTables = new ArrayList<>();
+        corrTables.add((IcebergTableHandle) corrTable);
+        corrTables.addAll(icebergTableHandle.getCorrTables());
         return Optional.of(new CorrColFilterApplicationResult<>(
                 new IcebergTableHandle(
                         icebergTableHandle.getSchemaName(),
@@ -2418,6 +2441,7 @@ public class IcebergMetadata
                         icebergTableHandle.isRecordScannedFiles(),
                         icebergTableHandle.getMaxScannedFileSize(),
                         pushableDomain,
+                        corrTables,
                         icebergTableHandle.getAggIndex(),
                         icebergTableHandle.getConstraintColumns(),
                         icebergTableHandle.getConnectorExpression(),
@@ -2657,6 +2681,7 @@ public class IcebergMetadata
                 originalHandle.isRecordScannedFiles(),
                 originalHandle.getMaxScannedFileSize(),
                 originalHandle.getCorrColPredicate(),
+                originalHandle.getCorrTables(),
                 originalHandle.getAggIndex(),
                 originalHandle.getConstraintColumns(),
                 originalHandle.getConnectorExpression(),
