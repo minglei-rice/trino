@@ -248,7 +248,12 @@ public class IcebergSplitSource
             }
             scanLock.writeLock().lock();
             try {
-                this.fileScanTaskIterable = TableScanUtil.splitFiles(scan.planFiles(), tableScan.targetSplitSize());
+                if (tableHandle.getAggIndex().isPresent()) {
+                    this.fileScanTaskIterable = scan.planFiles();
+                }
+                else {
+                    this.fileScanTaskIterable = TableScanUtil.splitFiles(scan.planFiles(), tableScan.targetSplitSize());
+                }
                 closer.register(fileScanTaskIterable);
                 this.fileScanTaskIterator = fileScanTaskIterable.iterator();
                 closer.register(fileScanTaskIterator);

@@ -13,8 +13,10 @@
  */
 package io.trino.plugin.iceberg;
 
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import io.airlift.units.Duration;
 import io.trino.Session;
 import io.trino.filesystem.TrinoFileSystemFactory;
 import io.trino.filesystem.hdfs.HdfsFileSystemFactory;
@@ -22,6 +24,7 @@ import io.trino.hdfs.DynamicHdfsConfiguration;
 import io.trino.hdfs.HdfsConfig;
 import io.trino.hdfs.HdfsConfiguration;
 import io.trino.hdfs.HdfsConfigurationInitializer;
+import io.trino.hdfs.HdfsContext;
 import io.trino.hdfs.HdfsEnvironment;
 import io.trino.hdfs.authentication.NoHdfsAuthentication;
 import io.trino.plugin.base.CatalogName;
@@ -31,12 +34,21 @@ import io.trino.plugin.iceberg.catalog.IcebergTableOperationsProvider;
 import io.trino.plugin.iceberg.catalog.TrinoCatalog;
 import io.trino.plugin.iceberg.catalog.file.FileMetastoreTableOperationsProvider;
 import io.trino.plugin.iceberg.catalog.hms.TrinoHiveCatalog;
+import io.trino.spi.aggindex.AggIndex;
+import io.trino.spi.connector.DynamicFilter;
 import io.trino.spi.connector.SchemaTableName;
+import io.trino.spi.predicate.TupleDomain;
 import io.trino.spi.type.TestingTypeManager;
 import io.trino.testing.AbstractTestQueryFramework;
 import io.trino.testing.QueryRunner;
+import org.apache.iceberg.AggIndexFile;
 import org.apache.iceberg.CorrelatedColumns;
+import org.apache.iceberg.DataFile;
+import org.apache.iceberg.DataFiles;
+import org.apache.iceberg.FileFormat;
+import org.apache.iceberg.PartitionSpecParser;
 import org.apache.iceberg.Schema;
+import org.apache.iceberg.SchemaParser;
 import org.apache.iceberg.Table;
 import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.cube.AggregationHolder;
@@ -53,14 +65,20 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import static com.google.common.io.MoreFiles.deleteRecursively;
 import static com.google.common.io.RecursiveDeleteOption.ALLOW_INSECURE;
 import static io.trino.plugin.hive.HiveTestUtils.HDFS_ENVIRONMENT;
 import static io.trino.plugin.hive.metastore.file.FileHiveMetastore.createTestingFileHiveMetastore;
+import static io.trino.spi.connector.Constraint.alwaysTrue;
+import static io.trino.spi.connector.RetryMode.NO_RETRIES;
 import static io.trino.testing.TestingConnectorSession.SESSION;
 import static io.trino.testing.TestingSession.testSessionBuilder;
+import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.apache.iceberg.types.Types.NestedField.optional;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.testng.Assert.assertTrue;
 
 @Test(singleThreaded = true)
 public class TestCube
@@ -157,6 +175,76 @@ public class TestCube
                 optional(3, "id2", Types.LongType.get()),
                 optional(4, "foo", Types.LongType.get()),
                 optional(5, "log_date", Types.StringType.get()));
+    }
+
+    /**
+     * Make sure the file will not be split if table has cube.
+     */
+    @Test
+    public void testSplitBehavior() throws Exception
+    {
+        queryRunner.execute(TEST_SESSION, "create table splitmode(v_revenue bigint)");
+        Table table = loadIcebergTable("splitmode");
+        DataFile dataFile = DataFiles.builder(table.spec())
+                .withPath(table.location() + File.separator + "aggIndex")
+                .withFormat(FileFormat.ORC)
+                .withRecordCount(100)
+                .withFileSizeInBytes(table.newScan().targetSplitSize() * 10)
+                .withAggIndexFiles(Arrays.asList(new AggIndexFile(1, table.location() + File.separator + "aggIndex", 1))).build();
+        table.newAppend().appendFile(dataFile).commit();
+
+        IcebergTableHandle tableHandle = new IcebergTableHandle(
+                table.name().split("\\.")[0],
+                table.name().split("\\.")[1],
+                TableType.DATA,
+                Optional.empty(),
+                SchemaParser.toJson(table.schema()),
+                Optional.of(PartitionSpecParser.toJson(table.spec())),
+                1,
+                TupleDomain.all(),
+                TupleDomain.all(),
+                ImmutableSet.of(),
+                Optional.empty(),
+                table.location(),
+                table.properties(),
+                NO_RETRIES,
+                ImmutableList.of(),
+                false,
+                Optional.empty(),
+                TupleDomain.all(),
+                Optional.of(new AggIndex(1, ImmutableList.of(), ImmutableMap.of(), ImmutableList.of())),
+                Collections.emptySet(),
+                false,
+                -1);
+
+        try (IcebergSplitSource splitSourceWithAggIndex = new IcebergSplitSource(
+                SESSION,
+                HDFS_ENVIRONMENT,
+                new HdfsContext(SESSION),
+                tableHandle,
+                table.newScan(),
+                Optional.empty(),
+                DynamicFilter.EMPTY,
+                new Duration(2, SECONDS),
+                alwaysTrue(),
+                new TestingTypeManager(),
+                false,
+                new IcebergConfig().getMinimumAssignedSplitWeight(),
+                false,
+                true)) {
+            ImmutableList.Builder<IcebergSplit> splitsWithAggIndex = ImmutableList.builder();
+            while (!splitSourceWithAggIndex.isFinished()) {
+                splitSourceWithAggIndex.getNextBatch(100).get()
+                        .getSplits()
+                        .stream()
+                        .map(IcebergSplit.class::cast)
+                        .forEach(splitsWithAggIndex::add);
+            }
+
+            assertThat(splitsWithAggIndex.build().size()).isEqualTo(1);
+            assertTrue(splitSourceWithAggIndex.isFinished());
+        }
+        queryRunner.execute(TEST_SESSION, "drop table splitmode");
     }
 
     @Test
