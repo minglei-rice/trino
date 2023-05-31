@@ -46,6 +46,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import static com.google.common.base.Preconditions.checkArgument;
 import static io.airlift.units.DataSize.succinctBytes;
 import static java.util.Objects.requireNonNull;
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.NANOSECONDS;
 import static java.util.stream.Collectors.toList;
 
@@ -78,6 +79,8 @@ public class PipelineContext
     private final AtomicLong totalScheduledTime = new AtomicLong();
     private final AtomicLong totalCpuTime = new AtomicLong();
     private final AtomicLong totalBlockedTime = new AtomicLong();
+
+    private final Distribution indexReadTime = new Distribution();
 
     private final CounterStat physicalInputDataSize = new CounterStat();
     private final CounterStat physicalInputPositions = new CounterStat();
@@ -206,6 +209,11 @@ public class PipelineContext
         List<OperatorStats> operators = driverStats.getOperatorStats();
         for (OperatorStats operator : operators) {
             operatorSummaries.merge(operator.getOperatorId(), operator, OperatorStats::add);
+
+            long operatorIndexReadTime = operator.getIndexReadTime().roundTo(MILLISECONDS);
+            if (operatorIndexReadTime > 0) {
+                indexReadTime.add(operatorIndexReadTime);
+            }
         }
 
         physicalInputDataSize.update(driverStats.getPhysicalInputDataSize().toBytes());
@@ -492,6 +500,8 @@ public class PipelineContext
                 new Duration(totalBlockedTime, NANOSECONDS).convertToMostSuccinctTimeUnit(),
                 fullyBlocked,
                 blockedReasons.build(),
+
+                indexReadTime.snapshot(),
 
                 succinctBytes(physicalInputDataSize),
                 physicalInputPositions,

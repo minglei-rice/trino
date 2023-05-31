@@ -65,6 +65,8 @@ public class PipelineStats
     private final boolean fullyBlocked;
     private final Set<BlockedReason> blockedReasons;
 
+    private final DistributionSnapshot indexReadTime;
+
     private final DataSize physicalInputDataSize;
     private final long physicalInputPositions;
     private final Duration physicalInputReadTime;
@@ -122,6 +124,8 @@ public class PipelineStats
             @JsonProperty("totalBlockedTime") Duration totalBlockedTime,
             @JsonProperty("fullyBlocked") boolean fullyBlocked,
             @JsonProperty("blockedReasons") Set<BlockedReason> blockedReasons,
+
+            @JsonProperty("indexReadTime") DistributionSnapshot indexReadTime,
 
             @JsonProperty("physicalInputDataSize") DataSize physicalInputDataSize,
             @JsonProperty("physicalInputPositions") long physicalInputPositions,
@@ -182,6 +186,8 @@ public class PipelineStats
         this.queuedTime = requireNonNull(queuedTime, "queuedTime is null");
         this.elapsedTime = requireNonNull(elapsedTime, "elapsedTime is null");
         this.totalScheduledTime = requireNonNull(totalScheduledTime, "totalScheduledTime is null");
+
+        this.indexReadTime = requireNonNull(indexReadTime, "indexReadTime is null");
 
         this.totalCpuTime = requireNonNull(totalCpuTime, "totalCpuTime is null");
         this.totalBlockedTime = requireNonNull(totalBlockedTime, "totalBlockedTime is null");
@@ -367,6 +373,12 @@ public class PipelineStats
     }
 
     @JsonProperty
+    public DistributionSnapshot getIndexReadTime()
+    {
+        return indexReadTime;
+    }
+
+    @JsonProperty
     public DataSize getPhysicalInputDataSize()
     {
         return physicalInputDataSize;
@@ -489,6 +501,7 @@ public class PipelineStats
                 totalBlockedTime,
                 fullyBlocked,
                 blockedReasons,
+                indexReadTime,
                 physicalInputDataSize,
                 physicalInputPositions,
                 physicalInputReadTime,

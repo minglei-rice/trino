@@ -19,7 +19,6 @@ import com.google.common.collect.ImmutableSet;
 import com.google.common.util.concurrent.AtomicDouble;
 import com.google.common.util.concurrent.ListenableFuture;
 import io.airlift.stats.CounterStat;
-import io.airlift.stats.Distribution;
 import io.airlift.stats.GcMonitor;
 import io.airlift.units.DataSize;
 import io.airlift.units.Duration;
@@ -421,7 +420,9 @@ public class TaskContext
         long totalCpuTime = 0;
         long totalBlockedTime = 0;
 
-        Distribution indexReadTimeMillis = new Distribution();
+        double indexReadCount = 0;
+        double totalIndexReadTimeMillis = 0;
+        double maxIndexReadTimeMillis = 0;
 
         long physicalInputDataSize = 0;
         long physicalInputPositions = 0;
@@ -490,11 +491,10 @@ public class TaskContext
 
                 inputBlockedTime += pipeline.getInputBlockedTime().roundTo(NANOSECONDS);
 
-                for (DriverStats driver : pipeline.getDrivers()) {
-                    long driverIndexReadTimeMillis = driver.getIndexReadTime().roundTo(MILLISECONDS);
-                    if (driverIndexReadTimeMillis > 0) {
-                        indexReadTimeMillis.add(driverIndexReadTimeMillis);
-                    }
+                if (pipeline.getIndexReadTime().getCount() > 0) {
+                    indexReadCount += pipeline.getIndexReadTime().getCount();
+                    totalIndexReadTimeMillis += pipeline.getIndexReadTime().getTotal();
+                    maxIndexReadTimeMillis = Math.max(maxIndexReadTimeMillis, pipeline.getIndexReadTime().getMax());
                 }
             }
 
@@ -521,13 +521,6 @@ public class TaskContext
         }
         else {
             elapsedTime = new Duration(System.nanoTime() - createNanos, NANOSECONDS);
-        }
-
-        double avgIndexReadTimeMillis = 0;
-        double maxIndexReadTimeMillis = 0;
-        if (indexReadTimeMillis.getCount() > 0) {
-            avgIndexReadTimeMillis = indexReadTimeMillis.getAvg();
-            maxIndexReadTimeMillis = indexReadTimeMillis.getMax();
         }
 
         int fullGcCount = getFullGcCount();
@@ -573,7 +566,7 @@ public class TaskContext
                 new Duration(totalBlockedTime, NANOSECONDS).convertToMostSuccinctTimeUnit(),
                 fullyBlocked && (runningDrivers > 0 || runningPartitionedDrivers > 0),
                 blockedReasons.build(),
-                new Duration(avgIndexReadTimeMillis, MILLISECONDS),
+                new Duration(indexReadCount == 0 ? 0 : totalIndexReadTimeMillis / indexReadCount, MILLISECONDS),
                 new Duration(maxIndexReadTimeMillis, MILLISECONDS),
                 succinctBytes(physicalInputDataSize),
                 physicalInputPositions,

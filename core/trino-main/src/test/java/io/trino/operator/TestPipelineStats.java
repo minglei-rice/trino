@@ -63,6 +63,8 @@ public class TestPipelineStats
             false,
             ImmutableSet.of(),
 
+            getTestDistribution(10),
+
             DataSize.ofBytes(141),
             151,
             new Duration(14, NANOSECONDS),
@@ -126,6 +128,8 @@ public class TestPipelineStats
         assertEquals(actual.getTotalScheduledTime(), new Duration(10, NANOSECONDS));
         assertEquals(actual.getTotalCpuTime(), new Duration(11, NANOSECONDS));
         assertEquals(actual.getTotalBlockedTime(), new Duration(13, NANOSECONDS));
+
+        assertEquals(actual.getIndexReadTime().getCount(), 10.0);
 
         assertEquals(actual.getPhysicalInputDataSize(), DataSize.ofBytes(141));
         assertEquals(actual.getPhysicalInputPositions(), 151);

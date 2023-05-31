@@ -372,7 +372,8 @@ class StageSummary extends React.Component {
         this.state = {
             expanded: false,
             lastRender: null,
-            taskFilter: TASK_FILTER.ALL
+            taskFilter: TASK_FILTER.ALL,
+            displayIndexReadTime: false,
         };
     }
 
@@ -382,6 +383,10 @@ class StageSummary extends React.Component {
 
     getExpandedStyle() {
         return this.state.expanded ? {} : {display: "none"};
+    }
+
+    getIndexReadTimeStyle() {
+        return this.state.expanded && this.state.displayIndexReadTime ? {} : {display: "none"};
     }
 
     toggleExpanded() {
@@ -440,10 +445,6 @@ class StageSummary extends React.Component {
 
             StageSummary.renderHistogram('#scheduled-time-histogram-' + stageId, scheduledTimes, formatDuration);
             StageSummary.renderHistogram('#cpu-time-histogram-' + stageId, cpuTimes, formatDuration);
-            if (!maxIndexReadTimes.every(maxIndexReadTime => !maxIndexReadTime || maxIndexReadTime <= 0)) {
-                StageSummary.renderHistogram('#avg-index-read-time-histogram-' + stageId, avgIndexReadTimes, formatDuration);
-                StageSummary.renderHistogram('#max-index-read-time-histogram-' + stageId, maxIndexReadTimes, formatDuration);
-            }
 
             if (this.state.expanded) {
                 // this needs to be a string otherwise it will also be passed to numberFormatter
@@ -456,6 +457,12 @@ class StageSummary extends React.Component {
 
                 $('#scheduled-time-bar-chart-' + stageId).sparkline(scheduledTimes, $.extend({}, stageBarChartProperties, {numberFormatter: formatDuration}));
                 $('#cpu-time-bar-chart-' + stageId).sparkline(cpuTimes, $.extend({}, stageBarChartProperties, {numberFormatter: formatDuration}));
+
+                if (!maxIndexReadTimes.every(maxIndexReadTime => !maxIndexReadTime || maxIndexReadTime <= 0)) {
+                    this.state.displayIndexReadTime = true;
+                    $('#avg-index-read-time-bar-chart-' + stageId).sparkline(avgIndexReadTimes, $.extend({}, stageBarChartProperties, {numberFormatter: formatDuration}));
+                    $('#max-index-read-time-bar-chart-' + stageId).sparkline(maxIndexReadTimes, $.extend({}, stageBarChartProperties, {numberFormatter: formatDuration}));
+                }
             }
 
             this.setState({
@@ -771,6 +778,38 @@ class StageSummary extends React.Component {
                                         </td>
                                         <td className="bar-chart-container">
                                             <span className="bar-chart" id={"cpu-time-bar-chart-" + stageId}><div className="loader"/></span>
+                                        </td>
+                                    </tr>
+                                    </tbody>
+                                </table>
+                            </td>
+                        </tr>
+                        <tr style={this.getIndexReadTimeStyle()}>
+                            <td colSpan="6">
+                                <table className="expanded-chart">
+                                    <tbody>
+                                    <tr>
+                                        <td className="stage-table-stat-title expanded-chart-title">
+                                            Task Avg Index Read Time
+                                        </td>
+                                        <td className="bar-chart-container">
+                                            <span className="bar-chart" id={"avg-index-read-time-bar-chart-" + stageId}><div className="loader"/></span>
+                                        </td>
+                                    </tr>
+                                    </tbody>
+                                </table>
+                            </td>
+                        </tr>
+                        <tr style={this.getIndexReadTimeStyle()}>
+                            <td colSpan="6">
+                                <table className="expanded-chart">
+                                    <tbody>
+                                    <tr>
+                                        <td className="stage-table-stat-title expanded-chart-title">
+                                            Task Max Index Read Time
+                                        </td>
+                                        <td className="bar-chart-container">
+                                            <span className="bar-chart" id={"max-index-read-time-bar-chart-" + stageId}><div className="loader"/></span>
                                         </td>
                                     </tr>
                                     </tbody>
