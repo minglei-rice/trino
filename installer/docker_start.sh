@@ -52,7 +52,7 @@ installer/install.sh
 
 # start server in background
 source trino-env.sh
-./launcher.sh start
+./launcher.sh start "$TRINO_LAUNCH_OPTIONS"
 
 # keep current process alive to pass caster health check
 sleep 90
