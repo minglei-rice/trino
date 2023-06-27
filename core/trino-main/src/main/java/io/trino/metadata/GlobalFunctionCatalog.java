@@ -140,6 +140,11 @@ public class GlobalFunctionCatalog
         return functions.get(functionId);
     }
 
+    public boolean exist(FunctionId functionId)
+    {
+        return functions.functionsById.get(functionId) != null;
+    }
+
     public AggregationFunctionMetadata getAggregationFunctionMetadata(FunctionId functionId)
     {
         return functions.getFunctionBundle(functionId).getAggregationFunctionMetadata(functionId);

@@ -90,6 +90,7 @@ import io.trino.spi.function.BoundSignature;
 import io.trino.spi.function.FunctionDependencyDeclaration;
 import io.trino.spi.function.FunctionId;
 import io.trino.spi.function.FunctionMetadata;
+import io.trino.spi.function.FunctionMetadataResolver;
 import io.trino.spi.function.OperatorType;
 import io.trino.spi.function.QualifiedFunctionName;
 import io.trino.spi.function.Signature;
@@ -186,7 +187,7 @@ public final class MetadataManager
     private final SystemSecurityMetadata systemSecurityMetadata;
     private final TransactionManager transactionManager;
     private final TypeManager typeManager;
-
+    private final HiveFunctionResolver hiveFunctionResolver = HiveFunctionResolver.getInstance();
     private final ConcurrentMap<QueryId, QueryCatalogs> catalogsByQueryId = new ConcurrentHashMap<>();
 
     private final ResolvedFunctionDecoder functionDecoder;
@@ -2172,14 +2173,40 @@ public final class MetadataManager
                 .orElseGet(() -> resolvedFunctionInternal(session, toQualifiedFunctionName(name), parameterTypes));
     }
 
+    @Override
+    public void registerFunctionManager(String catalogName, Optional<FunctionMetadataResolver> functionMetadataResolver)
+    {
+        // only support hive function
+        if (functionMetadataResolver.isPresent()) {
+            functionMetadataResolver.get().setTypeManager(typeManager);
+            FunctionResolverManager existingExternalFunctionManager =
+                    hiveFunctionResolver.putIfAbsent(catalogName, new FunctionResolverManager(catalogName, functionMetadataResolver.get()));
+            checkArgument(existingExternalFunctionManager == null,
+                    "ExternalFunctionManager for catalog '%s' has already registered!", catalogName);
+        }
+    }
+
     private ResolvedFunction resolvedFunctionInternal(Session session, QualifiedFunctionName name, List<TypeSignatureProvider> parameterTypes)
     {
-        CatalogFunctionBinding catalogFunctionBinding = functionResolver.resolveFunction(
-                session,
-                name,
-                parameterTypes,
-                catalogSchemaFunctionName -> getFunctions(session, catalogSchemaFunctionName));
-        return resolve(session, catalogFunctionBinding);
+        try {
+            CatalogFunctionBinding catalogFunctionBinding = functionResolver.resolveFunction(
+                     session,
+                     name,
+                     parameterTypes,
+                     catalogSchemaFunctionName -> getFunctions(session, catalogSchemaFunctionName));
+            return resolve(session, catalogFunctionBinding);
+        }
+        catch (TrinoException e) {
+            if (!FUNCTION_NOT_FOUND.toErrorCode().equals(e.getErrorCode())) {
+                throw e;
+            }
+            try {
+                return hiveFunctionResolver.resolveFunction(functions, typeManager, session, name, parameterTypes);
+            }
+            catch (Throwable t) {
+                throw e;
+            }
+        }
     }
 
     // this is only public for TableFunctionRegistry, which is effectively part of MetadataManager but for some reason is a separate class
@@ -2361,6 +2388,16 @@ public final class MetadataManager
     @Override
     public FunctionMetadata getFunctionMetadata(Session session, ResolvedFunction resolvedFunction)
     {
+        return getFunctionMetadata(session, resolvedFunction.getCatalogHandle(), resolvedFunction.getFunctionId(), resolvedFunction.getSignature());
+    }
+
+    @Override
+    public FunctionMetadata getFunctionMetadata(Session session, ResolvedFunction resolvedFunction, List<TypeSignatureProvider> parameterTypes)
+    {
+        if (!functions.exist(resolvedFunction.getFunctionId())) {
+            String funcName = ResolvedFunction.extractFunctionName(resolvedFunction.toQualifiedName()).split("\\$\\$")[1];
+            resolvedFunctionInternal(session, QualifiedName.of(funcName), parameterTypes);
+        }
         return getFunctionMetadata(session, resolvedFunction.getCatalogHandle(), resolvedFunction.getFunctionId(), resolvedFunction.getSignature());
     }
 

@@ -16,7 +16,14 @@ package io.trino.plugin.iceberg;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import io.airlift.log.Logger;
+import io.trino.Session;
+import io.trino.plugin.hive.NodeVersion;
+import io.trino.plugin.hive.TestingHivePlugin;
 import io.trino.plugin.hive.containers.HiveMinioDataLake;
+import io.trino.plugin.hive.metastore.HiveMetastore;
+import io.trino.plugin.hive.metastore.HiveMetastoreConfig;
+import io.trino.plugin.hive.metastore.file.FileHiveMetastore;
+import io.trino.plugin.hive.metastore.file.FileHiveMetastoreConfig;
 import io.trino.plugin.tpch.TpchPlugin;
 import io.trino.testing.DistributedQueryRunner;
 import io.trino.tpch.TpchTable;
@@ -24,13 +31,23 @@ import io.trino.tpch.TpchTable;
 import java.io.File;
 import java.nio.file.Path;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Function;
 
 import static com.google.common.base.Preconditions.checkState;
+import static com.google.inject.util.Modules.EMPTY_MODULE;
 import static io.airlift.testing.Closeables.closeAllSuppress;
+import static io.trino.plugin.hive.HiveQueryRunner.HIVE_CATALOG;
+import static io.trino.plugin.hive.HiveQueryRunner.TPCH_SCHEMA;
+import static io.trino.plugin.hive.HiveQueryRunner.createDatabaseMetastoreObject;
+import static io.trino.plugin.hive.HiveQueryRunner.createSession;
+import static io.trino.plugin.hive.HiveTestUtils.HDFS_ENVIRONMENT;
 import static io.trino.plugin.hive.containers.HiveMinioDataLake.MINIO_ACCESS_KEY;
 import static io.trino.plugin.hive.containers.HiveMinioDataLake.MINIO_SECRET_KEY;
+import static io.trino.plugin.tpch.TpchMetadata.TINY_SCHEMA_NAME;
+import static io.trino.testing.QueryAssertions.copyTpchTables;
 import static io.trino.testing.TestingSession.testSessionBuilder;
 import static java.util.Objects.requireNonNull;
 
@@ -61,6 +78,18 @@ public final class IcebergQueryRunner
         private Optional<File> metastoreDirectory = Optional.empty();
         private ImmutableMap.Builder<String, String> icebergProperties = ImmutableMap.builder();
         private Optional<SchemaInitializer> schemaInitializer = Optional.empty();
+        private List<TpchTable<?>> initialTables = ImmutableList.of();
+        private Function<Session, Session> initialTablesSessionMutator = Function.identity();
+        Function<DistributedQueryRunner, HiveMetastore> metastore = queryRunner -> {
+            File baseDir = queryRunner.getCoordinator().getBaseDataDir().resolve("hive_data").toFile();
+            return new FileHiveMetastore(
+                    new NodeVersion("test_version"),
+                    HDFS_ENVIRONMENT,
+                    new HiveMetastoreConfig().isHideDeltaLakeTables(),
+                    new FileHiveMetastoreConfig()
+                            .setCatalogDirectory(baseDir.toURI().toString())
+                            .setMetastoreUser("test"));
+        };
 
         protected Builder()
         {
@@ -96,6 +125,7 @@ public final class IcebergQueryRunner
 
         public Builder setInitialTables(Iterable<TpchTable<?>> initialTables)
         {
+            this.initialTables = ImmutableList.copyOf(requireNonNull(initialTables, "initialTables is null"));
             setSchemaInitializer(SchemaInitializer.builder().withClonedTpchTables(initialTables).build());
             return self();
         }
@@ -118,6 +148,10 @@ public final class IcebergQueryRunner
                 queryRunner.createCatalog("tpch", "tpch");
 
                 queryRunner.installPlugin(new IcebergPlugin());
+
+                HiveMetastore metastore = this.metastore.apply(queryRunner);
+                queryRunner.installPlugin(new TestingHivePlugin(Optional.of(metastore), EMPTY_MODULE, Optional.empty()));
+
                 Map<String, String> icebergProperties = new HashMap<>(this.icebergProperties.buildOrThrow());
                 if (!icebergProperties.containsKey("iceberg.catalog.type")) {
                     Path dataDir = metastoreDirectory.map(File::toPath).orElseGet(() -> queryRunner.getCoordinator().getBaseDataDir().resolve("iceberg_data"));
@@ -126,13 +160,24 @@ public final class IcebergQueryRunner
                 }
 
                 queryRunner.createCatalog(ICEBERG_CATALOG, "iceberg", icebergProperties);
+                Map<String, String> hiveProperties = new HashMap<>();
+                queryRunner.createCatalog(HIVE_CATALOG, "hive", hiveProperties);
                 schemaInitializer.orElse(SchemaInitializer.builder().build()).accept(queryRunner);
-
+                populateData(queryRunner, metastore);
                 return queryRunner;
             }
             catch (Exception e) {
                 closeAllSuppress(e, queryRunner);
                 throw e;
+            }
+        }
+
+        private void populateData(DistributedQueryRunner queryRunner, HiveMetastore metastore)
+        {
+            if (metastore.getDatabase(TPCH_SCHEMA).isEmpty()) {
+                metastore.createDatabase(createDatabaseMetastoreObject(TPCH_SCHEMA, Optional.empty()));
+                Session session = initialTablesSessionMutator.apply(createSession(Optional.empty()));
+                copyTpchTables(queryRunner, "tpch", TINY_SCHEMA_NAME, session, initialTables);
             }
         }
     }

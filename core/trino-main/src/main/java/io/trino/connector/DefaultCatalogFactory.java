@@ -126,6 +126,7 @@ public class DefaultCatalogFactory
                 factory.getConnectorFactory(),
                 duplicatePluginClassLoaderFactory,
                 catalogProperties.getProperties());
+        metadata.registerFunctionManager(catalogProperties.getCatalogHandle().getCatalogName(), connector.getFunctionResolver());
         return createCatalog(
                 catalogProperties.getCatalogHandle(),
                 factory.getConnectorFactory().getName(),

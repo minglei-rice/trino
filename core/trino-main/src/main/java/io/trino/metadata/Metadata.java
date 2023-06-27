@@ -51,6 +51,7 @@ import io.trino.spi.connector.TopNApplicationResult;
 import io.trino.spi.expression.ConnectorExpression;
 import io.trino.spi.function.AggregationFunctionMetadata;
 import io.trino.spi.function.FunctionMetadata;
+import io.trino.spi.function.FunctionMetadataResolver;
 import io.trino.spi.function.OperatorType;
 import io.trino.spi.predicate.TupleDomain;
 import io.trino.spi.security.GrantInfo;
@@ -662,6 +663,8 @@ public interface Metadata
 
     ResolvedFunction resolveFunction(Session session, QualifiedName name, List<TypeSignatureProvider> parameterTypes);
 
+    default void registerFunctionManager(String catalogName, Optional<FunctionMetadataResolver> externalFunctionResolvers) {}
+
     ResolvedFunction resolveOperator(Session session, OperatorType operatorType, List<? extends Type> argumentTypes)
             throws OperatorNotFoundException;
 
@@ -681,6 +684,11 @@ public interface Metadata
     boolean isAggregationFunction(Session session, QualifiedName name);
 
     FunctionMetadata getFunctionMetadata(Session session, ResolvedFunction resolvedFunction);
+
+    default FunctionMetadata getFunctionMetadata(Session session, ResolvedFunction resolvedFunction, List<TypeSignatureProvider> parameterTypes)
+    {
+        return getFunctionMetadata(session, resolvedFunction);
+    }
 
     AggregationFunctionMetadata getAggregationFunctionMetadata(Session session, ResolvedFunction resolvedFunction);
 

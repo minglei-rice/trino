@@ -239,7 +239,6 @@ public final class HiveQueryRunner
 
                 HiveMetastore metastore = this.metastore.apply(queryRunner);
                 queryRunner.installPlugin(new TestingHivePlugin(Optional.of(metastore), module, directoryLister));
-
                 Map<String, String> hiveProperties = new HashMap<>();
                 if (!skipTimezoneSetup) {
                     assertEquals(DateTimeZone.getDefault(), TIME_ZONE, "Timezone not configured correctly. Add -Duser.timezone=America/Bahia_Banderas to your JVM arguments");
@@ -297,7 +296,7 @@ public final class HiveQueryRunner
         logging.setLevel("org.apache.parquet.hadoop", WARN);
     }
 
-    private static Database createDatabaseMetastoreObject(String name, Optional<String> locationBase)
+    public static Database createDatabaseMetastoreObject(String name, Optional<String> locationBase)
     {
         return Database.builder()
                 .setLocation(locationBase.map(base -> base + "/" + name))
@@ -307,7 +306,7 @@ public final class HiveQueryRunner
                 .build();
     }
 
-    private static Session createSession(Optional<SelectedRole> role)
+    public static Session createSession(Optional<SelectedRole> role)
     {
         return testSessionBuilder()
                 .setIdentity(Identity.forUser("hive")

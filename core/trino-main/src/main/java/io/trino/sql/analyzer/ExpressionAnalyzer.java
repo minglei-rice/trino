@@ -1311,7 +1311,7 @@ public class ExpressionAnalyzer
 
             resolvedFunctions.put(NodeRef.of(node), function);
 
-            FunctionMetadata functionMetadata = plannerContext.getMetadata().getFunctionMetadata(session, function);
+            FunctionMetadata functionMetadata = plannerContext.getMetadata().getFunctionMetadata(session, function, argumentTypes);
             if (functionMetadata.isDeprecated()) {
                 warningCollector.add(new TrinoWarning(DEPRECATED_FUNCTION,
                         format("Use of deprecated function: %s: %s",

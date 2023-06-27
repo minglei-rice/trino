@@ -93,6 +93,7 @@ import static org.testng.Assert.assertNotNull;
 /**
  * Test reading iceberg tables with indices.
  */
+@Test(singleThreaded = true)
 public class TestIcebergIndex
         extends AbstractTestQueryFramework
 {

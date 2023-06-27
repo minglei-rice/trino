@@ -29,6 +29,7 @@ import io.trino.spi.connector.ConnectorSplitManager;
 import io.trino.spi.connector.ConnectorTransactionHandle;
 import io.trino.spi.connector.TableProcedureMetadata;
 import io.trino.spi.eventlistener.EventListener;
+import io.trino.spi.function.FunctionMetadataResolver;
 import io.trino.spi.procedure.Procedure;
 import io.trino.spi.session.PropertyMetadata;
 import io.trino.spi.transaction.IsolationLevel;
@@ -67,6 +68,8 @@ public class HiveConnector
     private final HiveTransactionManager transactionManager;
     private final boolean singleStatementWritesOnly;
 
+    private final Optional<FunctionMetadataResolver> functionResolver;
+
     public HiveConnector(
             LifeCycleManager lifeCycleManager,
             HiveTransactionManager transactionManager,
@@ -85,7 +88,8 @@ public class HiveConnector
             List<PropertyMetadata<?>> materializedViewProperties,
             Optional<ConnectorAccessControl> accessControl,
             boolean singleStatementWritesOnly,
-            ClassLoader classLoader)
+            ClassLoader classLoader,
+            Optional<FunctionMetadataResolver> functionResolver)
     {
         this.lifeCycleManager = requireNonNull(lifeCycleManager, "lifeCycleManager is null");
         this.transactionManager = requireNonNull(transactionManager, "transactionManager is null");
@@ -107,6 +111,7 @@ public class HiveConnector
         this.accessControl = requireNonNull(accessControl, "accessControl is null");
         this.singleStatementWritesOnly = singleStatementWritesOnly;
         this.classLoader = requireNonNull(classLoader, "classLoader is null");
+        this.functionResolver = requireNonNull(functionResolver, "functionResolvers is null");
     }
 
     @Override
@@ -232,5 +237,11 @@ public class HiveConnector
     public Set<TableProcedureMetadata> getTableProcedures()
     {
         return tableProcedures;
+    }
+
+    @Override
+    public Optional<FunctionMetadataResolver> getFunctionResolver()
+    {
+        return functionResolver;
     }
 }

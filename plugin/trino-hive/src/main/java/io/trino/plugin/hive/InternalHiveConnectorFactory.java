@@ -41,6 +41,8 @@ import io.trino.plugin.hive.aws.athena.PartitionProjectionModule;
 import io.trino.plugin.hive.azure.HiveAzureModule;
 import io.trino.plugin.hive.fs.CachingDirectoryListerModule;
 import io.trino.plugin.hive.fs.DirectoryLister;
+import io.trino.plugin.hive.function.HiveFunctionModule;
+import io.trino.plugin.hive.function.HiveFunctionResolver;
 import io.trino.plugin.hive.gcs.HiveGcsModule;
 import io.trino.plugin.hive.metastore.HiveMetastore;
 import io.trino.plugin.hive.metastore.HiveMetastoreModule;
@@ -129,6 +131,7 @@ public final class InternalHiveConnectorFactory
                     },
                     binder -> newSetBinder(binder, EventListener.class),
                     binder -> bindSessionPropertiesProvider(binder, HiveSessionProperties.class),
+                    new HiveFunctionModule(classLoader, config),
                     module);
 
             Injector injector = app
@@ -157,7 +160,7 @@ public final class InternalHiveConnectorFactory
             Optional<ConnectorAccessControl> hiveAccessControl = injector.getInstance(Key.get(new TypeLiteral<Optional<ConnectorAccessControl>>() {}))
                     .map(accessControl -> new SystemTableAwareAccessControl(accessControl, systemTableProviders))
                     .map(accessControl -> new ClassLoaderSafeConnectorAccessControl(accessControl, classLoader));
-
+            HiveFunctionResolver hiveFunctionResolver = injector.getInstance(Key.get(new TypeLiteral<HiveFunctionResolver>(){}));
             return new HiveConnector(
                     lifeCycleManager,
                     transactionManager,
@@ -176,7 +179,8 @@ public final class InternalHiveConnectorFactory
                     hiveMaterializedViewPropertiesProvider.getMaterializedViewProperties(),
                     hiveAccessControl,
                     injector.getInstance(HiveConfig.class).isSingleStatementWritesOnly(),
-                    classLoader);
+                    classLoader,
+                    Optional.of(hiveFunctionResolver));
         }
     }
 

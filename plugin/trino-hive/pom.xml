@@ -49,6 +49,21 @@
 
         <dependency>
             <groupId>io.trino</groupId>
+            <artifactId>trino-hive-functions</artifactId>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.apache.hive</groupId>
+                    <artifactId>hive-exec</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>io.trino.hadoop</groupId>
+                    <artifactId>hadoop-apache</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+
+        <dependency>
+            <groupId>io.trino</groupId>
             <artifactId>trino-memory-context</artifactId>
         </dependency>
 
@@ -490,6 +505,15 @@
                                 <ignoredResourcePattern>mime.types</ignoredResourcePattern>
                                 <ignoredResourcePattern>about.html</ignoredResourcePattern>
                             </ignoredResourcePatterns>
+                        </configuration>
+                    </plugin>
+                    <plugin>
+                        <artifactId>maven-dependency-plugin</artifactId>
+                        <configuration>
+                            <ignoredNonTestScopedDependencies>
+                                <ignoredDependency>*</ignoredDependency>
+                            </ignoredNonTestScopedDependencies>
+                            <skip>true</skip>
                         </configuration>
                     </plugin>
                 </plugins>
