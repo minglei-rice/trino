@@ -28,11 +28,11 @@ done
 # set catalog config from env
 sed -i "s#{TRINO_ETC_DIR}#$TRINO_ETC_DIR#g" catalog/*.properties
 sed -i "s#{TRINO_KEYTAB}#$TRINO_KEYTAB#g" catalog/*.properties
+sed -i "s#{ALLUXIO_CACHE}#$ALLUXIO_CACHE#g" catalog/*.properties
 
 # set hadoop config from env
 sed -i "s#{TRINO_ETC_DIR}#$TRINO_ETC_DIR#g" ./*.xml
 sed -i "s#{ALLUXIO_MASTER}#$ALLUXIO_MASTER#g" ./*.xml
-sed -i "s#{ALLUXIO_CACHE}#$ALLUXIO_CACHE#g" ./*.xml
 
 # set jvm config from env
 sed -i "s#{JVM_XMS}#$JVM_XMS#g" jvm.config

@@ -25,9 +25,6 @@ import io.airlift.slice.Slice;
 import io.trino.filesystem.TrinoFileSystem;
 import io.trino.filesystem.TrinoFileSystemFactory;
 import io.trino.filesystem.TrinoInputFile;
-import io.trino.filesystem.hdfs.HdfsFileSystem;
-import io.trino.filesystem.hdfs.HdfsFileSystemFactory;
-import io.trino.hdfs.HdfsContext;
 import io.trino.memory.context.AggregatedMemoryContext;
 import io.trino.orc.OrcColumn;
 import io.trino.orc.OrcCorruptionException;
@@ -68,6 +65,7 @@ import io.trino.plugin.iceberg.delete.DeleteFilter;
 import io.trino.plugin.iceberg.delete.IcebergPositionDeletePageSink;
 import io.trino.plugin.iceberg.delete.PositionDeleteFilter;
 import io.trino.plugin.iceberg.delete.RowPredicate;
+import io.trino.plugin.iceberg.util.AlluxioCacheUtils;
 import io.trino.spi.PageIndexerFactory;
 import io.trino.spi.TrinoException;
 import io.trino.spi.connector.ColumnHandle;
@@ -266,20 +264,17 @@ public class IcebergPageSourceProvider
         IcebergTableHandle table = (IcebergTableHandle) connectorTable;
 
         Optional<RowSet> rowSet = Optional.empty();
-        if (fileSystemFactory instanceof HdfsFileSystemFactory fs) {
-            HdfsContext hdfsContext = new HdfsContext(session);
-            IndexEvalContext indexEvalContext = split.decodeIndexEvalContext();
-            if (indexEvalContext != null) {
-                long start = System.currentTimeMillis();
-                MatchResult indexMatchResult = evalIndex(fs, hdfsContext, indexEvalContext);
-                split.setIndexReadTimeMillis(System.currentTimeMillis() - start);
-                rowSet = indexMatchResult.getRowSet();
-                if (!indexMatchResult.result()) {
-                    log.info("Indices hit for file : %s, split skipped, time spent : %s ms", split.getPath(), split.getIndexReadTimeMillis());
-                    return new EmptyPageSource(makeMetrics(SKIPPED_BY_INDEX_IN_WORKER, 1, split.getLength()));
-                }
-                log.info("Indices missed for file : %s, time spent : %s ms", split.getPath(), System.currentTimeMillis() - start);
+        IndexEvalContext indexEvalContext = split.decodeIndexEvalContext();
+        if (indexEvalContext != null) {
+            long start = System.currentTimeMillis();
+            MatchResult indexMatchResult = evalIndex(session, table.getStorageProperties(), indexEvalContext);
+            split.setIndexReadTimeMillis(System.currentTimeMillis() - start);
+            rowSet = indexMatchResult.getRowSet();
+            if (!indexMatchResult.result()) {
+                log.info("Indices hit for file : %s, split skipped, time spent : %s ms", split.getPath(), split.getIndexReadTimeMillis());
+                return new EmptyPageSource(makeMetrics(SKIPPED_BY_INDEX_IN_WORKER, 1, split.getLength()));
             }
+            log.info("Indices missed for file : %s, time spent : %s ms", split.getPath(), System.currentTimeMillis() - start);
         }
 
         List<IcebergColumnHandle> icebergColumns = columns.stream()
@@ -436,13 +431,19 @@ public class IcebergPageSourceProvider
                 getClass().getClassLoader());
     }
 
-    private MatchResult evalIndex(HdfsFileSystemFactory fs, HdfsContext hdfsContext, IndexEvalContext indexEvalContext)
+    private MatchResult evalIndex(ConnectorSession session, Map<String, String> tableProperties,
+                                  IndexEvalContext indexEvalContext)
     {
-        HdfsFileSystem hdfsFileSystem = new HdfsFileSystem(fs.getEnvironment(), hdfsContext);
+        TrinoFileSystem fileSystem = AlluxioCacheUtils.readIndexFromCache(session, tableProperties) ?
+                fileSystemFactory.createCachingFileSystem(session) : fileSystemFactory.create(session);
         final Schema schema = SchemaParser.fromJson(indexEvalContext.schemaStr());
         final CorrelatedColumnsSpec corrColsSpec = CorrColsSpecParser.fromJson(schema, indexEvalContext.corrSpecStr());
-        IndexEvaluator evaluator = new IndexEvaluator(CorrelationUtils.schemaWithCorrCols(schema, corrColsSpec),
-                indexEvalContext.residual(), hdfsFileSystem.toFileIo(), false, IndexSpecParser.fromJson(schema, corrColsSpec, indexEvalContext.indexSpecStr()));
+        IndexEvaluator evaluator = new IndexEvaluator(
+                CorrelationUtils.schemaWithCorrCols(schema, corrColsSpec),
+                indexEvalContext.residual(),
+                fileSystem.toFileIo(),
+                false,
+                IndexSpecParser.fromJson(schema, corrColsSpec, indexEvalContext.indexSpecStr()));
         return evaluator.eval(indexEvalContext.indexFiles(), false);
     }
 

@@ -23,6 +23,7 @@ import io.trino.plugin.hive.orc.OrcReaderConfig;
 import io.trino.plugin.hive.orc.OrcWriterConfig;
 import io.trino.plugin.hive.parquet.ParquetReaderConfig;
 import io.trino.plugin.hive.parquet.ParquetWriterConfig;
+import io.trino.plugin.iceberg.util.AlluxioCacheUtils.AlluxioCacheLevel;
 import io.trino.spi.TrinoException;
 import io.trino.spi.connector.ConnectorSession;
 import io.trino.spi.session.PropertyMetadata;
@@ -88,6 +89,7 @@ public final class IcebergSessionProperties
     private static final String VALIDATE_CORR_TABLE_DATA_CHANGE = "validate_corr_table_data_change";
     private static final String PLAN_TRANSFORMED_TASK = "plan_transformed_task";
     private static final boolean PLAN_TRANSFORMED_TASK_DEFAULT = true;
+    private static final String ALLUXIO_CACHE_LEVEL = "alluxio_cache_level";
     private final List<PropertyMetadata<?>> sessionProperties;
 
     @Inject
@@ -308,6 +310,12 @@ public final class IcebergSessionProperties
                         "When planning tasks, whether to push down transformation into iceberg",
                         PLAN_TRANSFORMED_TASK_DEFAULT,
                         false))
+                .add(enumProperty(
+                        ALLUXIO_CACHE_LEVEL,
+                        "Determine type of iceberg files to cache in alluxio",
+                        AlluxioCacheLevel.class,
+                        icebergConfig.getAlluxioCacheLevel(),
+                        false))
                 .build();
     }
 
@@ -522,6 +530,20 @@ public final class IcebergSessionProperties
         catch (TrinoException e) {
             if (INVALID_SESSION_PROPERTY.toErrorCode().equals(e.getErrorCode())) {
                 return PLAN_TRANSFORMED_TASK_DEFAULT;
+            }
+            throw e;
+        }
+    }
+
+    public static AlluxioCacheLevel getAlluxioCacheLevel(ConnectorSession session)
+    {
+        try {
+            return session.getProperty(ALLUXIO_CACHE_LEVEL, AlluxioCacheLevel.class);
+        }
+        catch (TrinoException e) {
+            // avoid missing session properties in tests
+            if (INVALID_SESSION_PROPERTY.toErrorCode().equals(e.getErrorCode())) {
+                return AlluxioCacheLevel.DISABLED;
             }
             throw e;
         }

@@ -4,7 +4,7 @@ export TRINO_CLUSTER_NAME=jscs-oneservice
 export TRINO_COORDINATOR_HOSTNAME=jscs-olap-presto-01
 export TRINO_ENVIRONMENT=prod
 
-export ALLUXIO_CACHE=true
+export ALLUXIO_CACHE=INDEX
 export ALLUXIO_MASTER_HOSTNAME=jscs-olap-presto-01
 
 export JVM_XMS=320G

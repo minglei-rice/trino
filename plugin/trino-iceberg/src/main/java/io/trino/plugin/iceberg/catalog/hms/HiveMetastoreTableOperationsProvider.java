@@ -13,11 +13,13 @@
  */
 package io.trino.plugin.iceberg.catalog.hms;
 
+import io.trino.filesystem.TrinoFileSystem;
 import io.trino.filesystem.TrinoFileSystemFactory;
 import io.trino.plugin.hive.metastore.thrift.ThriftMetastoreFactory;
 import io.trino.plugin.iceberg.catalog.IcebergTableOperations;
 import io.trino.plugin.iceberg.catalog.IcebergTableOperationsProvider;
 import io.trino.plugin.iceberg.catalog.TrinoCatalog;
+import io.trino.plugin.iceberg.util.AlluxioCacheUtils;
 import io.trino.spi.connector.ConnectorSession;
 
 import javax.inject.Inject;
@@ -48,8 +50,10 @@ public class HiveMetastoreTableOperationsProvider
             Optional<String> owner,
             Optional<String> location)
     {
+        TrinoFileSystem fileSystem = AlluxioCacheUtils.readMetadataFromCache(session) ?
+                fileSystemFactory.createCachingFileSystem(session) : fileSystemFactory.create(session);
         return new HiveMetastoreTableOperations(
-                fileSystemFactory.create(session).toFileIo(),
+                fileSystem.toFileIo(),
                 ((TrinoHiveCatalog) catalog).getMetastore(),
                 thriftMetastoreFactory.createMetastore(Optional.of(session.getIdentity())),
                 session,

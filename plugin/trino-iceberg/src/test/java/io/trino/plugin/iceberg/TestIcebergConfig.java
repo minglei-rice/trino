@@ -31,6 +31,8 @@ import static io.trino.plugin.iceberg.CatalogType.GLUE;
 import static io.trino.plugin.iceberg.CatalogType.HIVE_METASTORE;
 import static io.trino.plugin.iceberg.IcebergFileFormat.ORC;
 import static io.trino.plugin.iceberg.IcebergFileFormat.PARQUET;
+import static io.trino.plugin.iceberg.util.AlluxioCacheUtils.AlluxioCacheLevel.DISABLED;
+import static io.trino.plugin.iceberg.util.AlluxioCacheUtils.AlluxioCacheLevel.INDEX;
 import static java.util.concurrent.TimeUnit.DAYS;
 import static java.util.concurrent.TimeUnit.HOURS;
 import static java.util.concurrent.TimeUnit.MINUTES;
@@ -65,7 +67,8 @@ public class TestIcebergConfig
                 .setComplexExpressionsOnPartitionKeysPushdownEnabled(true)
                 .setMaxDataFilesWithoutAggIndex(10_000)
                 .setMaxPercentageOfDataFilesWithoutAggIndex(0.5)
-                .setValidateCorrTableDataChange(true));
+                .setValidateCorrTableDataChange(true)
+                .setAlluxioCacheLevel(DISABLED));
     }
 
     @Test
@@ -97,6 +100,7 @@ public class TestIcebergConfig
                 .put("iceberg.max-datafiles-without-agg-index", "100")
                 .put("iceberg.max-percentile-of-datafiles-without-agg-index", "0.6")
                 .put("iceberg.validate-corr-table-data-change", "false")
+                .put("iceberg.alluxio-cache-level", "index")
                 .buildOrThrow();
 
         IcebergConfig expected = new IcebergConfig()
@@ -124,7 +128,8 @@ public class TestIcebergConfig
                 .setComplexExpressionsOnPartitionKeysPushdownEnabled(false)
                 .setMaxDataFilesWithoutAggIndex(100)
                 .setMaxPercentageOfDataFilesWithoutAggIndex(0.6)
-                .setValidateCorrTableDataChange(false);
+                .setValidateCorrTableDataChange(false)
+                .setAlluxioCacheLevel(INDEX);
 
         assertFullMapping(properties, expected);
     }

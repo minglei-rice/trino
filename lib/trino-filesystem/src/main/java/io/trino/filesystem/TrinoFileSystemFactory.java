@@ -24,4 +24,9 @@ public interface TrinoFileSystemFactory
     {
         return create(session.getIdentity());
     }
+
+    default TrinoFileSystem createCachingFileSystem(ConnectorSession session)
+    {
+        throw new UnsupportedOperationException("This factory does not support CachingFileSystem");
+    }
 }

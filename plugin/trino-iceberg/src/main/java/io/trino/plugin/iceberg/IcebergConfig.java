@@ -20,6 +20,7 @@ import io.airlift.configuration.LegacyConfig;
 import io.airlift.units.DataSize;
 import io.airlift.units.Duration;
 import io.trino.plugin.hive.HiveCompressionCodec;
+import io.trino.plugin.iceberg.util.AlluxioCacheUtils.AlluxioCacheLevel;
 
 import javax.validation.constraints.DecimalMax;
 import javax.validation.constraints.DecimalMin;
@@ -33,6 +34,7 @@ import static io.airlift.units.DataSize.Unit.GIGABYTE;
 import static io.trino.plugin.hive.HiveCompressionCodec.ZSTD;
 import static io.trino.plugin.iceberg.CatalogType.HIVE_METASTORE;
 import static io.trino.plugin.iceberg.IcebergFileFormat.ORC;
+import static io.trino.plugin.iceberg.util.AlluxioCacheUtils.AlluxioCacheLevel.DISABLED;
 import static java.util.concurrent.TimeUnit.DAYS;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
@@ -76,6 +78,8 @@ public class IcebergConfig
     private boolean complexExpressionsOnPartitionKeysPushdownEnabled = true;
     private int maxDataFilesWithoutAggIndex = 10_000;
     private double maxPercentageOfDataFilesWithoutAggIndex = 0.5;
+
+    private AlluxioCacheLevel alluxioCacheLevel = DISABLED;
 
     public CatalogType getCatalogType()
     {
@@ -416,5 +420,18 @@ public class IcebergConfig
     public double getMaxPercentageOfDataFilesWithoutAggIndex()
     {
         return maxPercentageOfDataFilesWithoutAggIndex;
+    }
+
+    @NotNull
+    public AlluxioCacheLevel getAlluxioCacheLevel()
+    {
+        return alluxioCacheLevel;
+    }
+
+    @Config("iceberg.alluxio-cache-level")
+    public IcebergConfig setAlluxioCacheLevel(AlluxioCacheLevel alluxioCacheLevel)
+    {
+        this.alluxioCacheLevel = alluxioCacheLevel;
+        return this;
     }
 }

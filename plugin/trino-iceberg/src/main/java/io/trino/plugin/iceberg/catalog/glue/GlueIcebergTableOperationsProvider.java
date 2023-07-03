@@ -15,12 +15,14 @@ package io.trino.plugin.iceberg.catalog.glue;
 
 import com.amazonaws.auth.AWSCredentialsProvider;
 import com.amazonaws.services.glue.AWSGlueAsync;
+import io.trino.filesystem.TrinoFileSystem;
 import io.trino.filesystem.TrinoFileSystemFactory;
 import io.trino.plugin.hive.metastore.glue.GlueHiveMetastoreConfig;
 import io.trino.plugin.hive.metastore.glue.GlueMetastoreStats;
 import io.trino.plugin.iceberg.catalog.IcebergTableOperations;
 import io.trino.plugin.iceberg.catalog.IcebergTableOperationsProvider;
 import io.trino.plugin.iceberg.catalog.TrinoCatalog;
+import io.trino.plugin.iceberg.util.AlluxioCacheUtils;
 import io.trino.spi.connector.ConnectorSession;
 
 import javax.inject.Inject;
@@ -60,10 +62,12 @@ public class GlueIcebergTableOperationsProvider
             Optional<String> owner,
             Optional<String> location)
     {
+        TrinoFileSystem fileSystem = AlluxioCacheUtils.readMetadataFromCache(session) ?
+                fileSystemFactory.createCachingFileSystem(session) : fileSystemFactory.create(session);
         return new GlueIcebergTableOperations(
                 glueClient,
                 stats,
-                fileSystemFactory.create(session).toFileIo(),
+                fileSystem.toFileIo(),
                 session,
                 database,
                 table,

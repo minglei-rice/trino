@@ -15,6 +15,7 @@ package io.trino.filesystem.hdfs;
 
 import io.trino.filesystem.TrinoFileSystem;
 import io.trino.filesystem.TrinoFileSystemFactory;
+import io.trino.filesystem.alluxio.AlluxioFileSystem;
 import io.trino.hdfs.HdfsContext;
 import io.trino.hdfs.HdfsEnvironment;
 import io.trino.spi.connector.ConnectorSession;
@@ -45,6 +46,12 @@ public class HdfsFileSystemFactory
     public TrinoFileSystem create(ConnectorSession session)
     {
         return new HdfsFileSystem(environment, new HdfsContext(session));
+    }
+
+    @Override
+    public TrinoFileSystem createCachingFileSystem(ConnectorSession session)
+    {
+        return new AlluxioFileSystem(create(session));
     }
 
     public HdfsEnvironment getEnvironment()

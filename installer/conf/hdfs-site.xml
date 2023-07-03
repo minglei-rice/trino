@@ -554,12 +554,4 @@
     <name>alluxio.user.rpc.retry.max.sleep</name>
     <value>2s</value>
   </property>
-  <property>
-    <name>iceberg.alluxio.metadata.cache.enabled</name>
-    <value>{ALLUXIO_CACHE}</value>
-  </property>
-  <property>
-    <name>iceberg.alluxio.index.cache.enabled</name>
-    <value>{ALLUXIO_CACHE}</value>
-  </property>
 </configuration>
