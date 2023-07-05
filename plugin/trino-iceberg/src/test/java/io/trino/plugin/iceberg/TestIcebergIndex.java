@@ -122,6 +122,7 @@ public class TestIcebergIndex
 
         return IcebergQueryRunner.builder()
                 .setIcebergProperties(ImmutableMap.of("iceberg.read-indices-switch-on", "true"))
+                .setExtraProperties(ImmutableMap.of("enable-dynamic-filtering", "false", "join-distribution-type", "PARTITIONED"))
                 .setMetastoreDirectory(metastoreDir).build();
     }
 
@@ -206,14 +207,14 @@ public class TestIcebergIndex
         assertEquals(operatorStats.size(), 1);
         assertEquals(operatorStats.get(0).getOutputPositions(), 0L);
 
-        getQueryRunner().execute("insert into dim values (1,1.0)");
+        getQueryRunner().execute("insert into dim values (5,5.0)");
         resultWithId = getDistributedQueryRunner().executeWithQueryId(
                 getSession(), "select sum(fact.v) from fact join dim on f_k=d_k where dim.v=5.0 group by f_k");
         assertEquals(resultWithId.getResult().getMaterializedRows().size(), 0);
         queryId = resultWithId.getQueryId();
         operatorStats = getTableScanStats(queryId, "fact");
         assertEquals(operatorStats.size(), 1);
-        DataSkippingMetrics dataSkippingMetrics = (DataSkippingMetrics) operatorStats.get(0).getConnectorMetrics().getMetrics().get("iceberg_data_skipping_metrics");
+        DataSkippingMetrics dataSkippingMetrics = (DataSkippingMetrics) operatorStats.get(0).getConnectorMetrics().getMetrics().get(DATA_SKIPPING_METRICS_NAME);
         assertEquals(dataSkippingMetrics.getMetricMap().get(DataSkippingMetrics.MetricType.READ).getSplitCount(), 1L);
     }
 
