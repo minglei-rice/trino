@@ -109,7 +109,7 @@ public class AlluxioInputFile
     // When Alluxio failure occurs, log a warning and no longer use Alluxio cache for this file
     private void handleAlluxioFailure(Exception e)
     {
-        log.warn("Try not to use Alluxio cache for path %s due to Alluxio failure", alluxioInputFile.location(), e);
+        log.warn(e, "Try not to use Alluxio cache for path %s due to Alluxio failure", alluxioInputFile.location());
         useAlluxioCache = false;
     }
 }
