@@ -1399,7 +1399,7 @@ public interface ConnectorMetadata
     /**
      * If the file is ordered, we can try to push down PartialSort to connector.
      */
-    default Optional<PartialSortApplicationResult> applyPartialSort(ConnectorSession session, ConnectorTableHandle tableHandle)
+    default Optional<PartialSortApplicationResult<ConnectorTableHandle>> applyPartialSort(ConnectorSession session, ConnectorTableHandle tableHandle)
     {
         return Optional.empty();
     }

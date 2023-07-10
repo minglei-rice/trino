@@ -140,7 +140,8 @@ public class TestIcebergSplitSource
                 Optional.empty(),
                 Collections.emptySet(),
                 false,
-                -1);
+                -1,
+                false);
 
         try (IcebergSplitSource splitSource = new IcebergSplitSource(
                 SESSION,
@@ -418,7 +419,8 @@ public class TestIcebergSplitSource
                 Optional.empty(),
                 Collections.emptySet(),
                 false,
-                -1);
+                -1,
+                false);
 
         IcebergSplitSource splitSource = new IcebergSplitSource(
                 SESSION,

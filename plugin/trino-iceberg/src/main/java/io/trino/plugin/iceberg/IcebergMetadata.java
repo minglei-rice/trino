@@ -416,7 +416,8 @@ public class IcebergMetadata
                 null,
                 Collections.emptyMap(),
                 false,
-                -1);
+                -1,
+                false);
     }
 
     @Override
@@ -437,9 +438,12 @@ public class IcebergMetadata
     }
 
     @Override
-    public Optional<PartialSortApplicationResult> applyPartialSort(ConnectorSession session, ConnectorTableHandle tableHandle)
+    public Optional<PartialSortApplicationResult<ConnectorTableHandle>> applyPartialSort(ConnectorSession session, ConnectorTableHandle tableHandle)
     {
-        PartialSortApplicationResult result;
+        IcebergTableHandle originalTableHandle = (IcebergTableHandle) tableHandle;
+        if (originalTableHandle.isSort()) {
+            return Optional.empty();
+        }
         IcebergTableHandle icebergTableHandle = (IcebergTableHandle) tableHandle;
         Table table;
         try {
@@ -467,8 +471,7 @@ public class IcebergMetadata
             return Optional.empty();
         }
         SortField sortField = table.sortOrder().fields().get(0);
-        result = new PartialSortApplicationResult(sortField.direction() == SortDirection.ASC, allSorted);
-        return Optional.of(result);
+        return Optional.of(new PartialSortApplicationResult<>(originalTableHandle.withSort(allSorted), sortField.direction() == SortDirection.ASC, allSorted));
     }
 
     @Override
@@ -617,7 +620,8 @@ public class IcebergMetadata
                 originalTableHandle.getConnectorExpression(),
                 originalTableHandle.getConExprAssignments(),
                 originalTableHandle.isReadPartialFiles(),
-                originalTableHandle.getAggIndexId());
+                originalTableHandle.getAggIndexId(),
+                originalTableHandle.isSort());
         return Optional.of(new AggIndexApplicationResult<>(newIcebergTableHandle, aggIndexFileColumnNameToColumnIdent, dataFiles > 0));
     }
 
@@ -2379,7 +2383,8 @@ public class IcebergMetadata
                         extractionResult.remainingExpression(),
                         assignments,
                         table.isReadPartialFiles(),
-                        table.getAggIndexId()),
+                        table.getAggIndexId(),
+                        table.isSort()),
                 remainingConstraint.transformKeys(ColumnHandle.class::cast),
                 extractionResult.remainingExpression(),
                 false));
@@ -2485,7 +2490,8 @@ public class IcebergMetadata
                         icebergTableHandle.getConnectorExpression(),
                         icebergTableHandle.getConExprAssignments(),
                         icebergTableHandle.isReadPartialFiles(),
-                        icebergTableHandle.getAggIndexId())));
+                        icebergTableHandle.getAggIndexId(),
+                        icebergTableHandle.isSort())));
     }
 
     // converts column handle in correlated table to correlated column in left table
@@ -2725,7 +2731,8 @@ public class IcebergMetadata
                 originalHandle.getConnectorExpression(),
                 originalHandle.getConExprAssignments(),
                 originalHandle.isReadPartialFiles(),
-                originalHandle.getAggIndexId());
+                originalHandle.getAggIndexId(),
+                originalHandle.isSort());
         TableStatistics existing = tableStatisticsCache.get(newHandle);
         if (existing != null) {
             return existing;

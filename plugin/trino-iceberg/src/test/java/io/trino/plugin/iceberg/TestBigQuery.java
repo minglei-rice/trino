@@ -38,7 +38,7 @@ public class TestBigQuery
 
     private static final Map<String, String> PROPERTIES = ImmutableMap.of(
             "forbid_cross_join", "true",
-            "order_by_full_table", "false");
+            "order_by_full_table", "true");
 
     private static final Session TEST_SESSION = testSessionBuilder()
             .setCatalog("iceberg")
@@ -62,7 +62,7 @@ public class TestBigQuery
         queryRunner.execute("create table t1(f1 bigint, f2 varchar) with (partitioning = ARRAY['f2'])");
         queryRunner.execute("create table t2(f1 bigint, f2 bigint)");
         queryRunner.execute("insert into t1 values (1, '20220904')");
-        queryRunner.execute("insert into t2 values (1, 2),(2, 2),(3, 2),(4, 2),(5,1),(6,1)");
+        queryRunner.execute("insert into t2 values (1, 2)");
     }
 
     @AfterClass(alwaysRun = true)

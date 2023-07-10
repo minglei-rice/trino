@@ -72,10 +72,11 @@ public class PushPartialTopNIntoTableScan
         }
         Session session = context.getSession();
         TableHandle table = tableScanNode.get().getTable();
-        Optional<PartialSortApplicationResult> partialSortApplicationResult = metadata.applyPartialSort(session, table);
+        Optional<PartialSortApplicationResult<TableHandle>> partialSortApplicationResult = metadata.applyPartialSort(session, table);
         if (partialSortApplicationResult.isEmpty() || !partialSortApplicationResult.get().isCanRewrite()) {
             return Result.empty();
         }
+        TableHandle newTable = partialSortApplicationResult.get().getHandle();
         if (partialSortApplicationResult.get().isAsc() == asc(topNNode.get())) {
             // the query sort order is equal to file order.
             LimitNode limitNode = buildLimitNode(tableScanNode.get(), topNNode.get());
@@ -90,7 +91,7 @@ public class PushPartialTopNIntoTableScan
             return Result.ofPlanNode(exchangeNode);
         }
         else {
-            MismatchedOrderTopNNode mismatchedOrderTopNNode = buildMismatchedOrderTopNNode(tableScanNode.get(), topNNode.get());
+            MismatchedOrderTopNNode mismatchedOrderTopNNode = buildMismatchedOrderTopNNode(buildNewTableScan(tableScanNode.get(), newTable), topNNode.get());
             ExchangeNode exchangeNode = new ExchangeNode(
                     node.getId(),
                     node.getType(),
@@ -121,6 +122,19 @@ public class PushPartialTopNIntoTableScan
     private LimitNode buildLimitNode(TableScanNode scanNode, TopNNode node)
     {
         return new LimitNode(node.getId(), scanNode, node.getCount(), Optional.empty(), true, ImmutableList.of());
+    }
+
+    private TableScanNode buildNewTableScan(TableScanNode scanNode, TableHandle newTable)
+    {
+        return new TableScanNode(
+                scanNode.getId(),
+                newTable,
+                scanNode.getOutputSymbols(),
+                scanNode.getAssignments(),
+                scanNode.getEnforcedConstraint(),
+                scanNode.getStatistics(),
+                scanNode.isUpdateTarget(),
+                scanNode.getUseConnectorNodePartitioning());
     }
 
     private MismatchedOrderTopNNode buildMismatchedOrderTopNNode(TableScanNode scanNode, TopNNode node)

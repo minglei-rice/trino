@@ -455,11 +455,20 @@ public final class MetadataManager
     }
 
     @Override
-    public Optional<PartialSortApplicationResult> applyPartialSort(Session session, TableHandle tableHandle)
+    public Optional<PartialSortApplicationResult<TableHandle>> applyPartialSort(Session session, TableHandle tableHandle)
     {
         CatalogHandle catalogHandle = tableHandle.getCatalogHandle();
         ConnectorMetadata metadata = getMetadata(session, catalogHandle);
-        return metadata.applyPartialSort(session.toConnectorSession(catalogHandle), tableHandle.getConnectorHandle());
+        Optional<PartialSortApplicationResult<ConnectorTableHandle>> sortApplicationResult =
+                metadata.applyPartialSort(session.toConnectorSession(catalogHandle), tableHandle.getConnectorHandle());
+        if (sortApplicationResult.isEmpty()) {
+            return Optional.empty();
+        }
+        return sortApplicationResult.map(result ->
+                new PartialSortApplicationResult<>(
+                        new TableHandle(catalogHandle, result.getHandle(), tableHandle.getTransaction()),
+                        result.isAsc(),
+                        result.isCanRewrite()));
     }
 
     @Override

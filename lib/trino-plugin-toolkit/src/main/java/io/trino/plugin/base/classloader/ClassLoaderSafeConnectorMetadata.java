@@ -204,7 +204,7 @@ public class ClassLoaderSafeConnectorMetadata
     }
 
     @Override
-    public Optional<PartialSortApplicationResult> applyPartialSort(ConnectorSession session, ConnectorTableHandle tableHandle)
+    public Optional<PartialSortApplicationResult<ConnectorTableHandle>> applyPartialSort(ConnectorSession session, ConnectorTableHandle tableHandle)
     {
         try (ThreadContextClassLoader ignored = new ThreadContextClassLoader(classLoader)) {
             return delegate.applyPartialSort(session, tableHandle);

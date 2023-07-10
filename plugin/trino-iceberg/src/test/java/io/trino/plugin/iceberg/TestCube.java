@@ -215,7 +215,8 @@ public class TestCube
                 Optional.of(new AggIndex(1, ImmutableList.of(), ImmutableMap.of(), ImmutableList.of())),
                 Collections.emptySet(),
                 false,
-                -1);
+                -1,
+                false);
 
         try (IcebergSplitSource splitSourceWithAggIndex = new IcebergSplitSource(
                 SESSION,

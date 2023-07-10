@@ -266,10 +266,10 @@ public class IcebergSplitSource
             scanLock.writeLock().lock();
             try {
                 if (tableHandle.getAggIndex().isPresent()) {
-                    this.fileScanTaskIterable = planTasks(scan, false);
+                    this.fileScanTaskIterable = planTasks(tableHandle, scan, false);
                 }
                 else {
-                    this.fileScanTaskIterable = planTasks(scan, true);
+                    this.fileScanTaskIterable = planTasks(tableHandle, scan, true);
                 }
                 closer.register(fileScanTaskIterable);
                 this.fileScanTaskIterator = fileScanTaskIterable.iterator();
@@ -293,15 +293,15 @@ public class IcebergSplitSource
                 completedFuture(doGetNextBatch(maxSize, dynamicFilterPredicate));
     }
 
-    private CloseableIterable<Pair<FileScanTask, Optional<IcebergSplit>>> planTasks(TableScan scan, boolean split)
+    private CloseableIterable<Pair<FileScanTask, Optional<IcebergSplit>>> planTasks(IcebergTableHandle tableHandle, TableScan scan, boolean split)
     {
         if (planTransformedTask) {
-            return CloseableIterable.transform(scan.planTransformedTasks(this::toIcebergSplit, split, false),
+            return CloseableIterable.transform(scan.planTransformedTasks(this::toIcebergSplit, split && !tableHandle.isSort(), false),
                     task -> Pair.of(Iterables.getOnlyElement(task.files()), Optional.of(Iterables.getOnlyElement(task.transformedFiles()))));
         }
         else {
             CloseableIterable<FileScanTask> scanTasks = scan.planFiles();
-            if (split) {
+            if (split && !tableHandle.isSort()) {
                 scanTasks = TableScanUtil.splitFiles(scanTasks, tableScan.targetSplitSize());
             }
             return CloseableIterable.transform(scanTasks, t -> Pair.of(t, Optional.empty()));

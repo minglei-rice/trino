@@ -76,7 +76,7 @@ public class PushPartialSortIntoTableScan
         Session session = context.getSession();
         TableHandle table = tableScanNode.get().getTable();
 
-        Optional<PartialSortApplicationResult> partialSortApplicationResult = metadata.applyPartialSort(session, table);
+        Optional<PartialSortApplicationResult<TableHandle>> partialSortApplicationResult = metadata.applyPartialSort(session, table);
         if (partialSortApplicationResult.isEmpty()) {
             return Result.empty();
         }

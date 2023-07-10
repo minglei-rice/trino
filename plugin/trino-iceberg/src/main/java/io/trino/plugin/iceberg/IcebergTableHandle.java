@@ -84,6 +84,8 @@ public class IcebergTableHandle
     // used for tableHandle without agg index file
     private int aggIndexId;
 
+    private boolean sort;
+
     @JsonCreator
     public static IcebergTableHandle fromJsonForDeserializationOnly(
             @JsonProperty("schemaName") String schemaName,
@@ -106,7 +108,8 @@ public class IcebergTableHandle
             @JsonProperty("connectorExpressions") ConnectorExpression connectorExpression,
             @JsonProperty("connectorAssignments") Map<String, IcebergColumnHandle> conExprAssignments,
             @JsonProperty("readPartialFiles") boolean readPartialFiles,
-            @JsonProperty("aggIndexId") int aggIndexId)
+            @JsonProperty("aggIndexId") int aggIndexId,
+            @JsonProperty("sort") boolean sort)
     {
         return new IcebergTableHandle(
                 schemaName,
@@ -133,7 +136,8 @@ public class IcebergTableHandle
                 connectorExpression,
                 conExprAssignments,
                 readPartialFiles,
-                aggIndexId);
+                aggIndexId,
+                sort);
     }
 
     public IcebergTableHandle(
@@ -158,10 +162,11 @@ public class IcebergTableHandle
             Optional<AggIndex> aggIndex,
             Set<ColumnHandle> constraintColumns,
             boolean readPartialFiles,
-            int aggIndexId)
+            int aggIndexId,
+            boolean sort)
     {
         this(schemaName, tableName, tableType, snapshotId, tableSchemaJson, partitionSpecJson, formatVersion, unenforcedPredicate, enforcedPredicate, projectedColumns, nameMappingJson,
-                tableLocation, storageProperties, retryMode, updatedColumns, recordScannedFiles, maxScannedFileSize, corrColPredicate, Collections.emptyList(), aggIndex, constraintColumns, null, Collections.emptyMap(), readPartialFiles, aggIndexId);
+                tableLocation, storageProperties, retryMode, updatedColumns, recordScannedFiles, maxScannedFileSize, corrColPredicate, Collections.emptyList(), aggIndex, constraintColumns, null, Collections.emptyMap(), readPartialFiles, aggIndexId, sort);
     }
 
     public IcebergTableHandle(
@@ -189,7 +194,8 @@ public class IcebergTableHandle
             ConnectorExpression connectorExpression,
             Map<String, IcebergColumnHandle> conExprAssignments,
             boolean readPartialFiles,
-            int aggIndexId)
+            int aggIndexId,
+            boolean sort)
     {
         this.schemaName = requireNonNull(schemaName, "schemaName is null");
         this.tableName = requireNonNull(tableName, "tableName is null");
@@ -216,6 +222,7 @@ public class IcebergTableHandle
         this.conExprAssignments = conExprAssignments;
         this.readPartialFiles = readPartialFiles;
         this.aggIndexId = aggIndexId;
+        this.sort = sort;
     }
 
     @JsonProperty
@@ -392,7 +399,8 @@ public class IcebergTableHandle
                 connectorExpression,
                 conExprAssignments,
                 readPartialFiles,
-                aggIndexId);
+                aggIndexId,
+                sort);
     }
 
     public IcebergTableHandle withRetryMode(RetryMode retryMode)
@@ -422,7 +430,8 @@ public class IcebergTableHandle
                 connectorExpression,
                 conExprAssignments,
                 readPartialFiles,
-                aggIndexId);
+                aggIndexId,
+                sort);
     }
 
     public IcebergTableHandle withUpdatedColumns(List<IcebergColumnHandle> updatedColumns)
@@ -452,7 +461,8 @@ public class IcebergTableHandle
                 connectorExpression,
                 conExprAssignments,
                 readPartialFiles,
-                aggIndexId);
+                aggIndexId,
+                sort);
     }
 
     public IcebergTableHandle forOptimize(boolean recordScannedFiles, DataSize maxScannedFileSize)
@@ -482,7 +492,39 @@ public class IcebergTableHandle
                 connectorExpression,
                 conExprAssignments,
                 readPartialFiles,
-                aggIndexId);
+                aggIndexId,
+                sort);
+    }
+
+    public IcebergTableHandle withSort(boolean sort)
+    {
+        return new IcebergTableHandle(
+                schemaName,
+                tableName,
+                tableType,
+                snapshotId,
+                tableSchemaJson,
+                partitionSpecJson,
+                formatVersion,
+                unenforcedPredicate,
+                enforcedPredicate,
+                projectedColumns,
+                nameMappingJson,
+                tableLocation,
+                storageProperties,
+                retryMode,
+                updatedColumns,
+                recordScannedFiles,
+                maxScannedFileSize,
+                corrColPredicate,
+                corrTables,
+                aggIndex,
+                constraintColumns,
+                connectorExpression,
+                conExprAssignments,
+                readPartialFiles,
+                aggIndexId,
+                sort);
     }
 
     @Override
@@ -520,7 +562,8 @@ public class IcebergTableHandle
                 Objects.equals(connectorExpression, that.connectorExpression) &&
                 Objects.equals(conExprAssignments, that.conExprAssignments) &&
                 Objects.equals(readPartialFiles, that.readPartialFiles) &&
-                Objects.equals(aggIndexId, that.aggIndexId);
+                Objects.equals(aggIndexId, that.aggIndexId) &&
+                Objects.equals(sort, that.sort);
     }
 
     @Override
@@ -528,7 +571,7 @@ public class IcebergTableHandle
     {
         return Objects.hash(schemaName, tableName, tableType, snapshotId, tableSchemaJson, partitionSpecJson, formatVersion, unenforcedPredicate, enforcedPredicate,
                 projectedColumns, nameMappingJson, tableLocation, storageProperties, retryMode, updatedColumns, recordScannedFiles, maxScannedFileSize,
-                corrColPredicate, corrTables, aggIndex, constraintColumns, connectorExpression, conExprAssignments, readPartialFiles, aggIndexId);
+                corrColPredicate, corrTables, aggIndex, constraintColumns, connectorExpression, conExprAssignments, readPartialFiles, aggIndexId, sort);
     }
 
     @Override
@@ -574,5 +617,10 @@ public class IcebergTableHandle
     public void setAggIndexId(int id)
     {
         this.aggIndexId = id;
+    }
+
+    public boolean isSort()
+    {
+        return sort;
     }
 }

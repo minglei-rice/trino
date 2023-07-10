@@ -13,16 +13,24 @@
  */
 package io.trino.spi.connector;
 
-public class PartialSortApplicationResult
+public class PartialSortApplicationResult<T>
 {
+    private final T handle;
+
     private final boolean asc;
 
     private final boolean canRewrite;
 
-    public PartialSortApplicationResult(boolean asc, boolean canRewrite)
+    public PartialSortApplicationResult(T handle, boolean asc, boolean canRewrite)
     {
+        this.handle = handle;
         this.asc = asc;
         this.canRewrite = canRewrite;
+    }
+
+    public T getHandle()
+    {
+        return handle;
     }
 
     public boolean isAsc()
