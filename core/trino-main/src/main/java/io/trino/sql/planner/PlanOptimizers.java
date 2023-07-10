@@ -171,6 +171,8 @@ import io.trino.sql.planner.iterative.rule.PushLimitThroughUnion;
 import io.trino.sql.planner.iterative.rule.PushOffsetThroughProject;
 import io.trino.sql.planner.iterative.rule.PushPartialAggregationThroughExchange;
 import io.trino.sql.planner.iterative.rule.PushPartialAggregationThroughJoin;
+import io.trino.sql.planner.iterative.rule.PushPartialSortIntoTableScan;
+import io.trino.sql.planner.iterative.rule.PushPartialTopNIntoTableScan;
 import io.trino.sql.planner.iterative.rule.PushPredicateIntoTableScan;
 import io.trino.sql.planner.iterative.rule.PushPredicateThroughProjectIntoRowNumber;
 import io.trino.sql.planner.iterative.rule.PushPredicateThroughProjectIntoWindow;
@@ -972,6 +974,24 @@ public class PlanOptimizers
 
         // Optimizers above this don't understand local exchanges, so be careful moving this.
         builder.add(new AddLocalExchanges(plannerContext, typeAnalyzer));
+
+        // must run after AddLocalExchanges.
+        builder.add(
+                new IterativeOptimizer(
+                        plannerContext,
+                        ruleStats,
+                        statsCalculator,
+                        costCalculator,
+                        ImmutableSet.of(new PushPartialSortIntoTableScan(plannerContext))));
+
+        builder.add(
+                new IterativeOptimizer(
+                        plannerContext,
+                        ruleStats,
+                        statsCalculator,
+                        costCalculator,
+                        ImmutableSet.of(new PushPartialTopNIntoTableScan(plannerContext))));
+
         // UseNonPartitionedJoinLookupSource needs to run after AddLocalExchanges since it operates on ExchangeNodes added by this optimizer.
         builder.add(new IterativeOptimizer(
                 plannerContext,

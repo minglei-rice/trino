@@ -38,6 +38,7 @@ import io.trino.spi.connector.JoinStatistics;
 import io.trino.spi.connector.JoinType;
 import io.trino.spi.connector.LimitApplicationResult;
 import io.trino.spi.connector.MaterializedViewFreshness;
+import io.trino.spi.connector.PartialSortApplicationResult;
 import io.trino.spi.connector.ProjectionApplicationResult;
 import io.trino.spi.connector.RowChangeParadigm;
 import io.trino.spi.connector.SampleApplicationResult;
@@ -533,6 +534,14 @@ public interface Metadata
             TableHandle handle,
             AggIndex aggIndex,
             List<TableHandle> corrTables);
+
+    /**
+     * Attempt to push down partial sort or top n.
+     */
+    default Optional<PartialSortApplicationResult> applyPartialSort(Session session, TableHandle tableHandle)
+    {
+        return Optional.empty();
+    }
 
     Optional<TableFunctionApplicationResult<TableHandle>> applyTableFunction(Session session, TableFunctionHandle handle);
 

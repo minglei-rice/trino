@@ -182,6 +182,9 @@ public final class SystemSessionProperties
     public static final String ANALYZE_ALIAS_IN_HAVING_CLAUSE_WITHOUT_RESTRICTION = "analyze_alias_in_having_clause_without_restriction";
     public static final String ALLOW_READ_AGG_INDEX_FILES = "allow_read_agg_index_files";
     public static final String APPROX_SIZE_IN_BYTES_ENABLED = "approx_size_in_bytes_enabled";
+    public static final String ALLOW_PUSH_PARTIAL_SORT_TO_TABLE_SCAN = "allow_push_partial_sort_to_table_scan";
+    public static final String ALLOW_PUSH_PARTIAL_TOP_N_TO_TABLE_SCAN = "allow_push_partial_top_n_to_table_scan";
+
     private final List<PropertyMetadata<?>> sessionProperties;
 
     public SystemSessionProperties()
@@ -901,6 +904,16 @@ public final class SystemSessionProperties
                         APPROX_SIZE_IN_BYTES_ENABLED,
                         "Whether calculate size in bytes approximately enabled",
                         featuresConfig.isApproxSizeInBytesEnabled(),
+                        false),
+                booleanProperty(
+                        ALLOW_PUSH_PARTIAL_SORT_TO_TABLE_SCAN,
+                        "Allow push partial sort to table scan.",
+                        false,
+                        false),
+                booleanProperty(
+                        ALLOW_PUSH_PARTIAL_TOP_N_TO_TABLE_SCAN,
+                        "Allow push partial topN to table scan.",
+                        false,
                         false));
     }
 
@@ -1598,6 +1611,16 @@ public final class SystemSessionProperties
     public static boolean isAllowReadAggIndexFiles(Session session)
     {
         return session.getSystemProperty(ALLOW_READ_AGG_INDEX_FILES, Boolean.class);
+    }
+
+    public static boolean isPushPartialSortIntoTableScan(Session session)
+    {
+        return session.getSystemProperty(ALLOW_PUSH_PARTIAL_SORT_TO_TABLE_SCAN, Boolean.class);
+    }
+
+    public static boolean isPushPartialTopNIntoTableScan(Session session)
+    {
+        return session.getSystemProperty(ALLOW_PUSH_PARTIAL_TOP_N_TO_TABLE_SCAN, Boolean.class);
     }
 
     public static boolean isApproxSizeInBytesEnable(Session session)

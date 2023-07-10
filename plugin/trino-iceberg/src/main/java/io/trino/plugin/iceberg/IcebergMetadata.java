@@ -82,6 +82,7 @@ import io.trino.spi.connector.JoinCondition;
 import io.trino.spi.connector.JoinType;
 import io.trino.spi.connector.MaterializedViewFreshness;
 import io.trino.spi.connector.MaterializedViewNotFoundException;
+import io.trino.spi.connector.PartialSortApplicationResult;
 import io.trino.spi.connector.ProjectionApplicationResult;
 import io.trino.spi.connector.RetryMode;
 import io.trino.spi.connector.RowChangeParadigm;
@@ -132,6 +133,8 @@ import org.apache.iceberg.RowDelta;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.SchemaParser;
 import org.apache.iceberg.Snapshot;
+import org.apache.iceberg.SortDirection;
+import org.apache.iceberg.SortField;
 import org.apache.iceberg.Table;
 import org.apache.iceberg.TableProperties;
 import org.apache.iceberg.TableScan;
@@ -431,6 +434,41 @@ public class IcebergMetadata
         return aggregationIndex.stream()
                 .map(icebergAggIndex -> toTrinoAggIndex(icebergAggIndex, table, icebergTableHandle))
                 .collect(toImmutableList());
+    }
+
+    @Override
+    public Optional<PartialSortApplicationResult> applyPartialSort(ConnectorSession session, ConnectorTableHandle tableHandle)
+    {
+        PartialSortApplicationResult result;
+        IcebergTableHandle icebergTableHandle = (IcebergTableHandle) tableHandle;
+        Table table;
+        try {
+            table = catalog.loadTable(session, icebergTableHandle.getSchemaTableName());
+        }
+        catch (TableNotFoundException e) {
+            return Optional.empty();
+        }
+        boolean allSorted = true;
+        TupleDomain<IcebergColumnHandle> effectivePredicate =
+                icebergTableHandle.getUnenforcedPredicate().intersect(icebergTableHandle.getEnforcedPredicate());
+        try (CloseableIterable<FileScanTask> fileScanTasks = table.newScan().filter(toIcebergExpression(effectivePredicate)).planFiles()) {
+            for (FileScanTask scanTask : fileScanTasks) {
+                DataFile file = scanTask.file();
+                if (file.sortOrderId() != 1) {
+                    allSorted = false;
+                    break;
+                }
+            }
+        }
+        catch (Throwable t) {
+            throw new RuntimeException(t);
+        }
+        if (table.sortOrder().fields().isEmpty()) {
+            return Optional.empty();
+        }
+        SortField sortField = table.sortOrder().fields().get(0);
+        result = new PartialSortApplicationResult(sortField.direction() == SortDirection.ASC, allSorted);
+        return Optional.of(result);
     }
 
     @Override

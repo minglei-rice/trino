@@ -79,6 +79,7 @@ import io.trino.sql.planner.plan.LimitNode;
 import io.trino.sql.planner.plan.MarkDistinctNode;
 import io.trino.sql.planner.plan.MergeProcessorNode;
 import io.trino.sql.planner.plan.MergeWriterNode;
+import io.trino.sql.planner.plan.MismatchedOrderTopNNode;
 import io.trino.sql.planner.plan.OffsetNode;
 import io.trino.sql.planner.plan.OutputNode;
 import io.trino.sql.planner.plan.PatternRecognitionNode;
@@ -735,6 +736,16 @@ public class PlanPrinter
                             "count", String.valueOf(node.getCount()),
                             "withTies", formatBoolean(node.isWithTies()),
                             "inputPreSortedBy", formatSymbols(node.getPreSortedInputs())));
+            return processChildren(node, context);
+        }
+
+        @Override
+        public Void visitMismatchedOrderTopN(MismatchedOrderTopNNode node, Void context)
+        {
+            addNode(node,
+                    "MismatchedOrderTopN",
+                    ImmutableMap.of(
+                            "count", String.valueOf(node.getCount())));
             return processChildren(node, context);
         }
 

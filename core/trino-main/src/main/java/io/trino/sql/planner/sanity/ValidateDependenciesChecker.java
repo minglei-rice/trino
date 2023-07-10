@@ -44,6 +44,7 @@ import io.trino.sql.planner.plan.LimitNode;
 import io.trino.sql.planner.plan.MarkDistinctNode;
 import io.trino.sql.planner.plan.MergeProcessorNode;
 import io.trino.sql.planner.plan.MergeWriterNode;
+import io.trino.sql.planner.plan.MismatchedOrderTopNNode;
 import io.trino.sql.planner.plan.OffsetNode;
 import io.trino.sql.planner.plan.OutputNode;
 import io.trino.sql.planner.plan.PatternRecognitionNode;
@@ -414,6 +415,14 @@ public final class ValidateDependenciesChecker
                     node.getPreSortedInputs(),
                     source.getOutputSymbols());
 
+            return null;
+        }
+
+        @Override
+        public Void visitMismatchedOrderTopN(MismatchedOrderTopNNode node, Set<Symbol> boundSymbols)
+        {
+            PlanNode source = node.getSource();
+            source.accept(this, boundSymbols); // visit child
             return null;
         }
 
