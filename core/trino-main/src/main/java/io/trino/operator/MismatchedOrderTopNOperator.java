@@ -118,7 +118,7 @@ public class MismatchedOrderTopNOperator
     {
         checkState(state == State.NEEDS_INPUT, "Operator is already finishing");
         for (int i = 0; i < page.getPositionCount(); i++) {
-            Page singleValuePage = page.getSingleValuePage(i);
+            Page singleValuePage = page.getRegion(i, 1);
             pages.addLast(singleValuePage);
             if (pages.size() > count) {
                 pages.removeFirst();
