@@ -72,7 +72,7 @@ public class MismatchedOrderTopNOperator
     }
 
     private final OperatorContext operatorContext;
-    private final long count;
+    private final int count;
     private LinkedList<Page> pages = new LinkedList<>();
 
     private Iterator<Page> pageIterator;
@@ -83,7 +83,7 @@ public class MismatchedOrderTopNOperator
     {
         this.operatorContext = requireNonNull(operatorContext, "operatorContext is null");
         checkArgument(count >= 0, "count must be at least zero");
-        this.count = count;
+        this.count = (int) count;
     }
 
     @Override
@@ -117,13 +117,23 @@ public class MismatchedOrderTopNOperator
     public void addInput(Page page)
     {
         checkState(state == State.NEEDS_INPUT, "Operator is already finishing");
-        for (int i = 0; i < page.getPositionCount(); i++) {
-            Page singleValuePage = page.getRegion(i, 1);
-            pages.addLast(singleValuePage);
-            if (pages.size() > count) {
-                pages.removeFirst();
+        pages.addLast(page);
+        while (getTotalPositions() > count) {
+            Page removedPage = pages.removeFirst();
+            // Check if we need to split the page
+            if (removedPage.getPositionCount() > count) {
+                int positionsToRemove = removedPage.getPositionCount() - count;
+                positionsToRemove = Math.max(positionsToRemove, 0);
+                Page remainingPage = removedPage.getRegion(positionsToRemove, removedPage.getPositionCount() - positionsToRemove);
+                pages.addFirst(remainingPage);
+                break;
             }
         }
+    }
+
+    private int getTotalPositions()
+    {
+        return pages.stream().mapToInt(Page::getPositionCount).sum();
     }
 
     @Override
