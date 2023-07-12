@@ -79,6 +79,8 @@ public class MismatchedOrderTopNOperator
 
     private State state = State.NEEDS_INPUT;
 
+    private int totalPositions;
+
     public MismatchedOrderTopNOperator(OperatorContext operatorContext, long count)
     {
         this.operatorContext = requireNonNull(operatorContext, "operatorContext is null");
@@ -97,6 +99,17 @@ public class MismatchedOrderTopNOperator
     {
         if (state == State.NEEDS_INPUT) {
             state = State.HAS_OUTPUT;
+            while (totalPositions > count) {
+                // The number of records of each page in the queue is less than or equal to counts
+                Page removedPage = pages.removeFirst();
+                totalPositions -= removedPage.getPositionCount();
+                if (totalPositions < count) {
+                    int reservedInRemovedPage = count - totalPositions;
+                    Page remainingPages = removedPage.getRegion(reservedInRemovedPage, removedPage.getPositionCount() - reservedInRemovedPage);
+                    totalPositions += remainingPages.getPositionCount();
+                    pages.addLast(remainingPages);
+                }
+            }
             pageIterator = pages.iterator();
         }
     }
@@ -117,23 +130,20 @@ public class MismatchedOrderTopNOperator
     public void addInput(Page page)
     {
         checkState(state == State.NEEDS_INPUT, "Operator is already finishing");
-        pages.addLast(page);
-        while (getTotalPositions() > count) {
-            Page removedPage = pages.removeFirst();
-            // Check if we need to split the page
-            if (removedPage.getPositionCount() > count) {
-                int positionsToRemove = removedPage.getPositionCount() - count;
-                positionsToRemove = Math.max(positionsToRemove, 0);
-                Page remainingPage = removedPage.getRegion(positionsToRemove, removedPage.getPositionCount() - positionsToRemove);
-                pages.addFirst(remainingPage);
-                break;
-            }
+        if (page.getPositionCount() <= count) {
+            pages.addLast(page);
+            totalPositions += page.getPositionCount();
         }
-    }
-
-    private int getTotalPositions()
-    {
-        return pages.stream().mapToInt(Page::getPositionCount).sum();
+        else {
+            // current page rows exceeds the number of counts, only a part of it can be reserved.
+            int positionOffset = page.getPositionCount() - count;
+            // reserve the needed rows.
+            Page remainingPage = page.getRegion(positionOffset, page.getPositionCount() - positionOffset);
+            pages.clear();
+            totalPositions = 0;
+            pages.addLast(remainingPage);
+            totalPositions += remainingPage.getPositionCount();
+        }
     }
 
     @Override
