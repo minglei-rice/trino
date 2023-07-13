@@ -79,7 +79,7 @@ public class PushPartialTopNIntoTableScan
         TableHandle newTable = partialSortApplicationResult.get().getHandle();
         if (partialSortApplicationResult.get().isAsc() == asc(topNNode.get())) {
             // the query sort order is equal to file order.
-            LimitNode limitNode = buildLimitNode(tableScanNode.get(), topNNode.get());
+            LimitNode limitNode = buildLimitNode(buildNewTableScan(tableScanNode.get(), newTable), topNNode.get());
             ExchangeNode exchangeNode = new ExchangeNode(
                     node.getId(),
                     node.getType(),
