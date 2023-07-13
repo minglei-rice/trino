@@ -79,7 +79,7 @@ public class MismatchedOrderTopNOperator
 
     private State state = State.NEEDS_INPUT;
 
-    private int totalPositions;
+    private long totalPositions;
 
     public MismatchedOrderTopNOperator(OperatorContext operatorContext, long count)
     {
@@ -104,7 +104,7 @@ public class MismatchedOrderTopNOperator
                 Page removedPage = pages.removeFirst();
                 totalPositions -= removedPage.getPositionCount();
                 if (totalPositions < count) {
-                    int reservedInRemovedPage = count - totalPositions;
+                    int reservedInRemovedPage = (int) (count - totalPositions);
                     Page remainingPages = removedPage.getRegion(removedPage.getPositionCount() - reservedInRemovedPage, reservedInRemovedPage);
                     totalPositions += remainingPages.getPositionCount();
                     pages.addLast(remainingPages);
