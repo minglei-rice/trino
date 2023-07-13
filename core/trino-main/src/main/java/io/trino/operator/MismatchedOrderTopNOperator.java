@@ -105,7 +105,7 @@ public class MismatchedOrderTopNOperator
                 totalPositions -= removedPage.getPositionCount();
                 if (totalPositions < count) {
                     int reservedInRemovedPage = count - totalPositions;
-                    Page remainingPages = removedPage.getRegion(reservedInRemovedPage, removedPage.getPositionCount() - reservedInRemovedPage);
+                    Page remainingPages = removedPage.getRegion(removedPage.getPositionCount() - reservedInRemovedPage, reservedInRemovedPage);
                     totalPositions += remainingPages.getPositionCount();
                     pages.addLast(remainingPages);
                 }
@@ -136,9 +136,7 @@ public class MismatchedOrderTopNOperator
         }
         else {
             // current page rows exceeds the number of counts, only a part of it can be reserved.
-            int positionOffset = page.getPositionCount() - count;
-            // reserve the needed rows.
-            Page remainingPage = page.getRegion(positionOffset, page.getPositionCount() - positionOffset);
+            Page remainingPage = page.getRegion(page.getPositionCount() - count, count);
             pages.clear();
             totalPositions = 0;
             pages.addLast(remainingPage);
