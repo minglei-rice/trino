@@ -130,17 +130,17 @@ public class MismatchedOrderTopNOperator
     public void addInput(Page page)
     {
         checkState(state == State.NEEDS_INPUT, "Operator is already finishing");
-        if (page.getPositionCount() <= count) {
-            pages.addLast(page);
-            totalPositions += page.getPositionCount();
-        }
-        else {
+        if (page.getPositionCount() > count) {
             // current page rows exceeds the number of counts, only a part of it can be reserved.
             Page remainingPage = page.getRegion(page.getPositionCount() - count, count);
             pages.clear();
             totalPositions = 0;
             pages.addLast(remainingPage);
             totalPositions += remainingPage.getPositionCount();
+        }
+        else {
+            pages.addLast(page);
+            totalPositions += page.getPositionCount();
         }
     }
 
