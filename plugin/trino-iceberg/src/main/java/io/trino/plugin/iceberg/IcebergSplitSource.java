@@ -296,12 +296,12 @@ public class IcebergSplitSource
     private CloseableIterable<Pair<FileScanTask, Optional<IcebergSplit>>> planTasks(IcebergTableHandle tableHandle, TableScan scan, boolean split)
     {
         if (planTransformedTask) {
-            return CloseableIterable.transform(scan.planTransformedTasks(this::toIcebergSplit, split && !tableHandle.isSort(), false),
+            return CloseableIterable.transform(scan.planTransformedTasks(this::toIcebergSplit, split, false),
                     task -> Pair.of(Iterables.getOnlyElement(task.files()), Optional.of(Iterables.getOnlyElement(task.transformedFiles()))));
         }
         else {
             CloseableIterable<FileScanTask> scanTasks = scan.planFiles();
-            if (split && !tableHandle.isSort()) {
+            if (split) {
                 scanTasks = TableScanUtil.splitFiles(scanTasks, tableScan.targetSplitSize());
             }
             return CloseableIterable.transform(scanTasks, t -> Pair.of(t, Optional.empty()));
