@@ -21,11 +21,19 @@ public class PartialSortApplicationResult<T>
 
     private final boolean canRewrite;
 
-    public PartialSortApplicationResult(T handle, boolean asc, boolean canRewrite)
+    private final String sortOrder;
+
+    public PartialSortApplicationResult(T handle, boolean asc, boolean canRewrite, String sortOrder)
     {
         this.handle = handle;
         this.asc = asc;
         this.canRewrite = canRewrite;
+        this.sortOrder = sortOrder;
+    }
+
+    public String getSortOrder()
+    {
+        return sortOrder;
     }
 
     public T getHandle()

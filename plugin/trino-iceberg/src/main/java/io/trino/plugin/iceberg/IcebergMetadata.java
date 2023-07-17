@@ -452,6 +452,9 @@ public class IcebergMetadata
         catch (TableNotFoundException e) {
             return Optional.empty();
         }
+        if (table.sortOrder().fields().isEmpty()) {
+            return Optional.empty();
+        }
         boolean allSorted = true;
         TupleDomain<IcebergColumnHandle> effectivePredicate =
                 icebergTableHandle.getUnenforcedPredicate().intersect(icebergTableHandle.getEnforcedPredicate());
@@ -467,11 +470,13 @@ public class IcebergMetadata
         catch (Throwable t) {
             throw new RuntimeException(t);
         }
-        if (table.sortOrder().fields().isEmpty()) {
-            return Optional.empty();
-        }
         SortField sortField = table.sortOrder().fields().get(0);
-        return Optional.of(new PartialSortApplicationResult<>(originalTableHandle.withSort(allSorted), sortField.direction() == SortDirection.ASC, allSorted));
+        return Optional.of(
+                new PartialSortApplicationResult<>(
+                        originalTableHandle.withSort(allSorted),
+                        sortField.direction() == SortDirection.ASC,
+                        allSorted,
+                        table.schema().findColumnName(sortField.sourceId())));
     }
 
     @Override

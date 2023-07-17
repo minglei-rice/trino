@@ -17,18 +17,18 @@ import io.trino.spi.Page;
 import io.trino.spi.block.Block;
 import io.trino.sql.planner.plan.PlanNodeId;
 
+import java.util.ArrayDeque;
 import java.util.Iterator;
-import java.util.LinkedList;
 
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.base.Verify.verifyNotNull;
 import static java.util.Objects.requireNonNull;
 
-public class MismatchedOrderTopNOperator
+public class SortedRecordTailOperator
         implements Operator
 {
-    public static class MismatchedOrderTopNOperatorFactory
+    public static class SortedRecordTailOperatorFactory
             implements OperatorFactory
     {
         private final int operatorId;
@@ -36,7 +36,7 @@ public class MismatchedOrderTopNOperator
         private final long count;
         private boolean closed;
 
-        public MismatchedOrderTopNOperatorFactory(int operatorId, PlanNodeId planNodeId, long count)
+        public SortedRecordTailOperatorFactory(int operatorId, PlanNodeId planNodeId, long count)
         {
             this.operatorId = operatorId;
             this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
@@ -47,8 +47,8 @@ public class MismatchedOrderTopNOperator
         public Operator createOperator(DriverContext driverContext)
         {
             checkState(!closed, "Factory is already closed");
-            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, MismatchedOrderTopNOperator.class.getSimpleName());
-            return new MismatchedOrderTopNOperator(operatorContext, count);
+            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, SortedRecordTailOperator.class.getSimpleName());
+            return new SortedRecordTailOperator(operatorContext, count);
         }
 
         @Override
@@ -60,7 +60,7 @@ public class MismatchedOrderTopNOperator
         @Override
         public OperatorFactory duplicate()
         {
-            return new MismatchedOrderTopNOperatorFactory(operatorId, planNodeId, count);
+            return new SortedRecordTailOperatorFactory(operatorId, planNodeId, count);
         }
     }
 
@@ -72,16 +72,16 @@ public class MismatchedOrderTopNOperator
     }
 
     private final OperatorContext operatorContext;
-    private final int count;
-    private LinkedList<Page> pages = new LinkedList<>();
 
+    // If the counts is very large, pages will consume more memory
+    private final int count;
+    private ArrayDeque<Page> pages = new ArrayDeque<>();
+    private long totalPositions;
     private Iterator<Page> pageIterator;
 
     private State state = State.NEEDS_INPUT;
 
-    private long totalPositions;
-
-    public MismatchedOrderTopNOperator(OperatorContext operatorContext, long count)
+    public SortedRecordTailOperator(OperatorContext operatorContext, long count)
     {
         this.operatorContext = requireNonNull(operatorContext, "operatorContext is null");
         checkArgument(count >= 0, "count must be at least zero");
@@ -92,6 +92,11 @@ public class MismatchedOrderTopNOperator
     public OperatorContext getOperatorContext()
     {
         return operatorContext;
+    }
+
+    private Page getPageLastRows(Page page, int positionOffset, int length)
+    {
+        return page.getRegion(positionOffset, length);
     }
 
     @Override
@@ -105,7 +110,7 @@ public class MismatchedOrderTopNOperator
                 totalPositions -= removedPage.getPositionCount();
                 if (totalPositions < count) {
                     int reservedInRemovedPage = (int) (count - totalPositions);
-                    Page remainingPages = removedPage.getRegion(removedPage.getPositionCount() - reservedInRemovedPage, reservedInRemovedPage);
+                    Page remainingPages = getPageLastRows(removedPage, removedPage.getPositionCount() - reservedInRemovedPage, reservedInRemovedPage);
                     totalPositions += remainingPages.getPositionCount();
                     pages.addLast(remainingPages);
                 }
@@ -131,12 +136,10 @@ public class MismatchedOrderTopNOperator
     {
         checkState(state == State.NEEDS_INPUT, "Operator is already finishing");
         if (page.getPositionCount() > count) {
-            // current page rows exceeds the number of counts, only a part of it can be reserved.
-            Page remainingPage = page.getRegion(page.getPositionCount() - count, count);
+            Page remainingPage = getPageLastRows(page, page.getPositionCount() - count, count);
             pages.clear();
-            totalPositions = 0;
             pages.addLast(remainingPage);
-            totalPositions += remainingPage.getPositionCount();
+            totalPositions = remainingPage.getPositionCount();
         }
         else {
             pages.addLast(page);

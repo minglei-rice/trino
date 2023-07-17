@@ -171,7 +171,6 @@ import io.trino.sql.planner.iterative.rule.PushLimitThroughUnion;
 import io.trino.sql.planner.iterative.rule.PushOffsetThroughProject;
 import io.trino.sql.planner.iterative.rule.PushPartialAggregationThroughExchange;
 import io.trino.sql.planner.iterative.rule.PushPartialAggregationThroughJoin;
-import io.trino.sql.planner.iterative.rule.PushPartialSortIntoTableScan;
 import io.trino.sql.planner.iterative.rule.PushPartialTopNIntoTableScan;
 import io.trino.sql.planner.iterative.rule.PushPredicateIntoTableScan;
 import io.trino.sql.planner.iterative.rule.PushPredicateThroughProjectIntoRowNumber;
@@ -976,14 +975,6 @@ public class PlanOptimizers
         builder.add(new AddLocalExchanges(plannerContext, typeAnalyzer));
 
         // must run after AddLocalExchanges.
-        builder.add(
-                new IterativeOptimizer(
-                        plannerContext,
-                        ruleStats,
-                        statsCalculator,
-                        costCalculator,
-                        ImmutableSet.of(new PushPartialSortIntoTableScan(plannerContext))));
-
         builder.add(
                 new IterativeOptimizer(
                         plannerContext,

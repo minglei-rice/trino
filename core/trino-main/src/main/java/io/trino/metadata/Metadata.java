@@ -536,7 +536,7 @@ public interface Metadata
             List<TableHandle> corrTables);
 
     /**
-     * Attempt to push down partial sort or top n.
+     * Attempt to push down partial sort or top n to table scan.
      */
     default Optional<PartialSortApplicationResult<TableHandle>> applyPartialSort(Session session, TableHandle tableHandle)
     {

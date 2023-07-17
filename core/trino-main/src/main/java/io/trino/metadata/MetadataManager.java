@@ -468,7 +468,8 @@ public final class MetadataManager
                 new PartialSortApplicationResult<>(
                         new TableHandle(catalogHandle, result.getHandle(), tableHandle.getTransaction()),
                         result.isAsc(),
-                        result.isCanRewrite()));
+                        result.isCanRewrite(),
+                        result.getSortOrder()));
     }
 
     @Override

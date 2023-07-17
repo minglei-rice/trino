@@ -44,7 +44,6 @@ import io.trino.sql.planner.plan.LimitNode;
 import io.trino.sql.planner.plan.MarkDistinctNode;
 import io.trino.sql.planner.plan.MergeProcessorNode;
 import io.trino.sql.planner.plan.MergeWriterNode;
-import io.trino.sql.planner.plan.MismatchedOrderTopNNode;
 import io.trino.sql.planner.plan.OffsetNode;
 import io.trino.sql.planner.plan.OutputNode;
 import io.trino.sql.planner.plan.PatternRecognitionNode;
@@ -60,6 +59,7 @@ import io.trino.sql.planner.plan.SemiJoinNode;
 import io.trino.sql.planner.plan.SetOperationNode;
 import io.trino.sql.planner.plan.SimpleTableExecuteNode;
 import io.trino.sql.planner.plan.SortNode;
+import io.trino.sql.planner.plan.SortedRecordTailNode;
 import io.trino.sql.planner.plan.SpatialJoinNode;
 import io.trino.sql.planner.plan.StatisticAggregationsDescriptor;
 import io.trino.sql.planner.plan.StatisticsWriterNode;
@@ -419,7 +419,7 @@ public final class ValidateDependenciesChecker
         }
 
         @Override
-        public Void visitMismatchedOrderTopN(MismatchedOrderTopNNode node, Set<Symbol> boundSymbols)
+        public Void visitSortedRecordTail(SortedRecordTailNode node, Set<Symbol> boundSymbols)
         {
             PlanNode source = node.getSource();
             source.accept(this, boundSymbols); // visit child

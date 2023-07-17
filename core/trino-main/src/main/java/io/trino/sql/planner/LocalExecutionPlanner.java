@@ -68,7 +68,6 @@ import io.trino.operator.MarkDistinctOperator.MarkDistinctOperatorFactory;
 import io.trino.operator.MergeOperator.MergeOperatorFactory;
 import io.trino.operator.MergeProcessorOperator;
 import io.trino.operator.MergeWriterOperator.MergeWriterOperatorFactory;
-import io.trino.operator.MismatchedOrderTopNOperator.MismatchedOrderTopNOperatorFactory;
 import io.trino.operator.OperatorFactories;
 import io.trino.operator.OperatorFactories.JoinOperatorType;
 import io.trino.operator.OperatorFactory;
@@ -84,6 +83,7 @@ import io.trino.operator.ScanFilterAndProjectOperator.ScanFilterAndProjectOperat
 import io.trino.operator.SetBuilderOperator.SetBuilderOperatorFactory;
 import io.trino.operator.SetBuilderOperator.SetSupplier;
 import io.trino.operator.SimpleTableExecuteOperator.SimpleTableExecuteOperatorOperatorFactory;
+import io.trino.operator.SortedRecordTailOperator.SortedRecordTailOperatorFactory;
 import io.trino.operator.SourceOperatorFactory;
 import io.trino.operator.SpatialIndexBuilderOperator.SpatialIndexBuilderOperatorFactory;
 import io.trino.operator.SpatialIndexBuilderOperator.SpatialPredicate;
@@ -203,7 +203,6 @@ import io.trino.sql.planner.plan.LimitNode;
 import io.trino.sql.planner.plan.MarkDistinctNode;
 import io.trino.sql.planner.plan.MergeProcessorNode;
 import io.trino.sql.planner.plan.MergeWriterNode;
-import io.trino.sql.planner.plan.MismatchedOrderTopNNode;
 import io.trino.sql.planner.plan.OutputNode;
 import io.trino.sql.planner.plan.PatternRecognitionNode;
 import io.trino.sql.planner.plan.PatternRecognitionNode.Measure;
@@ -218,6 +217,7 @@ import io.trino.sql.planner.plan.SampleNode;
 import io.trino.sql.planner.plan.SemiJoinNode;
 import io.trino.sql.planner.plan.SimpleTableExecuteNode;
 import io.trino.sql.planner.plan.SortNode;
+import io.trino.sql.planner.plan.SortedRecordTailNode;
 import io.trino.sql.planner.plan.SpatialJoinNode;
 import io.trino.sql.planner.plan.StatisticAggregationsDescriptor;
 import io.trino.sql.planner.plan.StatisticsWriterNode;
@@ -1737,10 +1737,10 @@ public class LocalExecutionPlanner
         }
 
         @Override
-        public PhysicalOperation visitMismatchedOrderTopN(MismatchedOrderTopNNode node, LocalExecutionPlanContext context)
+        public PhysicalOperation visitSortedRecordTail(SortedRecordTailNode node, LocalExecutionPlanContext context)
         {
             PhysicalOperation source = node.getSource().accept(this, context);
-            OperatorFactory operatorFactory = new MismatchedOrderTopNOperatorFactory(context.getNextOperatorId(), node.getId(), node.getCount());
+            OperatorFactory operatorFactory = new SortedRecordTailOperatorFactory(context.getNextOperatorId(), node.getId(), node.getCount());
             return new PhysicalOperation(operatorFactory, source.getLayout(), context, source);
         }
 

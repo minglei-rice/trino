@@ -37,7 +37,7 @@ import static java.util.Objects.requireNonNull;
         @JsonSubTypes.Type(value = RowNumberNode.class, name = "rowNumber"),
         @JsonSubTypes.Type(value = TopNRankingNode.class, name = "topnRanking"),
         @JsonSubTypes.Type(value = LimitNode.class, name = "limit"),
-        @JsonSubTypes.Type(value = MismatchedOrderTopNNode.class, name = "misMatchedOrderTopN"),
+        @JsonSubTypes.Type(value = SortedRecordTailNode.class, name = "sortedRecordTail"),
         @JsonSubTypes.Type(value = DistinctLimitNode.class, name = "distinctlimit"),
         @JsonSubTypes.Type(value = TopNNode.class, name = "topn"),
         @JsonSubTypes.Type(value = SampleNode.class, name = "sample"),

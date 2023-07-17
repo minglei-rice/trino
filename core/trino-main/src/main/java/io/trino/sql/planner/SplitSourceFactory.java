@@ -42,7 +42,6 @@ import io.trino.sql.planner.plan.LimitNode;
 import io.trino.sql.planner.plan.MarkDistinctNode;
 import io.trino.sql.planner.plan.MergeProcessorNode;
 import io.trino.sql.planner.plan.MergeWriterNode;
-import io.trino.sql.planner.plan.MismatchedOrderTopNNode;
 import io.trino.sql.planner.plan.OutputNode;
 import io.trino.sql.planner.plan.PatternRecognitionNode;
 import io.trino.sql.planner.plan.PlanNode;
@@ -55,6 +54,7 @@ import io.trino.sql.planner.plan.RowNumberNode;
 import io.trino.sql.planner.plan.SampleNode;
 import io.trino.sql.planner.plan.SemiJoinNode;
 import io.trino.sql.planner.plan.SortNode;
+import io.trino.sql.planner.plan.SortedRecordTailNode;
 import io.trino.sql.planner.plan.SpatialJoinNode;
 import io.trino.sql.planner.plan.StatisticsWriterNode;
 import io.trino.sql.planner.plan.TableDeleteNode;
@@ -363,7 +363,7 @@ public class SplitSourceFactory
         }
 
         @Override
-        public Map<PlanNodeId, SplitSource> visitMismatchedOrderTopN(MismatchedOrderTopNNode node, Void context)
+        public Map<PlanNodeId, SplitSource> visitSortedRecordTail(SortedRecordTailNode node, Void context)
         {
             return node.getSource().accept(this, context);
         }

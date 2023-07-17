@@ -24,16 +24,16 @@ import javax.annotation.concurrent.Immutable;
 import java.util.List;
 
 @Immutable
-public class MismatchedOrderTopNNode
+public class SortedRecordTailNode
         extends PlanNode
 {
     private final PlanNode source;
     private final long count;
 
     @JsonCreator
-    public MismatchedOrderTopNNode(@JsonProperty("id") PlanNodeId id,
-                                   @JsonProperty("source") PlanNode source,
-                                   @JsonProperty("count") long count)
+    public SortedRecordTailNode(@JsonProperty("id") PlanNodeId id,
+                                @JsonProperty("source") PlanNode source,
+                                @JsonProperty("count") long count)
     {
         super(id);
         this.source = source;
@@ -67,12 +67,12 @@ public class MismatchedOrderTopNNode
     @Override
     public <R, C> R accept(PlanVisitor<R, C> visitor, C context)
     {
-        return visitor.visitMismatchedOrderTopN(this, context);
+        return visitor.visitSortedRecordTail(this, context);
     }
 
     @Override
     public PlanNode replaceChildren(List<PlanNode> newChildren)
     {
-        return new MismatchedOrderTopNNode(getId(), Iterables.getOnlyElement(newChildren), count);
+        return new SortedRecordTailNode(getId(), Iterables.getOnlyElement(newChildren), count);
     }
 }

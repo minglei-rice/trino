@@ -79,7 +79,6 @@ import io.trino.sql.planner.plan.LimitNode;
 import io.trino.sql.planner.plan.MarkDistinctNode;
 import io.trino.sql.planner.plan.MergeProcessorNode;
 import io.trino.sql.planner.plan.MergeWriterNode;
-import io.trino.sql.planner.plan.MismatchedOrderTopNNode;
 import io.trino.sql.planner.plan.OffsetNode;
 import io.trino.sql.planner.plan.OutputNode;
 import io.trino.sql.planner.plan.PatternRecognitionNode;
@@ -96,6 +95,7 @@ import io.trino.sql.planner.plan.SampleNode;
 import io.trino.sql.planner.plan.SemiJoinNode;
 import io.trino.sql.planner.plan.SimpleTableExecuteNode;
 import io.trino.sql.planner.plan.SortNode;
+import io.trino.sql.planner.plan.SortedRecordTailNode;
 import io.trino.sql.planner.plan.SpatialJoinNode;
 import io.trino.sql.planner.plan.StatisticAggregations;
 import io.trino.sql.planner.plan.StatisticAggregationsDescriptor;
@@ -740,10 +740,10 @@ public class PlanPrinter
         }
 
         @Override
-        public Void visitMismatchedOrderTopN(MismatchedOrderTopNNode node, Void context)
+        public Void visitSortedRecordTail(SortedRecordTailNode node, Void context)
         {
             addNode(node,
-                    "MismatchedOrderTopN",
+                    "SortedRecordTail",
                     ImmutableMap.of(
                             "count", String.valueOf(node.getCount())));
             return processChildren(node, context);
