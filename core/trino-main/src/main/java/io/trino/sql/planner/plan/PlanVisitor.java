@@ -44,7 +44,7 @@ public abstract class PlanVisitor<R, C>
         return visitPlan(node, context);
     }
 
-    public R visitSortedRecordTail(SortedRecordTailNode node, C context)
+    public R visitReversedTopN(ReversedTopNNode node, C context)
     {
         return visitPlan(node, context);
     }

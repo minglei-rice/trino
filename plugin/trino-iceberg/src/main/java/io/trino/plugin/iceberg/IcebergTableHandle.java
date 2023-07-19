@@ -84,7 +84,7 @@ public class IcebergTableHandle
     // used for tableHandle without agg index file
     private int aggIndexId;
 
-    private boolean sort;
+    private final boolean sort;
 
     @JsonCreator
     public static IcebergTableHandle fromJsonForDeserializationOnly(

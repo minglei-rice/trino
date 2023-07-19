@@ -90,12 +90,12 @@ import io.trino.sql.planner.plan.PlanVisitor;
 import io.trino.sql.planner.plan.ProjectNode;
 import io.trino.sql.planner.plan.RefreshMaterializedViewNode;
 import io.trino.sql.planner.plan.RemoteSourceNode;
+import io.trino.sql.planner.plan.ReversedTopNNode;
 import io.trino.sql.planner.plan.RowNumberNode;
 import io.trino.sql.planner.plan.SampleNode;
 import io.trino.sql.planner.plan.SemiJoinNode;
 import io.trino.sql.planner.plan.SimpleTableExecuteNode;
 import io.trino.sql.planner.plan.SortNode;
-import io.trino.sql.planner.plan.SortedRecordTailNode;
 import io.trino.sql.planner.plan.SpatialJoinNode;
 import io.trino.sql.planner.plan.StatisticAggregations;
 import io.trino.sql.planner.plan.StatisticAggregationsDescriptor;
@@ -740,10 +740,10 @@ public class PlanPrinter
         }
 
         @Override
-        public Void visitSortedRecordTail(SortedRecordTailNode node, Void context)
+        public Void visitReversedTopN(ReversedTopNNode node, Void context)
         {
             addNode(node,
-                    "SortedRecordTail",
+                    "ReversedTopN",
                     ImmutableMap.of(
                             "count", String.valueOf(node.getCount())));
             return processChildren(node, context);

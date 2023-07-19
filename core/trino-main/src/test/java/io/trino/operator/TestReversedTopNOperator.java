@@ -14,7 +14,7 @@
 package io.trino.operator;
 
 import com.google.common.collect.ImmutableList;
-import io.trino.operator.SortedRecordTailOperator.SortedRecordTailOperatorFactory;
+import io.trino.operator.ReversedTopNOperator.ReversedTopNOperatorFactory;
 import io.trino.spi.Page;
 import io.trino.sql.planner.plan.PlanNodeId;
 import org.testng.annotations.AfterMethod;
@@ -34,7 +34,7 @@ import static java.util.concurrent.Executors.newCachedThreadPool;
 import static java.util.concurrent.Executors.newScheduledThreadPool;
 
 @Test(singleThreaded = true)
-public class TestSortedRecordTailOperator
+public class TestReversedTopNOperator
 {
     private ExecutorService executor;
     private ScheduledExecutorService scheduledExecutor;
@@ -65,7 +65,7 @@ public class TestSortedRecordTailOperator
                 .addSequencePage(2, 4)
                 .addSequencePage(2, 6)
                 .build();
-        OperatorFactory operatorFactory = new SortedRecordTailOperatorFactory(0, new PlanNodeId("test"), 2);
+        OperatorFactory operatorFactory = new ReversedTopNOperatorFactory(0, new PlanNodeId("test"), 2);
 
         List<Page> expected = rowPagesBuilder(BIGINT).addSequencePage(2, 6).build();
 

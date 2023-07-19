@@ -78,12 +78,12 @@ import io.trino.operator.PagesSpatialIndexFactory;
 import io.trino.operator.PartitionFunction;
 import io.trino.operator.RefreshMaterializedViewOperator.RefreshMaterializedViewOperatorFactory;
 import io.trino.operator.RetryPolicy;
+import io.trino.operator.ReversedTopNOperator.ReversedTopNOperatorFactory;
 import io.trino.operator.RowNumberOperator;
 import io.trino.operator.ScanFilterAndProjectOperator.ScanFilterAndProjectOperatorFactory;
 import io.trino.operator.SetBuilderOperator.SetBuilderOperatorFactory;
 import io.trino.operator.SetBuilderOperator.SetSupplier;
 import io.trino.operator.SimpleTableExecuteOperator.SimpleTableExecuteOperatorOperatorFactory;
-import io.trino.operator.SortedRecordTailOperator.SortedRecordTailOperatorFactory;
 import io.trino.operator.SourceOperatorFactory;
 import io.trino.operator.SpatialIndexBuilderOperator.SpatialIndexBuilderOperatorFactory;
 import io.trino.operator.SpatialIndexBuilderOperator.SpatialPredicate;
@@ -212,12 +212,12 @@ import io.trino.sql.planner.plan.PlanVisitor;
 import io.trino.sql.planner.plan.ProjectNode;
 import io.trino.sql.planner.plan.RefreshMaterializedViewNode;
 import io.trino.sql.planner.plan.RemoteSourceNode;
+import io.trino.sql.planner.plan.ReversedTopNNode;
 import io.trino.sql.planner.plan.RowNumberNode;
 import io.trino.sql.planner.plan.SampleNode;
 import io.trino.sql.planner.plan.SemiJoinNode;
 import io.trino.sql.planner.plan.SimpleTableExecuteNode;
 import io.trino.sql.planner.plan.SortNode;
-import io.trino.sql.planner.plan.SortedRecordTailNode;
 import io.trino.sql.planner.plan.SpatialJoinNode;
 import io.trino.sql.planner.plan.StatisticAggregationsDescriptor;
 import io.trino.sql.planner.plan.StatisticsWriterNode;
@@ -1737,10 +1737,10 @@ public class LocalExecutionPlanner
         }
 
         @Override
-        public PhysicalOperation visitSortedRecordTail(SortedRecordTailNode node, LocalExecutionPlanContext context)
+        public PhysicalOperation visitReversedTopN(ReversedTopNNode node, LocalExecutionPlanContext context)
         {
             PhysicalOperation source = node.getSource().accept(this, context);
-            OperatorFactory operatorFactory = new SortedRecordTailOperatorFactory(context.getNextOperatorId(), node.getId(), node.getCount());
+            OperatorFactory operatorFactory = new ReversedTopNOperatorFactory(context.getNextOperatorId(), node.getId(), node.getCount());
             return new PhysicalOperation(operatorFactory, source.getLayout(), context, source);
         }
 

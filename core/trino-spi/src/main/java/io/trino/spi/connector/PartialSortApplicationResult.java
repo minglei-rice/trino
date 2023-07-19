@@ -19,21 +19,13 @@ public class PartialSortApplicationResult<T>
 
     private final boolean asc;
 
-    private final boolean canRewrite;
+    private final boolean allSorted;
 
-    private final String sortOrder;
-
-    public PartialSortApplicationResult(T handle, boolean asc, boolean canRewrite, String sortOrder)
+    public PartialSortApplicationResult(T handle, boolean asc, boolean allSorted)
     {
         this.handle = handle;
         this.asc = asc;
-        this.canRewrite = canRewrite;
-        this.sortOrder = sortOrder;
-    }
-
-    public String getSortOrder()
-    {
-        return sortOrder;
+        this.allSorted = allSorted;
     }
 
     public T getHandle()
@@ -46,8 +38,8 @@ public class PartialSortApplicationResult<T>
         return asc;
     }
 
-    public boolean isCanRewrite()
+    public boolean allSorted()
     {
-        return canRewrite;
+        return allSorted;
     }
 }

@@ -1401,7 +1401,8 @@ public interface ConnectorMetadata
      */
     default Optional<PartialSortApplicationResult<ConnectorTableHandle>> applyPartialSort(
             ConnectorSession session,
-            ConnectorTableHandle tableHandle)
+            ConnectorTableHandle tableHandle,
+            ColumnHandle columnHandle)
     {
         return Optional.empty();
     }

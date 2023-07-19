@@ -538,7 +538,7 @@ public interface Metadata
     /**
      * Attempt to push down partial sort or top n to table scan.
      */
-    default Optional<PartialSortApplicationResult<TableHandle>> applyPartialSort(Session session, TableHandle tableHandle)
+    default Optional<PartialSortApplicationResult<TableHandle>> applyPartialSort(Session session, TableHandle tableHandle, ColumnHandle columnHandle)
     {
         return Optional.empty();
     }

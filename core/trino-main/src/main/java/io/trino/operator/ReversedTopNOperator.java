@@ -25,10 +25,10 @@ import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.base.Verify.verifyNotNull;
 import static java.util.Objects.requireNonNull;
 
-public class SortedRecordTailOperator
+public class ReversedTopNOperator
         implements Operator
 {
-    public static class SortedRecordTailOperatorFactory
+    public static class ReversedTopNOperatorFactory
             implements OperatorFactory
     {
         private final int operatorId;
@@ -36,7 +36,7 @@ public class SortedRecordTailOperator
         private final long count;
         private boolean closed;
 
-        public SortedRecordTailOperatorFactory(int operatorId, PlanNodeId planNodeId, long count)
+        public ReversedTopNOperatorFactory(int operatorId, PlanNodeId planNodeId, long count)
         {
             this.operatorId = operatorId;
             this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
@@ -47,8 +47,8 @@ public class SortedRecordTailOperator
         public Operator createOperator(DriverContext driverContext)
         {
             checkState(!closed, "Factory is already closed");
-            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, SortedRecordTailOperator.class.getSimpleName());
-            return new SortedRecordTailOperator(operatorContext, count);
+            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, ReversedTopNOperator.class.getSimpleName());
+            return new ReversedTopNOperator(operatorContext, count);
         }
 
         @Override
@@ -60,7 +60,7 @@ public class SortedRecordTailOperator
         @Override
         public OperatorFactory duplicate()
         {
-            return new SortedRecordTailOperatorFactory(operatorId, planNodeId, count);
+            return new ReversedTopNOperatorFactory(operatorId, planNodeId, count);
         }
     }
 
@@ -81,7 +81,7 @@ public class SortedRecordTailOperator
 
     private State state = State.NEEDS_INPUT;
 
-    public SortedRecordTailOperator(OperatorContext operatorContext, long count)
+    public ReversedTopNOperator(OperatorContext operatorContext, long count)
     {
         this.operatorContext = requireNonNull(operatorContext, "operatorContext is null");
         checkArgument(count >= 0, "count must be at least zero");

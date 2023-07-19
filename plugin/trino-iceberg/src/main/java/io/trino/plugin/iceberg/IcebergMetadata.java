@@ -438,7 +438,10 @@ public class IcebergMetadata
     }
 
     @Override
-    public Optional<PartialSortApplicationResult<ConnectorTableHandle>> applyPartialSort(ConnectorSession session, ConnectorTableHandle tableHandle)
+    public Optional<PartialSortApplicationResult<ConnectorTableHandle>> applyPartialSort(
+            ConnectorSession session,
+            ConnectorTableHandle tableHandle,
+            ColumnHandle columnHandle)
     {
         IcebergTableHandle originalTableHandle = (IcebergTableHandle) tableHandle;
         if (originalTableHandle.isSort()) {
@@ -448,11 +451,16 @@ public class IcebergMetadata
         Table table;
         try {
             table = catalog.loadTable(session, icebergTableHandle.getSchemaTableName());
+            if (table.sortOrder().fields().isEmpty()) {
+                return Optional.empty();
+            }
         }
         catch (TableNotFoundException e) {
             return Optional.empty();
         }
-        if (table.sortOrder().fields().isEmpty()) {
+        IcebergColumnHandle icebergColumnHandle = (IcebergColumnHandle) columnHandle;
+        SortField sortField = table.sortOrder().fields().get(0);
+        if (!icebergColumnHandle.getName().equalsIgnoreCase(table.schema().findColumnName(sortField.sourceId()))) {
             return Optional.empty();
         }
         boolean allSorted = true;
@@ -461,7 +469,7 @@ public class IcebergMetadata
         try (CloseableIterable<FileScanTask> fileScanTasks = table.newScan().filter(toIcebergExpression(effectivePredicate)).planFiles()) {
             for (FileScanTask scanTask : fileScanTasks) {
                 DataFile file = scanTask.file();
-                if (file.sortOrderId() != 1) {
+                if (file.sortOrderId() == 0) {
                     allSorted = false;
                     break;
                 }
@@ -470,13 +478,11 @@ public class IcebergMetadata
         catch (Throwable t) {
             throw new RuntimeException(t);
         }
-        SortField sortField = table.sortOrder().fields().get(0);
         return Optional.of(
                 new PartialSortApplicationResult<>(
                         originalTableHandle.withSort(allSorted),
                         sortField.direction() == SortDirection.ASC,
-                        allSorted,
-                        table.schema().findColumnName(sortField.sourceId())));
+                        allSorted));
     }
 
     @Override

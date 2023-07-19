@@ -50,11 +50,11 @@ import io.trino.sql.planner.plan.PlanVisitor;
 import io.trino.sql.planner.plan.ProjectNode;
 import io.trino.sql.planner.plan.RefreshMaterializedViewNode;
 import io.trino.sql.planner.plan.RemoteSourceNode;
+import io.trino.sql.planner.plan.ReversedTopNNode;
 import io.trino.sql.planner.plan.RowNumberNode;
 import io.trino.sql.planner.plan.SampleNode;
 import io.trino.sql.planner.plan.SemiJoinNode;
 import io.trino.sql.planner.plan.SortNode;
-import io.trino.sql.planner.plan.SortedRecordTailNode;
 import io.trino.sql.planner.plan.SpatialJoinNode;
 import io.trino.sql.planner.plan.StatisticsWriterNode;
 import io.trino.sql.planner.plan.TableDeleteNode;
@@ -363,7 +363,7 @@ public class SplitSourceFactory
         }
 
         @Override
-        public Map<PlanNodeId, SplitSource> visitSortedRecordTail(SortedRecordTailNode node, Void context)
+        public Map<PlanNodeId, SplitSource> visitReversedTopN(ReversedTopNNode node, Void context)
         {
             return node.getSource().accept(this, context);
         }
