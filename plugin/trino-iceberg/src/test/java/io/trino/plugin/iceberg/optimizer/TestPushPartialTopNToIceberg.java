@@ -104,7 +104,7 @@ public class TestPushPartialTopNToIceberg
         Table table = loadIcebergTable("t1");
         table.replaceSortOrder().asc("f1", NullOrder.NULLS_FIRST).commit();
         DataFile dataFile = DataFiles.builder(table.spec())
-                .withPath(table.location() + File.separator + "aggIndex")
+                .withPath(table.location())
                 .withFormat(FileFormat.ORC)
                 .withRecordCount(100)
                 .withFileSizeInBytes(table.newScan().targetSplitSize() * 10)
