@@ -136,7 +136,7 @@ public class PushPartialTopNIntoTableScan
             return Result.empty();
         }
         Optional<PartialSortApplicationResult<TableHandle>> partialSortApplicationResult =
-                metadata.applyPartialSort(session, table, visitor.getColumnHandle());
+                metadata.applyPartialSort(session, table, visitor.getColumnHandleSortOrderMap());
         if (partialSortApplicationResult.isEmpty() || !partialSortApplicationResult.get().allSorted()) {
             return Result.empty();
         }
@@ -229,17 +229,18 @@ public class PushPartialTopNIntoTableScan
 
         private Map<Symbol, ColumnHandle> assignments;
 
-        private ColumnHandle columnHandle;
+        private final Map<ColumnHandle, SortOrder> columnHandleSortOrderMap;
 
         private Visitor(Lookup lookup)
         {
             this.lookup = lookup;
             this.assignments = new HashMap<>();
+            this.columnHandleSortOrderMap = new HashMap<>();
         }
 
-        public ColumnHandle getColumnHandle()
+        public Map<ColumnHandle, SortOrder> getColumnHandleSortOrderMap()
         {
-            return columnHandle;
+            return columnHandleSortOrderMap;
         }
 
         @Override
@@ -251,10 +252,9 @@ public class PushPartialTopNIntoTableScan
                 return false;
             }
             Symbol symbol = node.getOrderingScheme().getOrderBy().get(0);
-            columnHandle = assignments.get(symbol);
             SortOrder ordering = node.getOrderingScheme().getOrdering(symbol);
-            // iceberg sort order defaults to null last
-            return !ordering.isNullsFirst();
+            columnHandleSortOrderMap.put(assignments.get(symbol), ordering);
+            return true;
         }
 
         @Override

@@ -1402,7 +1402,7 @@ public interface ConnectorMetadata
     default Optional<PartialSortApplicationResult<ConnectorTableHandle>> applyPartialSort(
             ConnectorSession session,
             ConnectorTableHandle tableHandle,
-            ColumnHandle columnHandle)
+            Map<ColumnHandle, SortOrder> columnHandleSortOrderMap)
     {
         return Optional.empty();
     }

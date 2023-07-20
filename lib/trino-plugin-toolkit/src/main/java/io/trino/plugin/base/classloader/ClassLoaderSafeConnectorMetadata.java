@@ -60,6 +60,7 @@ import io.trino.spi.connector.SampleType;
 import io.trino.spi.connector.SchemaTableName;
 import io.trino.spi.connector.SchemaTablePrefix;
 import io.trino.spi.connector.SortItem;
+import io.trino.spi.connector.SortOrder;
 import io.trino.spi.connector.SystemTable;
 import io.trino.spi.connector.TableColumnsMetadata;
 import io.trino.spi.connector.TableFunctionApplicationResult;
@@ -207,10 +208,10 @@ public class ClassLoaderSafeConnectorMetadata
     public Optional<PartialSortApplicationResult<ConnectorTableHandle>> applyPartialSort(
             ConnectorSession session,
             ConnectorTableHandle tableHandle,
-            ColumnHandle columnHandle)
+            Map<ColumnHandle, SortOrder> columnHandleSortOrderMap)
     {
         try (ThreadContextClassLoader ignored = new ThreadContextClassLoader(classLoader)) {
-            return delegate.applyPartialSort(session, tableHandle, columnHandle);
+            return delegate.applyPartialSort(session, tableHandle, columnHandleSortOrderMap);
         }
     }
 

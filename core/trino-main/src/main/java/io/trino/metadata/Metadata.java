@@ -44,6 +44,7 @@ import io.trino.spi.connector.RowChangeParadigm;
 import io.trino.spi.connector.SampleApplicationResult;
 import io.trino.spi.connector.SampleType;
 import io.trino.spi.connector.SortItem;
+import io.trino.spi.connector.SortOrder;
 import io.trino.spi.connector.SystemTable;
 import io.trino.spi.connector.TableColumnsMetadata;
 import io.trino.spi.connector.TableFunctionApplicationResult;
@@ -538,7 +539,10 @@ public interface Metadata
     /**
      * Attempt to push down partial sort or top n to table scan.
      */
-    default Optional<PartialSortApplicationResult<TableHandle>> applyPartialSort(Session session, TableHandle tableHandle, ColumnHandle columnHandle)
+    default Optional<PartialSortApplicationResult<TableHandle>> applyPartialSort(
+            Session session,
+            TableHandle tableHandle,
+            Map<ColumnHandle, SortOrder> columnHandleSortOrderMap)
     {
         return Optional.empty();
     }

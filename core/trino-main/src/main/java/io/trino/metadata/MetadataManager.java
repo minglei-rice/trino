@@ -78,6 +78,7 @@ import io.trino.spi.connector.SampleType;
 import io.trino.spi.connector.SchemaTableName;
 import io.trino.spi.connector.SchemaTablePrefix;
 import io.trino.spi.connector.SortItem;
+import io.trino.spi.connector.SortOrder;
 import io.trino.spi.connector.SystemTable;
 import io.trino.spi.connector.TableColumnsMetadata;
 import io.trino.spi.connector.TableFunctionApplicationResult;
@@ -455,12 +456,12 @@ public final class MetadataManager
     }
 
     @Override
-    public Optional<PartialSortApplicationResult<TableHandle>> applyPartialSort(Session session, TableHandle tableHandle, ColumnHandle columnHandle)
+    public Optional<PartialSortApplicationResult<TableHandle>> applyPartialSort(Session session, TableHandle tableHandle, Map<ColumnHandle, SortOrder> columnHandleSortOrderMap)
     {
         CatalogHandle catalogHandle = tableHandle.getCatalogHandle();
         ConnectorMetadata metadata = getMetadata(session, catalogHandle);
         Optional<PartialSortApplicationResult<ConnectorTableHandle>> sortApplicationResult =
-                metadata.applyPartialSort(session.toConnectorSession(catalogHandle), tableHandle.getConnectorHandle(), columnHandle);
+                metadata.applyPartialSort(session.toConnectorSession(catalogHandle), tableHandle.getConnectorHandle(), columnHandleSortOrderMap);
         if (sortApplicationResult.isEmpty()) {
             return Optional.empty();
         }

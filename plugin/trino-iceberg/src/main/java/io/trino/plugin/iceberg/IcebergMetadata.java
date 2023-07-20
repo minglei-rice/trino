@@ -88,6 +88,7 @@ import io.trino.spi.connector.RetryMode;
 import io.trino.spi.connector.RowChangeParadigm;
 import io.trino.spi.connector.SchemaTableName;
 import io.trino.spi.connector.SchemaTablePrefix;
+import io.trino.spi.connector.SortOrder;
 import io.trino.spi.connector.SystemTable;
 import io.trino.spi.connector.TableColumnsMetadata;
 import io.trino.spi.connector.TableNotFoundException;
@@ -124,6 +125,7 @@ import org.apache.iceberg.IndexField;
 import org.apache.iceberg.IsolationLevel;
 import org.apache.iceberg.ManifestFile;
 import org.apache.iceberg.MetadataColumns;
+import org.apache.iceberg.NullOrder;
 import org.apache.iceberg.PartitionField;
 import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.PartitionSpecParser;
@@ -441,7 +443,7 @@ public class IcebergMetadata
     public Optional<PartialSortApplicationResult<ConnectorTableHandle>> applyPartialSort(
             ConnectorSession session,
             ConnectorTableHandle tableHandle,
-            ColumnHandle columnHandle)
+            Map<ColumnHandle, SortOrder> columnHandleSortOrderMap)
     {
         IcebergTableHandle originalTableHandle = (IcebergTableHandle) tableHandle;
         if (originalTableHandle.isSort()) {
@@ -458,9 +460,9 @@ public class IcebergMetadata
         catch (TableNotFoundException e) {
             return Optional.empty();
         }
-        IcebergColumnHandle icebergColumnHandle = (IcebergColumnHandle) columnHandle;
         SortField sortField = table.sortOrder().fields().get(0);
-        if (!icebergColumnHandle.getName().equalsIgnoreCase(table.schema().findColumnName(sortField.sourceId()))) {
+        boolean match = match(table, sortField, columnHandleSortOrderMap);
+        if (!match) {
             return Optional.empty();
         }
         boolean allSorted = true;
@@ -483,6 +485,44 @@ public class IcebergMetadata
                         originalTableHandle.withSort(allSorted),
                         sortField.direction() == SortDirection.ASC,
                         allSorted));
+    }
+
+    /**
+     * Support the following scenarios
+     * Read ASC NULL LAST, write ASC NULL LAST or DESC NULL FIRST
+     * Read ASC NULL FIRST, write ASC NULL FIRST or DESC NULL LAST
+     * Read DESC NULL LAST, write DESC NULL LAST or ASC NULL FIRST
+     * Read DESC NULL FIRST, write DESC NULL FIRST or ASC NULL LAST
+     */
+    private boolean match(Table table, SortField sortField, Map<ColumnHandle, SortOrder> columnHandleSortOrderMap)
+    {
+        IcebergColumnHandle columnHandle = (IcebergColumnHandle) columnHandleSortOrderMap.keySet().stream().toList().get(0);
+        String columnName = table.schema().findColumnName(sortField.sourceId());
+        if (!columnHandle.getName().equalsIgnoreCase(columnName)) {
+            return false;
+        }
+        SortOrder read = columnHandleSortOrderMap.values().stream().toList().get(0);
+        SortOrder write = toSortOrder(sortField);
+        if (read == SortOrder.ASC_NULLS_LAST && (write == SortOrder.ASC_NULLS_LAST || write == SortOrder.DESC_NULLS_FIRST)) {
+            return true;
+        }
+        if (read == SortOrder.ASC_NULLS_FIRST && (write == SortOrder.ASC_NULLS_FIRST || write == SortOrder.DESC_NULLS_LAST)) {
+            return true;
+        }
+        if (read == SortOrder.DESC_NULLS_LAST && (write == SortOrder.DESC_NULLS_LAST || write == SortOrder.ASC_NULLS_FIRST)) {
+            return true;
+        }
+        return read == SortOrder.DESC_NULLS_FIRST && (write == SortOrder.DESC_NULLS_FIRST || write == SortOrder.ASC_NULLS_LAST);
+    }
+
+    public static SortOrder toSortOrder(SortField storage)
+    {
+        SortDirection direction = storage.direction();
+        NullOrder nullOrder = storage.nullOrder();
+        return switch (direction) {
+            case ASC -> nullOrder == NullOrder.NULLS_FIRST ? SortOrder.ASC_NULLS_FIRST : SortOrder.ASC_NULLS_LAST;
+            case DESC -> nullOrder == NullOrder.NULLS_FIRST ? SortOrder.DESC_NULLS_FIRST : SortOrder.DESC_NULLS_LAST;
+        };
     }
 
     @Override
