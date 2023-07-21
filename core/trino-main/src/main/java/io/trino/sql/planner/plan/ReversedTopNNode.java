@@ -28,12 +28,12 @@ public class ReversedTopNNode
         extends PlanNode
 {
     private final PlanNode source;
-    private final long count;
+    private final int count;
 
     @JsonCreator
     public ReversedTopNNode(@JsonProperty("id") PlanNodeId id,
                             @JsonProperty("source") PlanNode source,
-                            @JsonProperty("count") long count)
+                            @JsonProperty("count") int count)
     {
         super(id);
         this.source = source;
@@ -59,7 +59,7 @@ public class ReversedTopNNode
     }
 
     @JsonProperty("count")
-    public long getCount()
+    public int getCount()
     {
         return count;
     }

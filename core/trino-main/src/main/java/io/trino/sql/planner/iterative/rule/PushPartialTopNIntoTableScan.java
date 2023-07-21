@@ -156,7 +156,7 @@ public class PushPartialTopNIntoTableScan
             ReversedTopNNode reversedTopNNode = new ReversedTopNNode(
                     topNNode.getId(),
                     source.accept(new ReplaceTableScans(context.getLookup()), newTable),
-                    topNNode.getCount());
+                    (int) topNNode.getCount());
             return Result.ofPlanNode(buildExchangeNode(node, reversedTopNNode));
         }
     }

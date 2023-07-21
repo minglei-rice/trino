@@ -58,7 +58,7 @@ public class TestReversedTopNOperator
     }
 
     @Test
-    public void testReadPageLastRows()
+    public void testReadCountsEqualsToOnePage()
     {
         List<Page> input = rowPagesBuilder(BIGINT)
                 .addSequencePage(3, 1)
@@ -68,6 +68,21 @@ public class TestReversedTopNOperator
         OperatorFactory operatorFactory = new ReversedTopNOperatorFactory(0, new PlanNodeId("test"), 2);
 
         List<Page> expected = rowPagesBuilder(BIGINT).addSequencePage(2, 6).build();
+
+        OperatorAssertion.assertOperatorEquals(operatorFactory, ImmutableList.of(BIGINT), driverContext, input, expected);
+    }
+
+    @Test
+    public void testReadCountsNotEqualsToOnePage()
+    {
+        List<Page> input = rowPagesBuilder(BIGINT)
+                .addSequencePage(3, 1)
+                .addSequencePage(2, 4)
+                .addSequencePage(2, 6)
+                .build();
+        OperatorFactory operatorFactory = new ReversedTopNOperatorFactory(0, new PlanNodeId("test"), 1);
+
+        List<Page> expected = rowPagesBuilder(BIGINT).addSequencePage(1, 7).build();
 
         OperatorAssertion.assertOperatorEquals(operatorFactory, ImmutableList.of(BIGINT), driverContext, input, expected);
     }

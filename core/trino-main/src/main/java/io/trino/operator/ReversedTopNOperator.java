@@ -14,11 +14,9 @@
 package io.trino.operator;
 
 import io.trino.spi.Page;
-import io.trino.spi.block.Block;
 import io.trino.sql.planner.plan.PlanNodeId;
 
 import java.util.ArrayDeque;
-import java.util.Iterator;
 
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
@@ -33,10 +31,10 @@ public class ReversedTopNOperator
     {
         private final int operatorId;
         private final PlanNodeId planNodeId;
-        private final long count;
+        private final int count;
         private boolean closed;
 
-        public ReversedTopNOperatorFactory(int operatorId, PlanNodeId planNodeId, long count)
+        public ReversedTopNOperatorFactory(int operatorId, PlanNodeId planNodeId, int count)
         {
             this.operatorId = operatorId;
             this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
@@ -76,16 +74,14 @@ public class ReversedTopNOperator
     // If the counts is very large, pages will consume more memory
     private final int count;
     private ArrayDeque<Page> pages = new ArrayDeque<>();
-    private long totalPositions;
-    private Iterator<Page> pageIterator;
-
+    private int totalPositions;
     private State state = State.NEEDS_INPUT;
 
-    public ReversedTopNOperator(OperatorContext operatorContext, long count)
+    public ReversedTopNOperator(OperatorContext operatorContext, int count)
     {
         this.operatorContext = requireNonNull(operatorContext, "operatorContext is null");
         checkArgument(count >= 0, "count must be at least zero");
-        this.count = (int) count;
+        this.count = count;
     }
 
     @Override
@@ -94,28 +90,18 @@ public class ReversedTopNOperator
         return operatorContext;
     }
 
-    private Page getPageLastRows(Page page, int positionOffset, int length)
-    {
-        return page.getRegion(positionOffset, length);
-    }
-
     @Override
     public void finish()
     {
         if (state == State.NEEDS_INPUT) {
             state = State.HAS_OUTPUT;
-            while (totalPositions > count) {
-                // The number of records of each page in the queue is less than or equal to counts
-                Page removedPage = pages.removeFirst();
-                totalPositions -= removedPage.getPositionCount();
-                if (totalPositions < count) {
-                    int reservedInRemovedPage = (int) (count - totalPositions);
-                    Page remainingPages = getPageLastRows(removedPage, removedPage.getPositionCount() - reservedInRemovedPage, reservedInRemovedPage);
-                    totalPositions += remainingPages.getPositionCount();
-                    pages.addLast(remainingPages);
-                }
+            int toRemove = totalPositions - count;
+            if (toRemove > 0) {
+                Page removedPage = pages.remove();
+                Page remainingPage = removedPage.getRegion(toRemove, removedPage.getPositionCount() - toRemove);
+                pages.addLast(remainingPage);
+                totalPositions = count;
             }
-            pageIterator = pages.iterator();
         }
     }
 
@@ -135,15 +121,10 @@ public class ReversedTopNOperator
     public void addInput(Page page)
     {
         checkState(state == State.NEEDS_INPUT, "Operator is already finishing");
-        if (page.getPositionCount() > count) {
-            Page remainingPage = getPageLastRows(page, page.getPositionCount() - count, count);
-            pages.clear();
-            pages.addLast(remainingPage);
-            totalPositions = remainingPage.getPositionCount();
-        }
-        else {
-            pages.addLast(page);
-            totalPositions += page.getPositionCount();
+        pages.addLast(page);
+        totalPositions += page.getPositionCount();
+        while (!pages.isEmpty() && totalPositions - pages.peek().getPositionCount() >= count) {
+            totalPositions -= pages.removeFirst().getPositionCount();
         }
     }
 
@@ -154,17 +135,11 @@ public class ReversedTopNOperator
             return null;
         }
         verifyNotNull(pages, "pages is null");
-        if (!pageIterator.hasNext()) {
+        if (pages.isEmpty()) {
             state = State.FINISHED;
             return null;
         }
-        Page nextPage = pageIterator.next();
-        int channelCount = nextPage.getChannelCount();
-        Block[] blocks = new Block[channelCount];
-        for (int i = 0; i < channelCount; i++) {
-            blocks[i] = nextPage.getBlock(i);
-        }
-        return new Page(nextPage.getPositionCount(), blocks);
+        return pages.removeFirst();
     }
 
     @Override
