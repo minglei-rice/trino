@@ -461,10 +461,8 @@ public class IcebergMetadata
             return Optional.empty();
         }
         SortField sortField = table.sortOrder().fields().get(0);
-        boolean match = match(table, sortField, columnHandleSortOrderMap);
-        if (!match) {
-            return Optional.empty();
-        }
+        SortOrder trinoSortOrder = columnHandleSortOrderMap.values().stream().toList().get(0);
+        SortOrder icebergSortOrder = toSortOrder(sortField);
         boolean allSorted = true;
         TupleDomain<IcebergColumnHandle> effectivePredicate =
                 icebergTableHandle.getUnenforcedPredicate().intersect(icebergTableHandle.getEnforcedPredicate());
@@ -483,36 +481,9 @@ public class IcebergMetadata
         return Optional.of(
                 new PartialSortApplicationResult<>(
                         originalTableHandle.withSort(allSorted),
-                        sortField.direction() == SortDirection.ASC,
+                        trinoSortOrder.isAscending() == icebergSortOrder.isAscending(),
+                        trinoSortOrder.isNullsFirst() == icebergSortOrder.isNullsFirst(),
                         allSorted));
-    }
-
-    /**
-     * Support the following scenarios
-     * Read ASC NULL LAST, write ASC NULL LAST or DESC NULL FIRST
-     * Read ASC NULL FIRST, write ASC NULL FIRST or DESC NULL LAST
-     * Read DESC NULL LAST, write DESC NULL LAST or ASC NULL FIRST
-     * Read DESC NULL FIRST, write DESC NULL FIRST or ASC NULL LAST
-     */
-    private boolean match(Table table, SortField sortField, Map<ColumnHandle, SortOrder> columnHandleSortOrderMap)
-    {
-        IcebergColumnHandle columnHandle = (IcebergColumnHandle) columnHandleSortOrderMap.keySet().stream().toList().get(0);
-        String columnName = table.schema().findColumnName(sortField.sourceId());
-        if (!columnHandle.getName().equalsIgnoreCase(columnName)) {
-            return false;
-        }
-        SortOrder read = columnHandleSortOrderMap.values().stream().toList().get(0);
-        SortOrder write = toSortOrder(sortField);
-        if (read == SortOrder.ASC_NULLS_LAST && (write == SortOrder.ASC_NULLS_LAST || write == SortOrder.DESC_NULLS_FIRST)) {
-            return true;
-        }
-        if (read == SortOrder.ASC_NULLS_FIRST && (write == SortOrder.ASC_NULLS_FIRST || write == SortOrder.DESC_NULLS_LAST)) {
-            return true;
-        }
-        if (read == SortOrder.DESC_NULLS_LAST && (write == SortOrder.DESC_NULLS_LAST || write == SortOrder.ASC_NULLS_FIRST)) {
-            return true;
-        }
-        return read == SortOrder.DESC_NULLS_FIRST && (write == SortOrder.DESC_NULLS_FIRST || write == SortOrder.ASC_NULLS_LAST);
     }
 
     public static SortOrder toSortOrder(SortField storage)

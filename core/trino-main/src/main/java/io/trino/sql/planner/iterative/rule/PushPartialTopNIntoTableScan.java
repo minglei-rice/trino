@@ -135,14 +135,21 @@ public class PushPartialTopNIntoTableScan
         if (!accept) {
             return Result.empty();
         }
-        Optional<PartialSortApplicationResult<TableHandle>> partialSortApplicationResult =
+        Optional<PartialSortApplicationResult<TableHandle>> result =
                 metadata.applyPartialSort(session, table, visitor.getColumnHandleSortOrderMap());
-        if (partialSortApplicationResult.isEmpty() || !partialSortApplicationResult.get().allSorted()) {
+        if (result.isEmpty() || !result.get().allSorted()) {
             return Result.empty();
         }
-        TableHandle newTable = partialSortApplicationResult.get().getHandle();
+        PartialSortApplicationResult<TableHandle> partialSortResult = result.get();
+        TableHandle newTable = partialSortResult.getHandle();
         PlanNode source = context.getLookup().resolve(topNNode.getSource());
-        if (partialSortApplicationResult.get().isAsc() == asc(topNNode)) {
+
+        // Support the following scenarios
+        // Read ASC NULL LAST, write ASC NULL LAST or DESC NULL FIRST
+        // Read ASC NULL FIRST, write ASC NULL FIRST or DESC NULL LAST
+        // Read DESC NULL LAST, write DESC NULL LAST or ASC NULL FIRST
+        // Read DESC NULL FIRST, write DESC NULL FIRST or ASC NULL LAST
+        if (partialSortResult.isSameSortDirection() && partialSortResult.isSameNullOrdering()) {
             LimitNode limitNode = new LimitNode(
                     topNNode.getId(),
                     source.accept(new ReplaceTableScans(context.getLookup()), newTable),
@@ -152,13 +159,14 @@ public class PushPartialTopNIntoTableScan
                     ImmutableList.of());
             return Result.ofPlanNode(buildExchangeNode(node, limitNode));
         }
-        else {
+        if (!partialSortResult.isSameSortDirection() && !partialSortResult.isSameNullOrdering()) {
             ReversedTopNNode reversedTopNNode = new ReversedTopNNode(
                     topNNode.getId(),
                     source.accept(new ReplaceTableScans(context.getLookup()), newTable),
                     (int) topNNode.getCount());
             return Result.ofPlanNode(buildExchangeNode(node, reversedTopNNode));
         }
+        return Result.empty();
     }
 
     private ExchangeNode buildExchangeNode(ExchangeNode node, PlanNode planNode)
@@ -246,12 +254,14 @@ public class PushPartialTopNIntoTableScan
         @Override
         public Boolean visitTopN(TopNNode node, Void context)
         {
-            node.getSource().accept(this, context);
-            // TODO support for sorting with more than 1 field
             if (node.getOrderingScheme().getOrderBy().size() > 1) {
                 return false;
             }
+            node.getSource().accept(this, context);
             Symbol symbol = node.getOrderingScheme().getOrderBy().get(0);
+            if (!assignments.containsKey(symbol)) {
+                return false;
+            }
             SortOrder ordering = node.getOrderingScheme().getOrdering(symbol);
             columnHandleSortOrderMap.put(assignments.get(symbol), ordering);
             return true;
@@ -267,15 +277,13 @@ public class PushPartialTopNIntoTableScan
         @Override
         public Boolean visitFilter(FilterNode node, Void context)
         {
-            node.getSource().accept(this, context);
-            return true;
+            return node.getSource().accept(this, context);
         }
 
         @Override
         public Boolean visitProject(ProjectNode node, Void context)
         {
-            node.getSource().accept(this, context);
-            return true;
+            return node.getSource().accept(this, context);
         }
 
         @Override
@@ -287,14 +295,8 @@ public class PushPartialTopNIntoTableScan
         @Override
         public Boolean visitGroupReference(GroupReference node, Void context)
         {
-            lookup.resolve(node).accept(this, context);
-            return true;
+            return lookup.resolve(node).accept(this, context);
         }
-    }
-
-    private boolean asc(TopNNode node)
-    {
-        return node.getOrderingScheme().getOrderingList().get(0).isAscending();
     }
 
     private Optional<TableScanNode> findTableScanNode(ExchangeNode node, Context context)

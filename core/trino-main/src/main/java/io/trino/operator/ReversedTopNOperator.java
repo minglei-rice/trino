@@ -99,7 +99,7 @@ public class ReversedTopNOperator
             if (toRemove > 0) {
                 Page removedPage = pages.remove();
                 Page remainingPage = removedPage.getRegion(toRemove, removedPage.getPositionCount() - toRemove);
-                pages.addLast(remainingPage);
+                pages.offerFirst(remainingPage);
                 totalPositions = count;
             }
         }

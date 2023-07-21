@@ -16,15 +16,15 @@ package io.trino.spi.connector;
 public class PartialSortApplicationResult<T>
 {
     private final T handle;
-
-    private final boolean asc;
-
+    private final boolean sameSortDirection;
+    private final boolean sameNullOrdering;
     private final boolean allSorted;
 
-    public PartialSortApplicationResult(T handle, boolean asc, boolean allSorted)
+    public PartialSortApplicationResult(T handle, boolean sortDirection, boolean nullOrdering, boolean allSorted)
     {
         this.handle = handle;
-        this.asc = asc;
+        this.sameSortDirection = sortDirection;
+        this.sameNullOrdering = nullOrdering;
         this.allSorted = allSorted;
     }
 
@@ -33,9 +33,19 @@ public class PartialSortApplicationResult<T>
         return handle;
     }
 
-    public boolean isAsc()
+    public boolean isSameSortDirection()
     {
-        return asc;
+        return sameSortDirection;
+    }
+
+    public boolean isSameNullOrdering()
+    {
+        return sameNullOrdering;
+    }
+
+    public boolean isAllSorted()
+    {
+        return allSorted;
     }
 
     public boolean allSorted()

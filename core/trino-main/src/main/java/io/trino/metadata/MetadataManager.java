@@ -468,7 +468,8 @@ public final class MetadataManager
         return sortApplicationResult.map(result ->
                 new PartialSortApplicationResult<>(
                         new TableHandle(catalogHandle, result.getHandle(), tableHandle.getTransaction()),
-                        result.isAsc(),
+                        result.isSameSortDirection(),
+                        result.isSameNullOrdering(),
                         result.allSorted()));
     }
 
