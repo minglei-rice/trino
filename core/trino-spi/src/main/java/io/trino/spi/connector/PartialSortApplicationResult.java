@@ -43,11 +43,6 @@ public class PartialSortApplicationResult<T>
         return sameNullOrdering;
     }
 
-    public boolean isAllSorted()
-    {
-        return allSorted;
-    }
-
     public boolean allSorted()
     {
         return allSorted;

@@ -13,6 +13,8 @@
  */
 package io.trino.plugin.iceberg;
 
+import com.google.common.base.Preconditions;
+import com.google.common.base.Predicates;
 import com.google.common.base.Splitter;
 import com.google.common.base.Suppliers;
 import com.google.common.base.VerifyException;
@@ -445,22 +447,24 @@ public class IcebergMetadata
             ConnectorTableHandle tableHandle,
             Map<ColumnHandle, SortOrder> columnHandleSortOrderMap)
     {
+        if (columnHandleSortOrderMap.size() != 1) {
+            return Optional.empty();
+        }
         IcebergTableHandle originalTableHandle = (IcebergTableHandle) tableHandle;
         if (originalTableHandle.isSort()) {
             return Optional.empty();
         }
         IcebergTableHandle icebergTableHandle = (IcebergTableHandle) tableHandle;
         Table table;
-        try {
-            table = catalog.loadTable(session, icebergTableHandle.getSchemaTableName());
-            if (table.sortOrder().fields().isEmpty()) {
-                return Optional.empty();
-            }
-        }
-        catch (TableNotFoundException e) {
+        table = catalog.loadTable(session, icebergTableHandle.getSchemaTableName());
+        if (table.sortOrder().isUnsorted()) {
             return Optional.empty();
         }
         SortField sortField = table.sortOrder().fields().get(0);
+        IcebergColumnHandle columnHandle = (IcebergColumnHandle) columnHandleSortOrderMap.keySet().stream().toList().get(0);
+        if (!table.schema().findColumnName(sortField.sourceId()).equalsIgnoreCase(columnHandle.getName())) {
+            return Optional.empty();
+        }
         SortOrder trinoSortOrder = columnHandleSortOrderMap.values().stream().toList().get(0);
         SortOrder icebergSortOrder = toSortOrder(sortField);
         boolean allSorted = true;

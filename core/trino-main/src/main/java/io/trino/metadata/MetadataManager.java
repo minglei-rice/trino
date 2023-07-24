@@ -462,9 +462,6 @@ public final class MetadataManager
         ConnectorMetadata metadata = getMetadata(session, catalogHandle);
         Optional<PartialSortApplicationResult<ConnectorTableHandle>> sortApplicationResult =
                 metadata.applyPartialSort(session.toConnectorSession(catalogHandle), tableHandle.getConnectorHandle(), columnHandleSortOrderMap);
-        if (sortApplicationResult.isEmpty()) {
-            return Optional.empty();
-        }
         return sortApplicationResult.map(result ->
                 new PartialSortApplicationResult<>(
                         new TableHandle(catalogHandle, result.getHandle(), tableHandle.getTransaction()),

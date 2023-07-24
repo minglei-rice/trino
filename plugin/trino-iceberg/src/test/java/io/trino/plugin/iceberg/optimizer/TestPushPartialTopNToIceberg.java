@@ -100,7 +100,7 @@ public class TestPushPartialTopNToIceberg
     @Test
     public void testReadSortedTable()
     {
-        queryRunner.execute(TEST_SESSION, "create table t1(f1 bigint)");
+        queryRunner.execute(TEST_SESSION, "create table t1(f1 bigint, f2 bigint)");
         Table table = loadIcebergTable("t1");
         table.replaceSortOrder().asc("f1", NullOrder.NULLS_FIRST).commit();
         DataFile dataFile = DataFiles.builder(table.spec())
@@ -116,6 +116,7 @@ public class TestPushPartialTopNToIceberg
         assertExplain(TEST_SESSION, "EXPLAIN select * from t1 order by f1 + 1 desc nulls last limit 3", "\\QTopNPartial");
         assertExplain(TEST_SESSION, "EXPLAIN select * from t1 order by length(cast(f1 as varchar))=2 desc nulls last limit 3", "\\QTopNPartial");
         assertExplain(TEST_SESSION, "EXPLAIN select * from (select f1, count(*) as y from t1 group by f1) where y > 5 order by f1 limit 3", "\\QTopNPartial");
+        assertExplain(TEST_SESSION, "EXPLAIN select * from t1 order by f2 desc nulls last limit 3", "\\QTopNPartial");
     }
 
     private Table loadIcebergTable(String tableName)

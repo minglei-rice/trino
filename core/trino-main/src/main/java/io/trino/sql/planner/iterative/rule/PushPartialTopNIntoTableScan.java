@@ -127,9 +127,12 @@ public class PushPartialTopNIntoTableScan
     {
         LOG.info("Plan have matched %s.", this.getClass().getCanonicalName());
         TopNNode topNNode = captures.get(TOP_N_NODE);
-        TableScanNode tableScanNode = findTableScanNode(node, context).get();
+        Optional<TableScanNode> tableScanNode = findTableScanNode(node, context);
+        if (tableScanNode.isEmpty()) {
+            return Result.empty();
+        }
         Session session = context.getSession();
-        TableHandle table = tableScanNode.getTable();
+        TableHandle table = tableScanNode.get().getTable();
         Visitor visitor = new Visitor(context.getLookup());
         Boolean accept = topNNode.accept(visitor, null);
         if (!accept) {
@@ -142,7 +145,7 @@ public class PushPartialTopNIntoTableScan
         }
         PartialSortApplicationResult<TableHandle> partialSortResult = result.get();
         TableHandle newTable = partialSortResult.getHandle();
-        PlanNode source = context.getLookup().resolve(topNNode.getSource());
+        PlanNode source = topNNode.getSource();
 
         // Support the following scenarios
         // Read ASC NULL LAST, write ASC NULL LAST or DESC NULL FIRST
@@ -157,28 +160,16 @@ public class PushPartialTopNIntoTableScan
                     Optional.empty(),
                     true,
                     ImmutableList.of());
-            return Result.ofPlanNode(buildExchangeNode(node, limitNode));
+            return Result.ofPlanNode(node.replaceChildren(ImmutableList.of(limitNode)));
         }
         if (!partialSortResult.isSameSortDirection() && !partialSortResult.isSameNullOrdering()) {
             ReversedTopNNode reversedTopNNode = new ReversedTopNNode(
                     topNNode.getId(),
                     source.accept(new ReplaceTableScans(context.getLookup()), newTable),
-                    (int) topNNode.getCount());
-            return Result.ofPlanNode(buildExchangeNode(node, reversedTopNNode));
+                    Math.toIntExact(topNNode.getCount()));
+            return Result.ofPlanNode(node.replaceChildren(ImmutableList.of(reversedTopNNode)));
         }
         return Result.empty();
-    }
-
-    private ExchangeNode buildExchangeNode(ExchangeNode node, PlanNode planNode)
-    {
-        return new ExchangeNode(
-                node.getId(),
-                node.getType(),
-                node.getScope(),
-                node.getPartitioningScheme(),
-                ImmutableList.of(planNode),
-                node.getInputs(),
-                node.getOrderingScheme());
     }
 
     private static class ReplaceTableScans
@@ -254,10 +245,9 @@ public class PushPartialTopNIntoTableScan
         @Override
         public Boolean visitTopN(TopNNode node, Void context)
         {
-            if (node.getOrderingScheme().getOrderBy().size() > 1) {
+            if (node.getOrderingScheme().getOrderBy().size() != 1 || !node.getSource().accept(this, context)) {
                 return false;
             }
-            node.getSource().accept(this, context);
             Symbol symbol = node.getOrderingScheme().getOrderBy().get(0);
             if (!assignments.containsKey(symbol)) {
                 return false;
